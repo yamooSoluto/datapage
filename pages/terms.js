@@ -1,3 +1,6 @@
+// pages/terms.js 파일 맨 위에 추가
+import Link from 'next/link';
+
 export default function Terms() {
     return (
       <div className="min-h-screen bg-gray-50 py-12 px-4">
