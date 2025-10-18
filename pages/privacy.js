@@ -118,9 +118,9 @@ export default function Privacy() {
           </div>
   
           <div className="mt-10 text-center">
-            <a href="/" className="text-indigo-600 hover:text-indigo-700">
+          <Link href="/" className="text-indigo-600 hover:text-indigo-700">
               ← 메인으로 돌아가기
-            </a>
+              </Link>
           </div>
         </div>
       </div>
