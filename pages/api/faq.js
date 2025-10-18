@@ -2,7 +2,7 @@ import { google } from 'googleapis';
 
 // 플랜별 제한 설정
 const PLAN_LIMITS = {
-  starter: 10,
+  starter: 100,
   pro: Infinity,
   business: Infinity,
   enterprise: Infinity
