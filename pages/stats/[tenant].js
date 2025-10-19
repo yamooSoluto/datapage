@@ -1,4 +1,7 @@
+// pages/stats/[tenant].js
+
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -62,19 +65,18 @@ const StatCard = ({ title, value, icon: Icon, color, subtitle }) => (
 
 // 메인 컴포넌트
 export default function StatsPage() {
+    const router = useRouter();
+  const tenantId = router.query.tenant;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState('7d');
   const [view, setView] = useState('conversations');
 
-  const tenantId = typeof window !== 'undefined' 
-    ? window.location.pathname.split('/').pop() 
-    : 't_01K4AY0QTGPBVE8WBJDG87YJCF';
-
   useEffect(() => {
-    fetchData();
-  }, [dateRange, view]);
+        if (!tenantId) return; // CSR에서 쿼리 준비 전
+        fetchData();
+      }, [tenantId, dateRange, view]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -167,7 +169,7 @@ export default function StatsPage() {
         c.userName,
         c.mediumName,
         c.tags[0] || '',
-        new Date(c.firstOpenedAt).toLocaleString(),
+        c.firstOpenedAt ? new Date(c.firstOpenedAt).toLocaleString() : 'N/A',
         c.aiAutoChats,
         c.agentChats
       ])
