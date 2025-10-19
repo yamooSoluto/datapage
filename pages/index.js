@@ -301,20 +301,19 @@ export default function TenantPortal() {
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-2xl shadow-yellow-200/30 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
           {/* 헤더 */}
-          <div className="bg-gradient-to-br from-yellow-400 via-yellow-300 to-amber-400 p-10 text-center rounded-t-3xl relative overflow-hidden">
-            <div className="absolute inset-0 bg-white/10 backdrop-blur-sm"></div>
+          <div className="bg-gradient-to-br from-yellow-400 to-amber-500 p-10 text-center rounded-t-3xl relative overflow-hidden">
             <div className="relative z-10">
-              <div className="w-24 h-24 bg-white/30 rounded-full mx-auto mb-4 flex items-center justify-center backdrop-blur-md shadow-lg">
+              <div className="w-24 h-24 bg-white/20 rounded-full mx-auto mb-4 flex items-center justify-center backdrop-blur-sm shadow-lg">
                 <span className="text-6xl">🎉</span>
               </div>
-              <h2 className="text-4xl font-bold text-gray-800 mb-2">환영합니다!</h2>
-              <p className="text-gray-700 text-lg font-semibold">3단계로 AI 자동응답을 시작하세요</p>
+              <h2 className="text-4xl font-bold text-white mb-2">환영합니다!</h2>
+              <p className="text-white/90 text-lg font-semibold">3단계로 AI 자동응답을 시작하세요</p>
               <div className="flex justify-center mt-6 space-x-2">
                 {[1, 2, 3].map(step => (
                   <div 
                     key={step}
                     className={`h-2 rounded-full transition-all ${
-                      step <= currentStep ? 'bg-gray-800 w-12' : 'bg-white/50 w-2'
+                      step <= currentStep ? 'bg-white w-12' : 'bg-white/30 w-2'
                     }`}
                   />
                 ))}
@@ -507,10 +506,10 @@ export default function TenantPortal() {
 
         <div className="relative bg-white/40 backdrop-blur-xl rounded-3xl shadow-2xl shadow-yellow-200/20 p-8 w-full max-w-md border border-white/50">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-yellow-400 via-yellow-300 to-amber-400 rounded-3xl mb-4 shadow-lg shadow-yellow-400/30 transform hover:scale-105 transition-transform">
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-3xl mb-4 shadow-lg transform hover:scale-105 transition-transform">
               <Database className="w-10 h-10 text-white" />
             </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">FAQ 관리 포털</h1>
+            <h1 className="text-3xl font-bold text-gray-800">FAQ 관리 포털</h1>
             <p className="text-gray-600 mt-2">AI 자동응답 데이터 관리</p>
           </div>
 
@@ -527,7 +526,7 @@ export default function TenantPortal() {
               </div>
             )}
 
-            <button onClick={handleRequestMagicLink} disabled={isLoading} className="w-full bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 py-3.5 rounded-2xl font-bold hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-yellow-400/30">
+            <button onClick={handleRequestMagicLink} disabled={isLoading} className="w-full bg-gradient-to-br from-yellow-400 to-yellow-500 text-gray-800 py-3.5 rounded-2xl font-bold hover:shadow-lg hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md">
               {isLoading ? (
                 <span className="flex items-center justify-center">
                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -537,7 +536,7 @@ export default function TenantPortal() {
                   전송 중...
                 </span>
               ) : (
-                '로그인 링크 받기 ✨'
+                '로그인 링크 받기'
               )}
             </button>
           </div>
@@ -587,12 +586,12 @@ export default function TenantPortal() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 via-yellow-300 to-amber-400 rounded-2xl flex items-center justify-center shadow-lg shadow-yellow-400/30 transform hover:scale-105 transition-transform">
+              <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
                 <Database className="w-6 h-6 text-white" />
               </div>
               <div>
                 <div className="flex items-center space-x-2">
-                  <h1 className="text-xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent">{currentTenant.name}</h1>
+                  <h1 className="text-xl font-bold text-gray-800">{currentTenant.name}</h1>
                   <span className="px-2.5 py-1 bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 text-xs font-bold rounded-full flex items-center shadow-sm">
                     <Crown className="w-3 h-3 mr-1" />{currentPlanConfig.name}
                   </span>
@@ -649,7 +648,9 @@ export default function TenantPortal() {
                       <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all rounded-full shadow-sm" style={{ width: `${Math.min(100, (stats.total / PLAN_CONFIG.starter.maxFAQs) * 100)}%` }} />
                     </div>
                   </div>
-                  <button className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-sm font-bold rounded-xl hover:shadow-xl hover:shadow-blue-500/40 hover:scale-105 transition-all whitespace-nowrap">업그레이드 ✨</button>
+                  <button className="px-4 py-2 bg-gradient-to-br from-blue-500 to-blue-600 text-white text-sm font-bold rounded-xl hover:shadow-lg hover:scale-105 transition-all whitespace-nowrap shadow-md">
+                    업그레이드
+                  </button>
                 </div>
               </div>
             </div>
@@ -669,7 +670,7 @@ export default function TenantPortal() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 font-semibold mb-1">담당자 필요</p>
-                  <p className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">{stats.needStaff}</p>
+                  <p className="text-4xl font-bold text-orange-600">{stats.needStaff}</p>
                 </div>
                 <div className="w-14 h-14 bg-gradient-to-br from-orange-400 to-amber-400 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-400/30"><TrendingUp className="w-7 h-7 text-white" /></div>
               </div>
@@ -678,7 +679,7 @@ export default function TenantPortal() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600 font-semibold mb-1">만료된 FAQ</p>
-                  <p className="text-4xl font-bold bg-gradient-to-r from-red-600 to-pink-600 bg-clip-text text-transparent">{stats.expired}</p>
+                  <p className="text-4xl font-bold text-red-600">{stats.expired}</p>
                 </div>
                 <div className="w-14 h-14 bg-gradient-to-br from-red-400 to-pink-400 rounded-2xl flex items-center justify-center shadow-lg shadow-red-400/30"><Clock className="w-7 h-7 text-white" /></div>
               </div>
@@ -691,7 +692,7 @@ export default function TenantPortal() {
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="text" placeholder="질문 또는 답변 검색..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-white/70 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all" />
               </div>
-              <button onClick={() => openModal()} disabled={currentTenant.plan === 'starter' && stats.total >= PLAN_CONFIG.starter.maxFAQs} className="flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-yellow-400/30">
+              <button onClick={() => openModal()} disabled={currentTenant.plan === 'starter' && stats.total >= PLAN_CONFIG.starter.maxFAQs} className="flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-br from-yellow-400 to-yellow-500 text-gray-800 rounded-2xl hover:shadow-lg hover:scale-105 transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-md">
                 <Plus className="w-5 h-5" /><span>새 FAQ 추가</span>
               </button>
             </div>
@@ -703,7 +704,9 @@ export default function TenantPortal() {
                 <Database className="w-20 h-20 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500 text-lg font-semibold">{searchTerm ? '검색 결과가 없습니다.' : '등록된 FAQ가 없습니다.'}</p>
                 {!searchTerm && stats.total < (PLAN_CONFIG[currentTenant.plan].maxFAQs || Infinity) && (
-                  <button onClick={() => openModal()} className="mt-6 px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 font-bold rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all">첫 FAQ 추가하기 ✨</button>
+                  <button onClick={() => openModal()} className="mt-6 px-6 py-3 bg-gradient-to-br from-yellow-400 to-yellow-500 text-gray-800 font-bold rounded-2xl hover:shadow-lg hover:scale-105 transition-all shadow-md">
+                    첫 FAQ 추가하기
+                  </button>
                 )}
               </div>
             ) : (
@@ -900,8 +903,8 @@ export default function TenantPortal() {
                 </div>
               )}
               <div className="flex space-x-3 pt-4">
-                <button onClick={closeModal} className="flex-1 px-6 py-3 bg-gray-100/70 backdrop-blur-sm text-gray-700 rounded-2xl hover:bg-gray-200/70 transition-all font-bold">취소</button>
-                <button onClick={handleSubmit} disabled={isLoading} className="flex-1 px-6 py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold disabled:opacity-50 shadow-lg shadow-yellow-400/30">{editingItem ? '수정 완료 ✓' : '추가 ✨'}</button>
+                <button onClick={closeModal} className="flex-1 px-6 py-3 bg-white text-gray-700 rounded-2xl hover:bg-gray-50 transition-all font-bold border border-gray-200 shadow-sm">취소</button>
+                <button onClick={handleSubmit} disabled={isLoading} className="flex-1 px-6 py-3 bg-gradient-to-br from-yellow-400 to-yellow-500 text-gray-800 rounded-2xl hover:shadow-lg hover:scale-105 transition-all font-bold disabled:opacity-50 shadow-md">{editingItem ? '수정 완료' : '추가'}</button>
               </div>
             </div>
           </div>
