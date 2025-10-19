@@ -333,7 +333,7 @@ export default function TenantPortal() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">기본 템플릿 작성</h3>
                   <p className="text-gray-600">50개의 자주 묻는 질문을 간단히 작성하세요</p>
                 </div>
-                <div className="bg-gradient-to-br from-yellow-50/80 to-amber-50/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-yellow-200/20">
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-yellow-200/20 border border-yellow-100/50">
                   <div className="flex items-start space-x-4">
                     <div className="flex-shrink-0">
                       <svg className="w-6 h-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -341,22 +341,31 @@ export default function TenantPortal() {
                       </svg>
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-bold text-amber-900 mb-2">왜 필요한가요?</h4>
-                      <ul className="text-sm text-amber-800 space-y-1.5 font-semibold">
-                        <li>• AI가 고객 질문에 정확하게 답변하려면 기본 정보가 필요해요</li>
-                        <li>• 단답형/선택형으로 쉽게 완성할 수 있습니다 (약 5분)</li>
-                        <li>• 나중에 포털에서 언제든 수정 가능해요</li>
+                      <h4 className="font-bold text-gray-900 mb-3">왜 필요한가요?</h4>
+                      <ul className="space-y-2">
+                        <li className="flex items-start">
+                          <span className="text-yellow-600 mr-2 mt-0.5">•</span>
+                          <span className="text-sm font-semibold text-gray-700">AI가 고객 질문에 정확하게 답변하려면 기본 정보가 필요해요</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="text-yellow-600 mr-2 mt-0.5">•</span>
+                          <span className="text-sm font-semibold text-gray-700">단답형/선택형으로 쉽게 완성할 수 있습니다 (약 5분)</span>
+                        </li>
+                        <li className="flex items-start">
+                          <span className="text-yellow-600 mr-2 mt-0.5">•</span>
+                          <span className="text-sm font-semibold text-gray-700">나중에 포털에서 언제든 수정 가능해요</span>
+                        </li>
                       </ul>
                     </div>
                   </div>
                 </div>
-                <div className="bg-white/60 backdrop-blur-xl rounded-2xl p-6 shadow-lg">
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg border border-indigo-100/50">
                   <h4 className="font-bold text-gray-900 mb-4">포함된 내용</h4>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     {['영업 정보', '배송/결제', '반품/교환', '상품 문의', '이벤트', '기타'].map(category => (
-                      <div key={category} className="flex items-center space-x-2 bg-gradient-to-r from-indigo-50 to-purple-50 px-3 py-2 rounded-xl">
+                      <div key={category} className="flex items-center space-x-2 bg-gradient-to-r from-indigo-50 to-purple-50 px-3 py-2.5 rounded-xl border border-indigo-100/50">
                         <div className="w-2 h-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"></div>
-                        <span className="text-gray-700 font-semibold">{category}</span>
+                        <span className="text-gray-800 font-semibold">{category}</span>
                       </div>
                     ))}
                   </div>
@@ -378,12 +387,27 @@ export default function TenantPortal() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">위젯 설치</h3>
                   <p className="text-gray-600">웹사이트에 채팅 위젯을 추가하세요</p>
                 </div>
-                <div className="bg-gradient-to-br from-purple-50/80 to-pink-50/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-purple-200/20">
-                  <h4 className="font-bold text-purple-900 mb-3">설치 방법</h4>
-                  <ol className="text-sm text-purple-800 space-y-2 font-semibold">
-                    <li className="flex items-start"><span className="font-bold mr-2 text-lg">1.</span><span>아래 코드를 복사하세요</span></li>
-                    <li className="flex items-start"><span className="font-bold mr-2 text-lg">2.</span><span>웹사이트의 HTML {'</body>'} 태그 바로 위에 붙여넣으세요</span></li>
-                    <li className="flex items-start"><span className="font-bold mr-2 text-lg">3.</span><span>페이지를 새로고침하면 채팅 위젯이 나타납니다</span></li>
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-purple-200/20 border border-purple-100/50">
+                  <h4 className="font-bold text-purple-900 mb-4">설치 방법</h4>
+                  <ol className="space-y-3">
+                    <li className="flex items-center">
+                      <div className="flex-shrink-0 w-7 h-7 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <span className="text-xs font-bold text-white">1</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800">아래 코드를 복사하세요</span>
+                    </li>
+                    <li className="flex items-center">
+                      <div className="flex-shrink-0 w-7 h-7 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <span className="text-xs font-bold text-white">2</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800">웹사이트의 HTML {'</body>'} 태그 바로 위에 붙여넣으세요</span>
+                    </li>
+                    <li className="flex items-center">
+                      <div className="flex-shrink-0 w-7 h-7 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <span className="text-xs font-bold text-white">3</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800">페이지를 새로고침하면 채팅 위젯이 나타납니다</span>
+                    </li>
                   </ol>
                 </div>
                 <div>
@@ -413,12 +437,27 @@ export default function TenantPortal() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">네이버톡톡 연동</h3>
                   <p className="text-gray-600">네이버톡톡에서도 자동응답 사용 (선택사항)</p>
                 </div>
-                <div className="bg-gradient-to-br from-green-50/80 to-emerald-50/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-green-200/20">
-                  <h4 className="font-bold text-green-900 mb-3">연동 방법</h4>
-                  <ol className="text-sm text-green-800 space-y-2 font-semibold">
-                    <li className="flex items-start"><span className="font-bold mr-2 text-lg">1.</span><span>네이버톡톡 파트너센터 접속</span></li>
-                    <li className="flex items-start"><span className="font-bold mr-2 text-lg">2.</span><span>설정 → 채팅 설정 → Outbound API</span></li>
-                    <li className="flex items-start"><span className="font-bold mr-2 text-lg">3.</span><span>아래 URL을 입력하고 저장</span></li>
+                <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-green-200/20 border border-green-100/50">
+                  <h4 className="font-bold text-green-900 mb-4">연동 방법</h4>
+                  <ol className="space-y-3">
+                    <li className="flex items-center">
+                      <div className="flex-shrink-0 w-7 h-7 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <span className="text-xs font-bold text-white">1</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800">네이버톡톡 파트너센터 접속</span>
+                    </li>
+                    <li className="flex items-center">
+                      <div className="flex-shrink-0 w-7 h-7 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <span className="text-xs font-bold text-white">2</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800">설정 → 채팅 설정 → Outbound API</span>
+                    </li>
+                    <li className="flex items-center">
+                      <div className="flex-shrink-0 w-7 h-7 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <span className="text-xs font-bold text-white">3</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800">아래 URL을 입력하고 저장</span>
+                    </li>
                   </ol>
                 </div>
                 <div>
