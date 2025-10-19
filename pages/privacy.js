@@ -102,10 +102,10 @@ export default function Privacy() {
   
             <h2>■ 개인정보침해 관련 외부 신고 기관</h2>
             <ol className="list-decimal ml-6 space-y-1">
-              <li>대검찰청 사이버수사과: <a href="https://cybercid.spo.go.kr" target="_blank" className="text-indigo-600">cybercid.spo.go.kr</a></li>
-              <li>경찰청 사이버테러대응센터: <a href="https://www.ctrc.go.kr" target="_blank" className="text-indigo-600">www.ctrc.go.kr</a> / 02-392-0330</li>
-              <li>개인정보침해신고센터: <a href="https://privacy.kisa.or.kr" target="_blank" className="text-indigo-600">privacy.kisa.or.kr</a> / 국번 없이 118</li>
-              <li>개인정보분쟁조정위원회: <a href="https://www.kopico.go.kr" target="_blank" className="text-indigo-600">kopico.go.kr</a> / 1833-6972</li>
+              <li>대검찰청 사이버수사과: <a href="https://cybercid.spo.go.kr" target="_blank" className="text-yellow-600">cybercid.spo.go.kr</a></li>
+              <li>경찰청 사이버테러대응센터: <a href="https://www.ctrc.go.kr" target="_blank" className="text-yellow-600">www.ctrc.go.kr</a> / 02-392-0330</li>
+              <li>개인정보침해신고센터: <a href="https://privacy.kisa.or.kr" target="_blank" className="text-yellow-600">privacy.kisa.or.kr</a> / 국번 없이 118</li>
+              <li>개인정보분쟁조정위원회: <a href="https://www.kopico.go.kr" target="_blank" className="text-yellow-600">kopico.go.kr</a> / 1833-6972</li>
             </ol>
   
             <h2>■ 개인정보처리방침의 개정과 공지</h2>
@@ -121,7 +121,7 @@ export default function Privacy() {
           </div>
   
           <div className="mt-10 text-center">
-          <Link href="/" className="text-indigo-600 hover:text-indigo-700">
+          <Link href="/" className="text-yellow-600 hover:text-indigo-700">
               ← 메인으로 돌아가기
               </Link>
           </div>
