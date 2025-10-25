@@ -1,37 +1,48 @@
-// 포탈 매직링크 검증
-//pages/auth/magic.js
-
+// pages/auth/magic.js
+// ════════════════════════════════════════
+// 포탈 매직링크 검증 (보안 개선)
+// ════════════════════════════════════════
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import jwt from 'jsonwebtoken';
 
 export default function MagicLogin() {
   const router = useRouter();
   const { token } = router.query;
-  const [status, setStatus] = useState('verifying');  // verifying, success, error
+  const [status, setStatus] = useState('verifying');  // verifying, success, expired, error
 
   useEffect(() => {
     if (!token) return;
-
     verifyMagicLink(token);
   }, [token]);
 
+  // ✅ 수정: 서버에서 검증하도록 변경
   async function verifyMagicLink(token) {
     try {
-      // ✅ JWT 검증
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
-      // ✅ 만료 체크
-      if (decoded.exp * 1000 < Date.now()) {
-        setStatus('expired');
+      // ✅ API 호출 (서버에서 JWT 검증)
+      const response = await fetch('/api/auth/verify-magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+
+      const data = await response.json();
+
+      // ✅ 검증 실패 처리
+      if (!data.success) {
+        if (data.error === 'expired') {
+          setStatus('expired');
+        } else {
+          setStatus('error');
+        }
         return;
       }
 
       // ✅ 세션 저장
-      localStorage.setItem('userEmail', decoded.email);
-      localStorage.setItem('tenantId', decoded.tenantId);
+      localStorage.setItem('userEmail', data.email);
+      localStorage.setItem('tenantId', data.tenantId);
       localStorage.setItem('magicLogin', 'true');
+      localStorage.setItem('loginTime', new Date().toISOString());
 
       setStatus('success');
 
@@ -47,11 +58,12 @@ export default function MagicLogin() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-indigo-600">
-      <div className="bg-white rounded-2xl shadow-2xl p-12 max-w-md w-full text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-yellow-400 via-yellow-500 to-orange-500">
+      <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-12 max-w-md w-full text-center border border-white/20">
+        
         {status === 'verifying' && (
           <>
-            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-purple-600 mx-auto mb-6"></div>
+            <div className="animate-spin rounded-full h-20 w-20 border-t-4 border-b-4 border-yellow-500 mx-auto mb-6"></div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">로그인 중...</h2>
             <p className="text-gray-600">잠시만 기다려주세요</p>
           </>
@@ -59,9 +71,9 @@ export default function MagicLogin() {
 
         {status === 'success' && (
           <>
-            <div className="text-6xl mb-6">✅</div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">로그인 완료!</h2>
-            <p className="text-gray-600">포탈로 이동합니다...</p>
+            <div className="text-6xl mb-6 animate-bounce">✅</div>
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">로그인 완료!</h2>
+            <p className="text-gray-600">야무 포탈로 이동합니다...</p>
           </>
         )}
 
@@ -69,10 +81,10 @@ export default function MagicLogin() {
           <>
             <div className="text-6xl mb-6">⏰</div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">링크가 만료되었습니다</h2>
-            <p className="text-gray-600 mb-6">포탈에서 새 링크를 요청해주세요</p>
+            <p className="text-gray-600 mb-6">매직링크는 24시간 동안만 유효합니다</p>
             <button
               onClick={() => router.push('/')}
-              className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
+              className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
             >
               포탈로 이동
             </button>
@@ -83,10 +95,10 @@ export default function MagicLogin() {
           <>
             <div className="text-6xl mb-6">❌</div>
             <h2 className="text-2xl font-bold text-gray-800 mb-2">오류가 발생했습니다</h2>
-            <p className="text-gray-600 mb-6">잘못된 링크이거나 만료되었습니다</p>
+            <p className="text-gray-600 mb-6">잘못된 링크이거나 이미 사용된 링크입니다</p>
             <button
               onClick={() => router.push('/')}
-              className="px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
+              className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105"
             >
               포탈로 이동
             </button>
