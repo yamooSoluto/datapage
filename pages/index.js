@@ -6,6 +6,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 
 // 플랜 설정
 const PLAN_CONFIG = {
+  starter: { name: 'Trial', maxFAQs: 100, hasExpiryDate: false, color: 'green' },
   starter: { name: 'Starter', maxFAQs: 100, hasExpiryDate: false, color: 'blue' },
   pro: { name: 'Pro', maxFAQs: Infinity, hasExpiryDate: true, color: 'purple' },
   business: { name: 'Business', maxFAQs: Infinity, hasExpiryDate: true, color: 'indigo' },
@@ -70,7 +71,14 @@ const updateQuestion = (index, value) => {
 };
 
 
-  const currentPlanConfig = currentTenant ? PLAN_CONFIG[currentTenant.plan] : null;
+const currentPlanConfig = useMemo(() => {
+  if (!currentTenant || !currentTenant.plan) {
+    return PLAN_CONFIG.trial;  // 기본값을 trial로 변경!
+  }
+  
+  const planKey = currentTenant.plan.toLowerCase();
+  return PLAN_CONFIG[planKey] || PLAN_CONFIG.trial;  // 없으면 trial
+}, [currentTenant]);
 
 // ✅ 저장된 세션/토큰 우선순위 로그인
 useEffect(() => {
