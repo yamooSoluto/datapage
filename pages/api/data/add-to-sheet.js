@@ -1,3 +1,9 @@
+// pages/api/data/add-to-sheet.js
+
+//용도: Slack에서 FAQ 추가할 때 사용
+//기능: Google Sheets의 "FAQs" 시트에 질문/답변 추가
+//호출: Slack → n8n → API
+
 import admin from 'firebase-admin';
 import { google } from 'googleapis';
 

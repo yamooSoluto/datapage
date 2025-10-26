@@ -72,57 +72,104 @@ const updateQuestion = (index, value) => {
 
   const currentPlanConfig = currentTenant ? PLAN_CONFIG[currentTenant.plan] : null;
 
-  // Magic Link 자동 로그인 처리
-  useEffect(() => {
-    console.log('🔍 [Magic Link] useEffect 실행됨');
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
+// ✅ 저장된 세션/토큰 우선순위 로그인
+useEffect(() => {
+  // 1) localStorage 최우선
+  const savedEmail = localStorage.getItem('userEmail');
+  const savedTenantId = localStorage.getItem('tenantId');
+  const isMagicLogin = localStorage.getItem('magicLogin');
 
-    console.log('🔍 [Magic Link] 토큰:', token ? `${token.slice(0, 20)}...` : '없음');
+  if (savedEmail && savedTenantId && isMagicLogin === 'true') {
+    console.log('✅ [Auth] 저장된 세션 발견:', { savedEmail, savedTenantId });
+    fetchTenantByEmail(savedEmail, savedTenantId);
+    return;
+  }
 
-    if (token) {
-      console.log('🔐 [Magic Link] 토큰 감지, API 호출 시작');
-      setIsLoading(true);
-      
-      fetch(`/api/auth/magic-link?token=${token}`)
-        .then(res => {
-          console.log('📡 [Magic Link] API 응답 상태:', res.status);
-          return res.json();
-        })
-        .then(data => {
-          console.log('📦 [Magic Link] 받은 데이터:', data);
-          
-          if (data.id) {
-            console.log('✅ [Magic Link] 자동 로그인 성공:', data.name);
-            setCurrentTenant(data);
-            setIsLoggedIn(true);
-            
-            if (data.showOnboarding || data.faqCount === 0) {
-              setShowOnboarding(true);
-            }
-            
-            window.history.replaceState({}, document.title, '/');
-          } else {
-            console.error('❌ [Magic Link] 로그인 실패:', data.error);
-            setLoginError(data.error || '로그인에 실패했습니다.');
-            
-            if (data.expired) {
-              setLoginError('로그인 링크가 만료되었습니다. 새로운 링크를 요청해주세요.');
-            }
-          }
-        })
-        .catch(err => {
-          console.error('❌ [Magic Link] 오류:', err);
-          setLoginError('로그인 처리 중 오류가 발생했습니다.');
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else {
-      console.log('ℹ️ [Magic Link] 토큰 없음, 일반 로그인 페이지');
+  // 2) URL 토큰 확인
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get('token');
+  if (token) {
+    console.log('✅ [Auth] URL 토큰 발견');
+    verifyToken(token);
+    return;
+  }
+
+  // 3) 아무 것도 없으면 대기
+  console.log('📧 [Auth] 이메일 로그인 대기 중');
+}, []);
+
+// ✅ 저장된 세션으로 로그인
+async function fetchTenantByEmail(email, tenantId) {
+  setIsLoading(true);
+  try {
+    const res = await fetch(`/api/data/get-tenant?email=${encodeURIComponent(email)}&tenantId=${encodeURIComponent(tenantId)}`);
+    const data = await res.json();
+
+    if (data?.error) {
+      console.error('❌ [Auth] 테넌트 조회 실패:', data.error);
+      localStorage.removeItem('userEmail');
+      localStorage.removeItem('tenantId');
+      localStorage.removeItem('magicLogin');
+      setIsLoading(false);
+      return;
     }
-  }, []);
+
+    // 로그인 성공
+    setCurrentTenant(data);
+    setIsLoggedIn(true);
+
+    // 온보딩 노출 규칙 유지
+    if (data.showOnboarding || data.faqCount === 0) {
+      setShowOnboarding(true);
+    }
+
+    console.log('✅ [Auth] 자동 로그인 성공(세션)');
+  } catch (e) {
+    console.error('❌ [Auth] 오류:', e);
+  } finally {
+    setIsLoading(false);
+  }
+}
+
+// ✅ URL 토큰 방식 (기존 로직을 함수로 래핑)
+async function verifyToken(token) {
+  setIsLoading(true);
+  try {
+    const res = await fetch(`/api/auth/magic-link?token=${encodeURIComponent(token)}`);
+    const data = await res.json();
+
+    if (data?.id) {
+      // 로그인 성공
+      setCurrentTenant(data);
+      setIsLoggedIn(true);
+
+      // 🔐 세션 저장 (다음 방문 자동로그인)
+      if (data.email) localStorage.setItem('userEmail', data.email);
+      localStorage.setItem('tenantId', data.id);
+      localStorage.setItem('magicLogin', 'true');
+
+      if (data.showOnboarding || data.faqCount === 0) {
+        setShowOnboarding(true);
+      }
+
+      // URL 정리
+      window.history.replaceState({}, document.title, '/');
+      console.log('✅ [Auth] 자동 로그인 성공(토큰)');
+    } else {
+      console.error('❌ [Auth] 로그인 실패:', data?.error);
+      setLoginError(data?.error || '로그인에 실패했습니다.');
+      if (data?.expired) {
+        setLoginError('로그인 링크가 만료되었습니다. 새로운 링크를 요청해주세요.');
+      }
+    }
+  } catch (e) {
+    console.error('❌ [Auth] 오류:', e);
+    setLoginError('로그인 처리 중 오류가 발생했습니다.');
+  } finally {
+    setIsLoading(false);
+  }
+}
+
 
   // FAQ 데이터 로드
   const loadFAQs = async () => {
@@ -204,6 +251,9 @@ const updateQuestion = (index, value) => {
     setEmail('');
     setFaqData([]);
     setStatsData(null);
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('tenantId');
+    localStorage.removeItem('magicLogin');
   };
 
   const isExpired = (expiryDate) => {
