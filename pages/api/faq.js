@@ -2,7 +2,8 @@ import { google } from 'googleapis';
 
 // 플랜별 제한 설정
 const PLAN_LIMITS = {
-  starter: 100,
+  trail: 300,
+  starter: 300,
   pro: Infinity,
   business: Infinity,
   enterprise: Infinity
@@ -10,6 +11,7 @@ const PLAN_LIMITS = {
 
 // 플랜별 만료일 기능 사용 가능 여부
 const PLAN_EXPIRY = {
+  trial: false,
   starter: false,
   pro: true,
   business: true,
