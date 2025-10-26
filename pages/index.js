@@ -1050,11 +1050,11 @@ const openModal = (item = null) => {
                 <label className="block text-sm font-bold text-gray-700 mb-2">핵심 데이터 (선택)</label>
                 <input type="text" value={formData.keyData} onChange={(e) => setFormData({...formData, keyData: e.target.value})} className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all" placeholder="전화번호, 링크 등 변형되어선 안되는 고정값" />
               </div>
-              {currentPlanConfig.hasExpiryDate && (
+              {currentPlanConfig?.hasExpiryDate && (
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">
                     만료일 (선택)
-                    <span className="ml-2 text-xs bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 px-2 py-1 rounded-full font-bold"><Crown className="inline w-3 h-3 mr-1" />{currentPlanConfig.name} 전용</span>
+                    <span className="ml-2 text-xs bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 px-2 py-1 rounded-full font-bold"><Crown className="inline w-3 h-3 mr-1" />{currentPlanConfig.name|| 'Trial'} 전용</span>
                   </label>
                   <div className="relative">
                     <input type="date" value={formData.expiryDate} onChange={(e) => setFormData({...formData, expiryDate: e.target.value})} className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all" />
