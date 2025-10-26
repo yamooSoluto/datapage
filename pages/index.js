@@ -6,7 +6,7 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 
 // 플랜 설정
 const PLAN_CONFIG = {
-  starter: { name: 'Trial', maxFAQs: 100, hasExpiryDate: false, color: 'green' },
+  trial: { name: 'Trial', maxFAQs: 100, hasExpiryDate: false, color: 'green' },
   starter: { name: 'Starter', maxFAQs: 100, hasExpiryDate: false, color: 'blue' },
   pro: { name: 'Pro', maxFAQs: Infinity, hasExpiryDate: true, color: 'purple' },
   business: { name: 'Business', maxFAQs: Infinity, hasExpiryDate: true, color: 'indigo' },
