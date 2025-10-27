@@ -1,8 +1,9 @@
-console.log('🚀 페이지 로드됨!', new Date().toISOString());
+//pages/index.js
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, AlertCircle, Crown, Calendar, BarChart3, Users, MessageSquare, Zap, Building2, ChevronDown, X, Copy, Check } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+
 
 // ✅ 플랜 설정 (기존과 동일 - Starter 300개)
 const PLAN_CONFIG = {
@@ -48,6 +49,20 @@ export default function TenantPortal() {
   const [activeTab, setActiveTab] = useState('faq');
   const [faqData, setFaqData] = useState([]);
   const [statsData, setStatsData] = useState(null);
+  // ✅ 대화/업무 탭용 상태
+const [conversationsData, setConversationsData] = useState([]);
+const [conversationFilters, setConversationFilters] = useState({
+  status: 'all',
+  channel: 'all',
+});
+const [selectedConversation, setSelectedConversation] = useState(null);
+
+// ✅ 업무카드 탭용 상태
+const [tasksData, setTasksData] = useState({ tasks: [], summary: {} });
+
+// (선택) 실시간 모니터링
+// const [liveConversations, setLiveConversations] = useState([]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -281,6 +296,35 @@ export default function TenantPortal() {
     }
   }, [activeTab, dateRange, currentTenant]);
 
+  // ✅ 탭 전환 시 대화 리스트/업무카드 로드
+useEffect(() => {
+  if (!isLoggedIn || !currentTenant?.id) return;
+  if (activeTab === 'conversations') {
+    fetchConversations();
+  } else if (activeTab === 'tasks') {
+    fetchTasks();
+  }
+  // filters 바뀌면 대화 리스트 갱신
+}, [activeTab, conversationFilters, currentTenant, isLoggedIn]);
+
+// (선택) 실시간 모니터링 — Firestore SDK를 사용 중일 때만 활성화
+// useEffect(() => {
+//   if (!currentTenant?.id || activeTab !== 'conversations') return;
+//   const unsubscribe = window?.db
+//     ?.collection("FAQ_realtime_cw")
+//     .where("tenant_id", "==", currentTenant.id)
+//     .where("status", "in", ["waiting", "in_progress"])
+//     .orderBy("lastMessageAt", "desc")
+//     .limit(10)
+//     .onSnapshot((snapshot) => {
+//       const active = [];
+//       snapshot.forEach((doc) => active.push({ id: doc.id, ...doc.data() }));
+//       setLiveConversations(active);
+//     });
+//   return () => unsubscribe && unsubscribe();
+// }, [currentTenant, activeTab]);
+
+
   // ✅ FAQ 로드 - 양쪽 응답 형태 모두 지원
   async function fetchFAQs() {
     if (!currentTenant?.id) return;
@@ -341,6 +385,72 @@ export default function TenantPortal() {
       console.error('Stats 로드 실패:', e);
     }
   }
+
+  // ✅ 대화 리스트 가져오기
+async function fetchConversations() {
+  if (!currentTenant?.id) return;
+  setIsLoading(true);
+  try {
+    const params = new URLSearchParams({
+      tenant: currentTenant.id,
+      ...conversationFilters,
+      limit: 50,
+    });
+    const res = await fetch(`/api/conversations/list?${params}`);
+    const data = await res.json();
+    if (data.error) {
+      console.error('❌ 대화 데이터 조회 실패:', data.error);
+      return;
+    }
+    setConversationsData(data.conversations || []);
+    console.log('✅ 대화 데이터 로드 완료:', data.conversations?.length || 0);
+  } catch (error) {
+    console.error('❌ 대화 조회 에러:', error);
+  } finally {
+    setIsLoading(false);
+  }
+}
+
+// ✅ 대화 상세 가져오기
+async function fetchConversationDetail(chatId) {
+  if (!currentTenant?.id || !chatId) return;
+  setIsLoading(true);
+  try {
+    const res = await fetch(`/api/conversations/detail?tenant=${currentTenant.id}&chatId=${chatId}`);
+    const data = await res.json();
+    if (data.error) {
+      console.error('❌ 대화 상세 조회 실패:', data.error);
+      return;
+    }
+    setSelectedConversation(data);
+    console.log('✅ 대화 상세 로드 완료:', data);
+  } catch (error) {
+    console.error('❌ 대화 상세 조회 에러:', error);
+  } finally {
+    setIsLoading(false);
+  }
+}
+
+// ✅ 업무카드 대시보드 가져오기
+async function fetchTasks() {
+  if (!currentTenant?.id) return;
+  setIsLoading(true);
+  try {
+    const res = await fetch(`/api/tasks/dashboard?tenant=${currentTenant.id}`);
+    const data = await res.json();
+    if (data.error) {
+      console.error('❌ 업무카드 조회 실패:', data.error);
+      return;
+    }
+    setTasksData(data);
+    console.log('✅ 업무카드 데이터 로드 완료:', data.summary);
+  } catch (error) {
+    console.error('❌ 업무카드 조회 에러:', error);
+  } finally {
+    setIsLoading(false);
+  }
+}
+
 
   function handleLogout() {
     setIsLoggedIn(false);
@@ -839,21 +949,64 @@ export default function TenantPortal() {
         </div>
 
         <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-lg shadow-gray-200/20 p-2 mb-6 flex space-x-2">
-          <button
-            onClick={() => setActiveTab('faq')}
-            className={`flex-1 px-6 py-3 rounded-2xl font-bold transition-all ${activeTab === 'faq' ? 'bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 shadow-lg shadow-yellow-400/30' : 'text-gray-600 hover:bg-white/50'}`}
-          >
-            <Database className="inline w-5 h-5 mr-2" />
-            FAQ 관리
-          </button>
-          <button
-            onClick={() => setActiveTab('stats')}
-            className={`flex-1 px-6 py-3 rounded-2xl font-bold transition-all ${activeTab === 'stats' ? 'bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 shadow-lg shadow-yellow-400/30' : 'text-gray-600 hover:bg-white/50'}`}
-          >
-            <TrendingUp className="inline w-5 h-5 mr-2" />
-            통계
-          </button>
-        </div>
+  {/* FAQ */}
+  <button
+    onClick={() => setActiveTab('faq')}
+    className={`flex-1 px-6 py-3 rounded-2xl font-bold transition-all ${
+      activeTab === 'faq'
+        ? 'bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 shadow-lg shadow-yellow-400/30'
+        : 'text-gray-600 hover:bg-white/50'
+    }`}
+  >
+    <Database className="inline w-5 h-5 mr-2" />
+    FAQ 관리
+  </button>
+
+  {/* ✅ 대화 관리 */}
+  <button
+    onClick={() => setActiveTab('conversations')}
+    className={`flex-1 px-6 py-3 rounded-2xl font-bold transition-all ${
+      activeTab === 'conversations'
+        ? 'bg-gradient-to-r from-blue-400 via-blue-300 to-cyan-400 text-gray-800 shadow-lg shadow-blue-400/30'
+        : 'text-gray-600 hover:bg-white/50'
+    }`}
+  >
+    <MessageSquare className="inline w-5 h-5 mr-2" />
+    대화 관리
+  </button>
+
+  {/* ✅ 업무카드 */}
+  <button
+    onClick={() => setActiveTab('tasks')}
+    className={`flex-1 px-6 py-3 rounded-2xl font-bold transition-all ${
+      activeTab === 'tasks'
+        ? 'bg-gradient-to-r from-red-400 via-red-300 to-orange-400 text-gray-800 shadow-lg shadow-red-400/30'
+        : 'text-gray-600 hover:bg-white/50'
+    }`}
+  >
+    <AlertCircle className="inline w-5 h-5 mr-2" />
+    업무카드
+    {tasksData?.summary?.pending > 0 && (
+      <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+        {tasksData.summary.pending}
+      </span>
+    )}
+  </button>
+
+  {/* 통계 */}
+  <button
+    onClick={() => setActiveTab('stats')}
+    className={`flex-1 px-6 py-3 rounded-2xl font-bold transition-all ${
+      activeTab === 'stats'
+        ? 'bg-gradient-to-r from-purple-400 via-purple-300 to-pink-400 text-gray-800 shadow-lg shadow-purple-400/30'
+        : 'text-gray-600 hover:bg-white/50'
+    }`}
+  >
+    <BarChart3 className="inline w-5 h-5 mr-2" />
+    통계
+  </button>
+</div>
+
 
         {activeTab === 'faq' && (
           <div>
@@ -983,6 +1136,140 @@ export default function TenantPortal() {
             </div>
           </div>
         )}
+
+{/* ✅ 대화 관리 탭 */}
+{activeTab === 'conversations' && (
+  <div className="space-y-6">
+    {/* (선택) 실시간 */}
+    {/* {liveConversations.length > 0 && (
+      <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+          <span className="font-bold text-green-700">
+            실시간 활성 대화: {liveConversations.length}개
+          </span>
+        </div>
+      </div>
+    )} */}
+
+    {/* 필터 */}
+    <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-lg shadow-gray-200/20 p-6">
+      <div className="flex gap-4">
+        <select
+          value={conversationFilters.status}
+          onChange={(e) => setConversationFilters({ ...conversationFilters, status: e.target.value })}
+          className="px-4 py-2 bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+        >
+          <option value="all">전체 상태</option>
+          <option value="waiting">대기중</option>
+          <option value="in_progress">진행중</option>
+          <option value="resolved">해결됨</option>
+        </select>
+
+        <select
+          value={conversationFilters.channel}
+          onChange={(e) => setConversationFilters({ ...conversationFilters, channel: e.target.value })}
+          className="px-4 py-2 bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+        >
+          <option value="all">전체 채널</option>
+          <option value="widget">위젯</option>
+          <option value="naver">네이버톡</option>
+          <option value="kakao">카카오톡</option>
+        </select>
+      </div>
+    </div>
+
+    {/* 리스트 */}
+    {conversationsData.length > 0 ? (
+      <div className="space-y-4">
+        {conversationsData.map((conv) => (
+          <ConversationCard
+            key={conv.id || conv.chatId}
+            conversation={conv}
+            onDetail={() => fetchConversationDetail(conv.chatId || conv.id)}
+            selectedConversation={selectedConversation}
+            onClose={() => setSelectedConversation(null)}
+          />
+        ))}
+      </div>
+    ) : (
+      <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-lg shadow-gray-200/20 p-16 text-center">
+        <MessageSquare className="w-20 h-20 text-gray-300 mx-auto mb-4" />
+        <p className="text-gray-500 text-lg font-semibold">대화 내역이 없습니다</p>
+      </div>
+    )}
+  </div>
+)}
+
+{/* ✅ 업무카드 탭 */}
+{activeTab === 'tasks' && (
+  <div className="space-y-6">
+    {/* 요약 */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-gradient-to-br from-orange-50 to-red-50 rounded-3xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-2">
+          <Clock className="w-8 h-8 text-orange-600" />
+          <span className="text-3xl font-bold text-orange-600">{tasksData?.summary?.pending || 0}</span>
+        </div>
+        <p className="text-gray-700 font-semibold">대기중</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-3xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-2">
+          <Zap className="w-8 h-8 text-blue-600" />
+          <span className="text-3xl font-bold text-blue-600">{tasksData?.summary?.inProgress || 0}</span>
+        </div>
+        <p className="text-gray-700 font-semibold">처리중</p>
+      </div>
+
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-3xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-2">
+          <Check className="w-8 h-8 text-green-600" />
+          <span className="text-3xl font-bold text-green-600">{tasksData?.summary?.completed || 0}</span>
+        </div>
+        <p className="text-gray-700 font-semibold">완료</p>
+      </div>
+    </div>
+
+    {/* 리스트 */}
+    {tasksData?.tasks?.length > 0 ? (
+      <div className="space-y-4">
+        {tasksData.tasks.filter(t => t.status === 'pending').length > 0 && (
+          <div>
+            <h3 className="text-lg font-bold mb-3 text-orange-700">🔴 대기중</h3>
+            {tasksData.tasks
+              .filter(t => t.status === 'pending')
+              .map(task => <TaskCard key={task.id} task={task} />)}
+          </div>
+        )}
+
+        {tasksData.tasks.filter(t => t.status === 'inProgress').length > 0 && (
+          <div>
+            <h3 className="text-lg font-bold mb-3 text-blue-700">🟡 처리중</h3>
+            {tasksData.tasks
+              .filter(t => t.status === 'inProgress')
+              .map(task => <TaskCard key={task.id} task={task} />)}
+          </div>
+        )}
+
+        {tasksData.tasks.filter(t => t.status === 'completed').length > 0 && (
+          <div>
+            <h3 className="text-lg font-bold mb-3 text-green-700">🟢 완료</h3>
+            {tasksData.tasks
+              .filter(t => t.status === 'completed')
+              .slice(0, 10)
+              .map(task => <TaskCard key={task.id} task={task} />)}
+          </div>
+        )}
+      </div>
+    ) : (
+      <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-lg shadow-gray-200/20 p-16 text-center">
+        <AlertCircle className="w-20 h-20 text-gray-300 mx-auto mb-4" />
+        <p className="text-gray-500 text-lg font-semibold">업무카드가 없습니다</p>
+      </div>
+    )}
+  </div>
+)}
 
         {activeTab === 'stats' && (
           <div>
@@ -1232,6 +1519,162 @@ export default function TenantPortal() {
           .animation-delay-2000 { animation-delay: 2s; }
           .animation-delay-4000 { animation-delay: 4s; }
         `}</style>
+      </div>
+    </div>
+  );
+}
+
+// 대화 카드
+function ConversationCard({ conversation, onDetail, selectedConversation, onClose }) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const handleClick = () => {
+    if (!expanded) onDetail();
+    setExpanded(!expanded);
+  };
+
+  const channelBadge = {
+    widget: 'bg-blue-100 text-blue-700',
+    naver: 'bg-green-100 text-green-700',
+    kakao: 'bg-yellow-100 text-yellow-700',
+    unknown: 'bg-gray-100 text-gray-700',
+  }[conversation.channel] || 'bg-gray-100 text-gray-700';
+
+  const statusBadge = {
+    waiting: 'bg-orange-100 text-orange-700',
+    in_progress: 'bg-blue-100 text-blue-700',
+    resolved: 'bg-green-100 text-green-700',
+  }[conversation.status] || 'bg-gray-100 text-gray-700';
+
+  return (
+    <div className="bg-white/60 backdrop-blur-xl rounded-3xl shadow-lg shadow-gray-200/20 p-6 hover:shadow-xl transition-all">
+      {/* 요약 */}
+      <div className="flex justify-between items-start cursor-pointer" onClick={handleClick}>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-bold text-lg">{conversation.userName}</span>
+            <span className={`text-xs px-2 py-1 rounded-lg font-semibold ${channelBadge}`}>{conversation.channel}</span>
+            <span className={`text-xs px-2 py-1 rounded-lg font-semibold ${statusBadge}`}>
+              {conversation.status === 'waiting' ? '대기중'
+                : conversation.status === 'in_progress' ? '진행중' : '해결됨'}
+            </span>
+            {conversation.isTask && (
+              <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg font-semibold">📌 업무카드</span>
+            )}
+          </div>
+          <p className="text-gray-600 text-sm mb-3">{conversation.lastMessageText}</p>
+          <div className="flex gap-4 text-sm text-gray-500">
+            <span>💬 {conversation.messageCount?.total ?? 0}개 메시지</span>
+            <span>🤖 AI {conversation.messageCount?.ai ?? 0}</span>
+            <span>👤 상담원 {conversation.messageCount?.agent ?? 0}</span>
+          </div>
+        </div>
+        <div className="text-sm text-gray-500 text-right">
+          {conversation.lastMessageAt ? new Date(conversation.lastMessageAt).toLocaleString('ko-KR') : '-'}
+        </div>
+      </div>
+
+{/* 상세(펼침) */}
+{expanded &&
+  selectedConversation &&
+  (selectedConversation.conversation?.chatId === conversation.chatId ||
+    selectedConversation.conversation?.id === conversation.id) && (
+    <div className="mt-6 pt-6 border-t border-gray-200">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold text-lg">대화 내용</h3>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(false);
+            onClose();
+          }}
+          className="text-gray-400 hover:text-gray-600"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+          <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
+            {selectedConversation.messages?.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`p-3 rounded-xl ${
+                  msg.sender === 'user' ? 'bg-gray-100'
+                  : msg.sender === 'ai' ? 'bg-blue-50'
+                  : 'bg-green-50'
+                }`}
+              >
+                <div className="text-xs text-gray-500 mb-1 font-semibold">
+                  {msg.sender === 'user' ? '👤 사용자'
+                    : msg.sender === 'ai' ? '🤖 AI' : '👨‍💼 상담원'} |{' '}
+                  {msg.timestamp ? new Date(msg.timestamp).toLocaleString('ko-KR') : '-'}
+                </div>
+                <div className="text-sm">{msg.text || '(이미지/파일)'}</div>
+              </div>
+            ))}
+          </div>
+
+          {selectedConversation.stats && (
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 mb-4">
+              <h4 className="font-bold text-sm mb-2">대화 통계</h4>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div><div className="text-gray-500">사용자 메시지</div><div className="font-bold">{selectedConversation.stats.userChats}개</div></div>
+                <div><div className="text-gray-500">AI 처리</div><div className="font-bold">{selectedConversation.stats.aiChats}개</div></div>
+                <div><div className="text-gray-500">상담원 개입</div><div className="font-bold">{selectedConversation.stats.agentChats}개</div></div>
+              </div>
+            </div>
+          )}
+
+          {selectedConversation.slack?.slackUrl && (
+            <a
+              href={selectedConversation.slack.slackUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-semibold"
+            >
+              슬랙에서 보기
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 업무카드
+function TaskCard({ task }) {
+  const channelBadge = {
+    widget: 'bg-blue-100 text-blue-700',
+    naver: 'bg-green-100 text-green-700',
+    kakao: 'bg-yellow-100 text-yellow-700',
+  }[task.channel] || 'bg-gray-100 text-gray-700';
+
+  return (
+    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-4 mb-3 hover:shadow-xl transition-all">
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-bold">{task.userName}</span>
+            <span className={`text-xs px-2 py-1 rounded-lg font-semibold ${channelBadge}`}>{task.channel}</span>
+            {task.priority === 'high' && (
+              <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg font-semibold">🚨 긴급</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mb-2">{task.lastMessage}</p>
+          <p className="text-xs text-gray-400">
+            {task.lastMessageAt ? new Date(task.lastMessageAt).toLocaleString('ko-KR') : '-'}
+          </p>
+        </div>
+        {task.slackUrl && (
+          <a
+            href={task.slackUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-purple-600 text-white text-sm rounded-xl hover:bg-purple-700 transition-all font-semibold"
+          >
+            슬랙에서 보기
+          </a>
+        )}
       </div>
     </div>
   );
