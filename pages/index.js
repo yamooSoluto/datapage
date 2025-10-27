@@ -497,7 +497,7 @@ export default function TenantPortal() {
                   onClick={() => selectTenant(tenant)}
                   className="w-full p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl hover:shadow-lg transition-all text-left border border-yellow-200"
                 >
-                  <div className="font-bold text-gray-800">{tenant.brandName || tenant.id}</div>
+                  <div className="font-bold text-gray-800">{tenant.brandName}</div>
                   <div className="text-sm text-gray-600">{tenant.email}</div>
                 </button>
               ))}

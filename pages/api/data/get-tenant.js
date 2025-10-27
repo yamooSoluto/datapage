@@ -68,14 +68,18 @@ export default async function handler(req, res) {
     const tenantData = {
       id: tenant[0],                    // A: TenantID
       branchNo: tenant[1] || '',        // B: BranchNo
-      name: tenant[2] || '',            // C: BrandName
+      brandName: tenant[2] || '',       // C: BrandName (헤더에서 사용)
+      name: tenant[2] || '',            // C: BrandName (하위호환)
       email: tenant[3] || '',           // D: Email
       plan: tenant[4] || 'trial',       // E: Plan
       status: tenant[5] || 'active',    // F: status
       createdAt: tenant[6] || '',       // G: CreatedAt
-      widgetIframe: tenant[7] || '',    // H: WidgetLink
-      onboardingFormLink: tenant[8] || '', // I: OnboardingFormLink
-      naverOutbound: tenant[9] || '',   // J: NaverOutbound
+      WidgetLink: tenant[7] || '',      // H: WidgetLink (온보딩에서 사용)
+      widgetIframe: tenant[7] || '',    // H: WidgetLink (하위호환)
+      OnboardingFormLink: tenant[8] || '', // I: OnboardingFormLink (온보딩에서 사용)
+      onboardingFormLink: tenant[8] || '', // I: OnboardingFormLink (하위호환)
+      NaverOutbound: tenant[9] || '',   // J: NaverOutbound (온보딩에서 사용)
+      naverOutbound: tenant[9] || '',   // J: NaverOutbound (하위호환)
       portalDomain: tenant[10] || '',   // K: PortalDomain
       showOnboarding: faqCount === 0,
       faqCount: faqCount
