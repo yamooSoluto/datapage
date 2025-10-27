@@ -173,7 +173,7 @@ export default function TenantPortal() {
       // ✅ 온보딩 표시 조건: FAQ가 없으면 무조건 표시
       const shouldShowOnboarding = !data.onboardingDismissed && (data.faqCount === 0 || data.showOnboarding);
       setShowOnboarding(shouldShowOnboarding);
-      setCanDismissOnboarding(data.faqCount > 0); // 기본정보 입력 후 FAQ가 생기면 닫기 가능
+      setCanDismissOnboarding(true); // ✅ 항상 닫기 가능
 
       console.log('✅ [Auth] 자동 로그인 성공(세션)');
       setIsLoading(false);
@@ -224,7 +224,7 @@ export default function TenantPortal() {
 
     const shouldShowOnboarding = !tenant.onboardingDismissed && (tenant.faqCount === 0 || tenant.showOnboarding);
     setShowOnboarding(shouldShowOnboarding);
-    setCanDismissOnboarding(tenant.faqCount > 0);
+    setCanDismissOnboarding(true); // ✅ 항상 닫기 가능
 
     console.log('✅ [Auth] 테넌트 선택 완료:', tenant.id);
   }
@@ -289,12 +289,6 @@ export default function TenantPortal() {
         return;
       }
       setFaqData(data.faqs || []);
-      
-      // ✅ FAQ 작성 후 온보딩 닫기 가능
-      if (data.faqs && data.faqs.length > 0) {
-        setCanDismissOnboarding(true);
-      }
-      
       console.log('✅ FAQ 데이터 로드 완료:', data.faqs?.length || 0);
     } catch (error) {
       console.error('❌ FAQ 조회 에러:', error);
@@ -442,13 +436,8 @@ export default function TenantPortal() {
     });
   }, [faqData, searchTerm]);
 
-  // ✅ 온보딩 닫기 (FAQ 작성 후만 가능)
+  // ✅ 온보딩 닫기 (항상 가능)
   async function dismissOnboarding() {
-    if (!canDismissOnboarding) {
-      alert('최소 1개 이상의 FAQ를 작성해주세요!');
-      return;
-    }
-
     try {
       await fetch('/api/data/dismiss-onboarding', {
         method: 'POST',
@@ -458,6 +447,8 @@ export default function TenantPortal() {
       setShowOnboarding(false);
     } catch (err) {
       console.error('온보딩 닫기 실패:', err);
+      // 실패해도 모달은 닫기
+      setShowOnboarding(false);
     }
   }
 
@@ -497,7 +488,7 @@ export default function TenantPortal() {
                   onClick={() => selectTenant(tenant)}
                   className="w-full p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl hover:shadow-lg transition-all text-left border border-yellow-200"
                 >
-                  <div className="font-bold text-gray-800">{tenant.brandName}</div>
+                  <div className="font-bold text-gray-800">{tenant.brandName || tenant.id}</div>
                   <div className="text-sm text-gray-600">{tenant.email}</div>
                 </button>
               ))}
@@ -773,6 +764,19 @@ export default function TenantPortal() {
                       </button>
                     </div>
 
+                    {/* ✅ 설치 가이드 재확인 안내 */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                      <div className="flex items-start gap-2">
+                        <BookOpen className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-blue-800">
+                          <strong>이 가이드를 다시 보려면?</strong>
+                          <p className="text-xs mt-1">
+                            포털 우측 상단 <Settings className="inline w-3 h-3" /> 설정 메뉴 → 📖 설치 가이드를 클릭하세요
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     <p className="text-xs text-gray-500 text-center">
                       💡 네이버톡톡 연동은 선택사항입니다. 나중에 설정할 수 있습니다.
                     </p>
@@ -803,10 +807,9 @@ export default function TenantPortal() {
                   ) : (
                     <button
                       onClick={dismissOnboarding}
-                      disabled={!canDismissOnboarding}
-                      className="px-6 py-2 bg-gradient-to-r from-green-400 to-emerald-400 text-white rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-6 py-2 bg-gradient-to-r from-green-400 to-emerald-400 text-white rounded-xl hover:shadow-lg transition-all font-semibold"
                     >
-                      {canDismissOnboarding ? '완료하고 시작하기 🚀' : '기본정보 입력 필요'}
+                      완료하고 시작하기 🚀
                     </button>
                   )}
                 </div>
