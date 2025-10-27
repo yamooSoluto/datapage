@@ -1,4 +1,9 @@
 // pages/api/auth/magic-link.js
+// ════════════════════════════════════════
+// 매직링크 토큰 검증 (이메일만 반환)
+// 프론트엔드에서 해당 이메일로 테넌트 목록 조회
+// ════════════════════════════════════════
+
 import jwt from 'jsonwebtoken';
 import { google } from 'googleapis';
 
@@ -19,76 +24,54 @@ export default async function handler(req, res) {
     
     console.log('✅ [Magic Link] 토큰 검증 성공:', decoded.tenantId || decoded.email);
 
-    // ✅ 2. Google Sheets에서 테넌트 정보 조회
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    });
+    // ✅ 2. 토큰에서 이메일 추출
+    let userEmail = decoded.email;
 
-    const sheets = google.sheets({ version: 'v4', auth });
+    // 토큰에 tenantId가 있지만 email이 없는 경우 (레거시 토큰)
+    if (!userEmail && decoded.tenantId) {
+      // Google Sheets에서 tenantId로 이메일 찾기
+      const auth = new google.auth.GoogleAuth({
+        credentials: {
+          client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+          private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        },
+        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      });
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: 'Tenants!A2:K1000',
-    });
+      const sheets = google.sheets({ version: 'v4', auth });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        range: 'Tenants!A2:K1000',
+      });
 
-    const rows = response.data.values || [];
-    
-    // ✅ 3. 테넌트 찾기
-    let tenant = null;
-    
-    if (decoded.tenantId) {
-      tenant = rows.find(row => row[0] === decoded.tenantId);
-    } else if (decoded.email) {
-      tenant = rows.find(row => row[3]?.toLowerCase() === decoded.email.toLowerCase());
+      const rows = response.data.values || [];
+      const tenant = rows.find(row => row[0] === decoded.tenantId);
+
+      if (tenant) {
+        userEmail = tenant[3]; // D: Email
+      } else {
+        console.warn('❌ [Magic Link] 테넌트를 찾을 수 없음:', decoded.tenantId);
+        return res.status(404).json({ 
+          error: '테넌트를 찾을 수 없습니다.',
+          expired: false
+        });
+      }
     }
 
-    if (!tenant) {
-      console.warn('❌ [Magic Link] 테넌트를 찾을 수 없음:', decoded);
-      return res.status(404).json({ 
-        error: '테넌트를 찾을 수 없습니다.',
+    if (!userEmail) {
+      return res.status(400).json({
+        error: '유효하지 않은 토큰입니다.',
         expired: false
       });
     }
 
-    // ✅ 4. FAQ 개수 확인 (온보딩 표시 여부)
-    let faqCount = 0;
-    try {
-      const faqResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
-        range: 'FAQ_Master!A2:A1000',
-      });
-      
-      faqCount = (faqResponse.data.values || [])
-        .filter(row => row[0] === tenant[0])
-        .length;
-    } catch (faqError) {
-      console.warn('⚠️ FAQ 개수 조회 실패:', faqError.message);
-    }
+    // ✅ 3. 이메일만 반환 (프론트엔드에서 테넌트 목록 조회)
+    console.log(`✅ [Magic Link] 이메일 확인: ${userEmail}`);
 
-    // ✅ 5. 테넌트 정보 반환
-    const tenantData = {
-      id: tenant[0],                    // A: TenantID
-      branchNo: tenant[1] || '',        // B: BranchNo
-      name: tenant[2] || '',            // C: BrandName
-      email: tenant[3] || '',           // D: Email
-      plan: tenant[4] || 'trial',       // E: Plan
-      status: tenant[5] || 'active',    // F: status
-      createdAt: tenant[6] || '',       // G: CreatedAt
-      widgetIframe: tenant[7] || '',    // H: WidgetLink
-      onboardingFormLink: tenant[8] || '', // I: OnboardingFormLink
-      naverOutbound: tenant[9] || '',   // J: NaverOutbound
-      portalDomain: tenant[10] || '',   // K: PortalDomain
-      showOnboarding: faqCount === 0,
-      faqCount: faqCount
-    };
-
-    console.log('✅ [Magic Link] 로그인 성공:', tenantData.id, `(FAQ: ${faqCount}개)`);
-
-    return res.status(200).json(tenantData);
+    return res.status(200).json({
+      success: true,
+      email: userEmail
+    });
 
   } catch (error) {
     console.error('❌ [Magic Link] 오류:', error);
