@@ -1,3 +1,4 @@
+console.log('🚀 페이지 로드됨!', new Date().toISOString());
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, AlertCircle, Crown, Calendar, BarChart3, Users, MessageSquare, Zap, Building2, ChevronDown, X, Copy, Check, ChevronLeft, ChevronRight, Settings, ExternalLink, BookOpen } from 'lucide-react';
@@ -172,7 +173,7 @@ export default function TenantPortal() {
       // ✅ 온보딩 표시 조건: FAQ가 없으면 무조건 표시
       const shouldShowOnboarding = !data.onboardingDismissed && (data.faqCount === 0 || data.showOnboarding);
       setShowOnboarding(shouldShowOnboarding);
-      setCanDismissOnboarding(data.faqCount > 0); // FAQ 작성 후만 닫기 가능
+      setCanDismissOnboarding(data.faqCount > 0); // 기본정보 입력 후 FAQ가 생기면 닫기 가능
 
       console.log('✅ [Auth] 자동 로그인 성공(세션)');
       setIsLoading(false);
@@ -467,45 +468,6 @@ export default function TenantPortal() {
     setShowSettingsMenu(false);
   }
 
-  // ✅ 위젯 코드 복사
-  function copyWidgetCode() {
-    const code = `<script>
-  window.chatwootSettings = {
-    hideMessageBubble: false,
-    position: 'right',
-    locale: 'ko',
-    type: 'standard'
-  };
-  (function(d,t) {
-    var BASE_URL="https://app.chatwoot.com";
-    var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
-    g.src=BASE_URL+"/packs/js/sdk.js";
-    g.defer = true;
-    g.async = true;
-    s.parentNode.insertBefore(g,s);
-    g.onload=function(){
-      window.chatwootSDK.run({
-        websiteToken: '${currentTenant?.chatwootToken || 'YOUR_TOKEN'}',
-        baseUrl: BASE_URL
-      })
-    }
-  })(document,"script");
-</script>`;
-    navigator.clipboard.writeText(code);
-    setCopiedWidget(true);
-    setTimeout(() => setCopiedWidget(false), 2000);
-  }
-
-  // ✅ 네이버 설정 코드 복사
-  function copyNaverCode() {
-    const code = `네이버톡톡 관리자센터 > 설정 > API 연동
-Webhook URL: ${window.location.origin}/api/webhooks/navertalk
-인증 토큰: ${currentTenant?.id || 'YOUR_TENANT_ID'}`;
-    navigator.clipboard.writeText(code);
-    setCopiedNaver(true);
-    setTimeout(() => setCopiedNaver(false), 2000);
-  }
-
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 flex items-center justify-center p-4">
@@ -535,7 +497,7 @@ Webhook URL: ${window.location.origin}/api/webhooks/navertalk
                   onClick={() => selectTenant(tenant)}
                   className="w-full p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl hover:shadow-lg transition-all text-left border border-yellow-200"
                 >
-                  <div className="font-bold text-gray-800">{tenant.brandName}</div>
+                  <div className="font-bold text-gray-800">{tenant.brandName || tenant.id}</div>
                   <div className="text-sm text-gray-600">{tenant.email}</div>
                 </button>
               ))}
@@ -670,9 +632,16 @@ Webhook URL: ${window.location.origin}/api/webhooks/navertalk
                     <h2 className="text-2xl font-bold text-gray-800">
                       🎉 환영합니다!
                     </h2>
-                    <p className="text-gray-600">
-                      야무 CS 자동화 시스템을 시작하려면 먼저 FAQ를 작성해주세요.
+                    <p className="text-gray-600 text-sm">
+                      야무지니가 정확한 답변을 하려면 먼저 기본 정보를 입력해주세요.
                     </p>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                      <ul className="space-y-2 text-sm text-gray-700">
+                        <li>✅ 영업시간, 위치, 연락처</li>
+                        <li>✅ 주요 상품/서비스 정보</li>
+                        <li>✅ 자주 받는 질문과 답변</li>
+                      </ul>
+                    </div>
                     <a
                       href={currentTenant?.OnboardingFormLink || '#'}
                       target="_blank"
@@ -680,10 +649,10 @@ Webhook URL: ${window.location.origin}/api/webhooks/navertalk
                       className="block w-full px-6 py-4 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl transition-all font-bold text-center"
                     >
                       <ExternalLink className="inline w-5 h-5 mr-2" />
-                      구글폼으로 FAQ 작성하기
+                      기본 정보 입력하러 가기
                     </a>
                     <p className="text-xs text-gray-500 text-center">
-                      최소 1개 이상의 FAQ를 작성해야 다음 단계로 진행할 수 있습니다
+                      💡 작성하신 정보는 언제든 포털에서 수정 가능합니다
                     </p>
                   </div>
                 )}
@@ -691,31 +660,51 @@ Webhook URL: ${window.location.origin}/api/webhooks/navertalk
                 {onboardingStep === 2 && (
                   <div className="space-y-6">
                     <h2 className="text-2xl font-bold text-gray-800">
-                      🌐 웹사이트에 위젯 설치
+                      💬 문의 위젯 링크
                     </h2>
                     <p className="text-gray-600 text-sm">
-                      아래 코드를 웹사이트의 &lt;/body&gt; 태그 직전에 붙여넣으세요.
+                      고객에게 전달하거나 테스트할 수 있는 문의 창 링크입니다.
                     </p>
-                    <div className="bg-gray-900 rounded-xl p-4 relative">
-                      <pre className="text-green-400 text-xs overflow-x-auto">
-{`<script>
-  window.chatwootSettings = {
-    hideMessageBubble: false,
-    position: 'right',
-    locale: 'ko'
-  };
-</script>`}
-                      </pre>
+                    
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                      <div className="mb-3">
+                        <div className="text-xs text-gray-600 mb-2 font-semibold">문의 위젯 링크</div>
+                        <div className="bg-white p-3 rounded-lg font-mono text-sm break-all border border-blue-100">
+                          {currentTenant?.WidgetLink || '링크가 설정되지 않았습니다'}
+                        </div>
+                      </div>
+                      
                       <button
-                        onClick={copyWidgetCode}
-                        className="absolute top-2 right-2 p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-all"
+                        onClick={() => {
+                          if (currentTenant?.WidgetLink) {
+                            navigator.clipboard.writeText(currentTenant.WidgetLink);
+                            setCopiedWidget(true);
+                            setTimeout(() => setCopiedWidget(false), 2000);
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold flex items-center justify-center gap-2"
                       >
                         {copiedWidget ? (
-                          <Check className="w-4 h-4 text-green-400" />
+                          <>
+                            <Check className="w-4 h-4" />
+                            복사됨!
+                          </>
                         ) : (
-                          <Copy className="w-4 h-4 text-gray-400" />
+                          <>
+                            <Copy className="w-4 h-4" />
+                            링크 복사하기
+                          </>
                         )}
                       </button>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                      <p className="font-semibold text-gray-800">✨ 활용 방법</p>
+                      <ul className="space-y-1 text-gray-600 ml-4">
+                        <li>• 고객에게 "여기로 문의해주세요" 전달</li>
+                        <li>• SNS/카톡 프로필에 링크 게시</li>
+                        <li>• 링크로 직접 테스트 가능</li>
+                      </ul>
                     </div>
                   </div>
                 )}
@@ -723,35 +712,70 @@ Webhook URL: ${window.location.origin}/api/webhooks/navertalk
                 {onboardingStep === 3 && (
                   <div className="space-y-6">
                     <h2 className="text-2xl font-bold text-gray-800">
-                      💬 네이버톡톡 연동
+                      💚 네이버톡톡 연동 (선택)
                     </h2>
                     <p className="text-gray-600 text-sm">
-                      네이버톡톡 관리자센터에서 Webhook을 설정하세요.
+                      네이버 스마트플레이스에서 톡톡 상담을 사용 중이신가요?<br />
+                      아래 링크를 연동하면 톡톡 문의도 자동 응답됩니다.
                     </p>
-                    <div className="bg-blue-50 rounded-xl p-4 space-y-3 relative">
-                      <div>
-                        <div className="text-xs text-gray-600 mb-1">Webhook URL</div>
-                        <div className="font-mono text-xs bg-white p-2 rounded">
-                          {window.location.origin}/api/webhooks/navertalk
+
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <div className="flex items-start gap-2 mb-3">
+                        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-amber-800">
+                          <strong>네이버톡톡이 없으신가요?</strong>
+                          <p className="text-xs mt-1">건너뛰고 나중에 설정할 수 있습니다</p>
                         </div>
                       </div>
-                      <div>
-                        <div className="text-xs text-gray-600 mb-1">인증 토큰</div>
-                        <div className="font-mono text-xs bg-white p-2 rounded">
-                          {currentTenant?.id}
+                    </div>
+                    
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <div className="mb-3">
+                        <div className="text-xs text-gray-600 mb-2 font-semibold">
+                          연동 경로
+                        </div>
+                        <div className="bg-white p-3 rounded-lg text-sm border border-green-100 space-y-1">
+                          <p className="font-semibold text-green-700">네이버톡톡 관리자센터</p>
+                          <p className="text-gray-600">→ 연동관리</p>
+                          <p className="text-gray-600">→ 챗봇API설정</p>
+                          <p className="text-gray-600">→ Event받을 URL 입력</p>
                         </div>
                       </div>
+
+                      <div className="mb-3">
+                        <div className="text-xs text-gray-600 mb-2 font-semibold">입력할 URL</div>
+                        <div className="bg-white p-3 rounded-lg font-mono text-xs break-all border border-green-100">
+                          {currentTenant?.NaverOutbound || '링크가 설정되지 않았습니다'}
+                        </div>
+                      </div>
+                      
                       <button
-                        onClick={copyNaverCode}
-                        className="absolute top-2 right-2 p-2 bg-white rounded-lg hover:bg-gray-50 transition-all"
+                        onClick={() => {
+                          if (currentTenant?.NaverOutbound) {
+                            navigator.clipboard.writeText(currentTenant.NaverOutbound);
+                            setCopiedNaver(true);
+                            setTimeout(() => setCopiedNaver(false), 2000);
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold flex items-center justify-center gap-2"
                       >
                         {copiedNaver ? (
-                          <Check className="w-4 h-4 text-green-600" />
+                          <>
+                            <Check className="w-4 h-4" />
+                            복사됨!
+                          </>
                         ) : (
-                          <Copy className="w-4 h-4 text-gray-600" />
+                          <>
+                            <Copy className="w-4 h-4" />
+                            URL 복사하기
+                          </>
                         )}
                       </button>
                     </div>
+
+                    <p className="text-xs text-gray-500 text-center">
+                      💡 네이버톡톡 연동은 선택사항입니다. 나중에 설정할 수 있습니다.
+                    </p>
                   </div>
                 )}
               </div>
@@ -782,7 +806,7 @@ Webhook URL: ${window.location.origin}/api/webhooks/navertalk
                       disabled={!canDismissOnboarding}
                       className="px-6 py-2 bg-gradient-to-r from-green-400 to-emerald-400 text-white rounded-xl hover:shadow-lg transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {canDismissOnboarding ? '완료' : 'FAQ 작성 필요'}
+                      {canDismissOnboarding ? '완료하고 시작하기 🚀' : '기본정보 입력 필요'}
                     </button>
                   )}
                 </div>
