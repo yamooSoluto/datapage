@@ -208,11 +208,14 @@ export default function TenantPortal() {
         return;
       }
 
+      // ✅ Slack에서 온 경우 온보딩 스킵
+      const fromSlack = data.source === 'slack';
+
       if (data.tenants && data.tenants.length > 1) {
         setAvailableTenants(data.tenants);
         setShowTenantSelector(true);
       } else if (data.tenants && data.tenants.length === 1) {
-        selectTenant(data.tenants[0]);
+        selectTenant(data.tenants[0], fromSlack);
       } else {
         setLoginError('연결된 테넌트가 없습니다.');
       }
@@ -225,7 +228,7 @@ export default function TenantPortal() {
     }
   }
 
-  function selectTenant(tenant) {
+  function selectTenant(tenant, fromSlack = false) {
     setCurrentTenant(tenant);
     setIsLoggedIn(true);
     setShowTenantSelector(false);
@@ -234,11 +237,15 @@ export default function TenantPortal() {
     localStorage.setItem('tenantId', tenant.id);
     localStorage.setItem('magicLogin', 'true');
 
-    const shouldShowOnboarding = !tenant.onboardingDismissed && (tenant.faqCount === 0 || tenant.showOnboarding);
+    // ✅ Slack에서 온 경우 온보딩 무조건 스킵
+    const shouldShowOnboarding = fromSlack 
+      ? false 
+      : !tenant.onboardingDismissed && (tenant.faqCount === 0 || tenant.showOnboarding);
+    
     setShowOnboarding(shouldShowOnboarding);
-    setCanDismissOnboarding(true); // ✅ 항상 닫기 가능
+    setCanDismissOnboarding(true);
 
-    console.log('✅ [Auth] 테넌트 선택 완료:', tenant.id);
+    console.log(`✅ [Auth] 테넌트 선택 완료: ${tenant.id}${fromSlack ? ' (from Slack)' : ''}`);
   }
 
   async function handleEmailLogin(e) {
@@ -630,7 +637,7 @@ export default function TenantPortal() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all"
+                  className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-gray-800 placeholder:text-gray-400"
                   placeholder="your@email.com"
                   required
                 />
@@ -1077,7 +1084,7 @@ export default function TenantPortal() {
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 sm:pl-12 pr-4 py-2.5 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base"
+                    className="w-full pl-10 sm:pl-12 pr-4 py-2.5 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
                     placeholder="FAQ 검색..."
                   />
                 </div>
@@ -1401,7 +1408,7 @@ export default function TenantPortal() {
                             type="text"
                             value={question}
                             onChange={(e) => updateQuestion(index, e.target.value)}
-                            className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base"
+                            className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
                             placeholder={`질문 ${index + 1}`}
                           />
                         </div>
@@ -1438,7 +1445,7 @@ export default function TenantPortal() {
                       value={formData.answer} 
                       onChange={(e) => setFormData({...formData, answer: e.target.value})} 
                       rows="4" 
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none resize-none shadow-sm transition-all text-sm sm:text-base" 
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none resize-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400" 
                       placeholder="AI가 고객에게 제공할 답변을 입력하세요" 
                     />
                   </div>
@@ -1462,7 +1469,7 @@ export default function TenantPortal() {
                       type="text" 
                       value={formData.guide} 
                       onChange={(e) => setFormData({...formData, guide: e.target.value})} 
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base" 
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400" 
                       placeholder="답변 생성 시 추가 주의사항" 
                     />
                   </div>
@@ -1473,7 +1480,7 @@ export default function TenantPortal() {
                       type="text" 
                       value={formData.keyData} 
                       onChange={(e) => setFormData({...formData, keyData: e.target.value})} 
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base" 
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400" 
                       placeholder="전화번호, 링크 등 변형되어선 안되는 고정값" 
                     />
                   </div>
@@ -1491,7 +1498,7 @@ export default function TenantPortal() {
                           type="date" 
                           value={formData.expiryDate} 
                           onChange={(e) => setFormData({...formData, expiryDate: e.target.value})} 
-                          className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base" 
+                          className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800" 
                         />
                         <Calendar className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
                       </div>
