@@ -622,10 +622,9 @@ export default function TenantPortal() {
                 <button
                   key={tenant.id}
                   onClick={() => selectTenant(tenant)}
-                  className="w-full p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl hover:shadow-lg transition-all text-left border border-yellow-200"
+                  className="w-full p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl hover:shadow-lg hover:scale-[1.02] transition-all text-center border border-yellow-200"
                 >
-                  <div className="font-bold text-gray-800">{tenant.brandName || tenant.id}</div>
-                  <div className="text-sm text-gray-600">{tenant.email}</div>
+                  <div className="font-bold text-gray-800 text-lg">{tenant.name || tenant.brandName || tenant.id}</div>
                 </button>
               ))}
             </div>
@@ -769,15 +768,20 @@ export default function TenantPortal() {
                         <li>✅ 자주 받는 질문과 답변</li>
                       </ul>
                     </div>
-                    <a
-                      href={currentTenant?.OnboardingFormLink || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block w-full px-6 py-4 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl transition-all font-bold text-center"
+                    <button
+                      onClick={() => {
+                        const formLink = currentTenant?.OnboardingFormLink || currentTenant?.onboardingFormLink;
+                        if (!formLink || formLink === '#' || formLink === '') {
+                          alert('⚠️ 온보딩 폼 링크가 설정되지 않았습니다.\n관리자에게 문의해주세요.');
+                          return;
+                        }
+                        window.open(formLink, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="block w-full px-6 py-4 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl transition-all font-bold text-center cursor-pointer"
                     >
                       <ExternalLink className="inline w-5 h-5 mr-2" />
                       기본 정보 입력하러 가기
-                    </a>
+                    </button>
                     <p className="text-xs text-gray-500 text-center">
                       💡 작성하신 정보는 언제든 포털에서 수정 가능합니다
                     </p>
