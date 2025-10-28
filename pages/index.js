@@ -308,14 +308,16 @@ export default function TenantPortal() {
     if (!currentTenant) return;
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/data/get-faqs?tenantId=${currentTenant.id}`);
+      // ✅ 통합 마스터 시트 API (faq.js)
+      const res = await fetch(`/api/faq?tenant=${currentTenant.id}`);
       const data = await res.json();
       if (data?.error) {
         console.error('❌ FAQ 조회 실패:', data.error);
         return;
       }
-      setFaqData(data.faqs || []);
-      console.log('✅ FAQ 데이터 로드 완료:', data.faqs?.length || 0);
+      // ✅ faq.js는 배열을 직접 리턴
+      setFaqData(Array.isArray(data) ? data : []);
+      console.log('✅ FAQ 데이터 로드 완료:', data?.length || 0);
     } catch (error) {
       console.error('❌ FAQ 조회 에러:', error);
     } finally {
@@ -417,8 +419,13 @@ export default function TenantPortal() {
   function openModal(item = null) {
     if (item) {
       setEditingItem(item);
+      // ✅ faq.js는 question을 문자열로 저장 (줄바꿈으로 여러 질문 구분)
+      const questions = item.question 
+        ? item.question.split('\n').filter(q => q.trim())
+        : [''];
+      
       setFormData({
-        questions: Array.isArray(item.question) ? item.question : [item.question || ''],
+        questions: questions.length > 0 ? questions : [''],
         answer: item.answer || '',
         staffHandoff: item.staffHandoff || '필요없음',
         guide: item.guide || '',
@@ -470,25 +477,40 @@ export default function TenantPortal() {
 
     setIsLoading(true);
     try {
+      // ✅ 통합 마스터 시트 API (faq.js)
       const payload = {
-        tenantId: currentTenant.id,
-        ...formData,
-        question: formData.questions
+        question: formData.questions.join('\n'), // 여러 질문을 줄바꿈으로 연결
+        answer: formData.answer,
+        staffHandoff: formData.staffHandoff || '필요없음',
+        guide: formData.guide || '',
+        keyData: formData.keyData || '',
+        expiryDate: formData.expiryDate || '',
+        plan: currentTenant.plan || 'starter'
       };
 
-      const url = editingItem
-        ? `/api/data/update-faq?faqId=${editingItem.id}`
-        : '/api/data/add-faq';
+      const method = editingItem ? 'PUT' : 'POST';
+      
+      // 수정일 경우 vectorUuid 추가
+      if (editingItem && editingItem.vectorUuid) {
+        payload.vectorUuid = editingItem.vectorUuid;
+      }
 
-      const res = await fetch(url, {
-        method: 'POST',
+      const res = await fetch(`/api/faq?tenant=${currentTenant.id}`, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       const data = await res.json();
+      
       if (data?.error) {
-        alert(`❌ ${editingItem ? '수정' : '추가'} 실패: ${data.error}`);
+        if (data.error === 'PLAN_LIMIT_REACHED') {
+          alert(`❌ 플랜 제한에 도달했습니다. 최대 ${currentPlanConfig.maxFAQs}개까지 등록 가능합니다.`);
+        } else if (data.error === 'EXPIRY_NOT_AVAILABLE') {
+          alert('❌ 만료일 기능은 Pro 이상 플랜에서만 사용 가능합니다.');
+        } else {
+          alert(`❌ ${editingItem ? '수정' : '추가'} 실패: ${data.error}`);
+        }
         return;
       }
 
@@ -503,12 +525,20 @@ export default function TenantPortal() {
     }
   }
 
-  async function handleDelete(id) {
+  async function handleDelete(item) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/data/delete-faq?faqId=${id}`, { method: 'POST' });
+      // ✅ 통합 마스터 시트 API (faq.js)
+      const vectorUuid = item.vectorUuid || item.id;
+      
+      const res = await fetch(`/api/faq?tenant=${currentTenant.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vectorUuid })
+      });
+      
       const data = await res.json();
       if (data?.error) {
         alert('❌ 삭제 실패: ' + data.error);
@@ -528,8 +558,9 @@ export default function TenantPortal() {
     if (!searchTerm) return faqData;
     const term = searchTerm.toLowerCase();
     return faqData.filter(item => {
-      const questions = Array.isArray(item.question) ? item.question : [item.question];
-      return questions.some(q => q?.toLowerCase().includes(term)) || 
+      // ✅ faq.js는 question을 문자열로 저장
+      const questionText = item.question || '';
+      return questionText.toLowerCase().includes(term) || 
              item.answer?.toLowerCase().includes(term);
     });
   }, [faqData, searchTerm]);
@@ -1063,7 +1094,10 @@ export default function TenantPortal() {
               {filteredFAQData.length > 0 ? (
                 <div className="space-y-3 sm:space-y-4">
                   {filteredFAQData.map(item => {
-                    const questions = Array.isArray(item.question) ? item.question : [item.question];
+                    // ✅ faq.js는 question을 문자열로 저장 (줄바꿈으로 여러 질문 구분)
+                    const questions = item.question 
+                      ? item.question.split('\n').filter(q => q.trim())
+                      : [item.question || '질문 없음'];
                     const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date();
 
                     return (
@@ -1091,7 +1125,7 @@ export default function TenantPortal() {
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDelete(item.id)}
+                                  onClick={() => handleDelete(item)}
                                   className="p-1.5 sm:p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all"
                                 >
                                   <Trash2 className="w-4 h-4" />

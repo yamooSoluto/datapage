@@ -1,8 +1,8 @@
 // pages/api/data/add-to-sheet.js
-
-//용도: Slack에서 FAQ 추가할 때 사용
-//기능: Google Sheets의 "FAQs" 시트에 질문/답변 추가
-//호출: Slack → n8n → API
+// ✅ 통합 마스터 시트 방식으로 변경
+// 용도: Slack에서 FAQ 추가할 때 사용
+// 기능: Google Sheets의 "FAQ_Master" 시트에 질문/답변 추가 (테넌트 구분)
+// 호출: Slack → n8n → API
 
 import admin from 'firebase-admin';
 import { google } from 'googleapis';
@@ -48,22 +48,7 @@ export default async function handler(req, res) {
 
     console.log(`[add-to-sheet] Processing for tenant: ${tenantId}`);
 
-    // ✅ 2. 테넌트 정보 조회 (Google Sheets ID)
-    const tenantDoc = await db.collection('tenants').doc(tenantId).get();
-    
-    if (!tenantDoc.exists) {
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-
-    const tenantData = tenantDoc.data();
-    const sheetId = tenantData.googleSheetId || tenantData.sheetId;
-
-    if (!sheetId) {
-      console.error(`[add-to-sheet] No Google Sheet ID for tenant: ${tenantId}`);
-      return res.status(400).json({ error: 'Google Sheet not configured for this tenant' });
-    }
-
-    // ✅ 3. Google Sheets API 인증
+    // ✅ 2. Google Sheets API 인증
     const auth = new google.auth.GoogleAuth({
       credentials: {
         client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -74,38 +59,48 @@ export default async function handler(req, res) {
 
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // ✅ 4. 새 행 데이터 준비
-    const timestamp = new Date().toISOString();
+    // ✅ 3. 통합 마스터 시트 ID 사용
+    const masterSheetId = process.env.GOOGLE_SHEET_ID;
+    
+    if (!masterSheetId) {
+      console.error('[add-to-sheet] GOOGLE_SHEET_ID not configured');
+      return res.status(500).json({ error: 'Google Sheet not configured' });
+    }
+
+    // ✅ 4. 고유 Vector UUID 생성
+    const vectorUuid = `vec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
     const staffHandoff = needsHandoff ? '전달필요' : '필요없음';
 
+    // ✅ 5. FAQ_Master 시트 구조에 맞게 행 추가
     const newRow = [
-      question,           // A: Question
-      answer,             // B: Answer
-      staffHandoff,       // C: Staff Handoff
-      guide || '',        // D: Guide
-      keyData || '',      // E: Key Data
-      '',                 // F: Expiry Date (빈값)
-      timestamp,          // G: Created At
-      addedBy || 'slack', // H: Added By
-      source,             // I: Source
-      conversationId || '' // J: Conversation ID (참고용)
+      tenantId,           // A: TenantID ⭐ 핵심 차이점
+      question,           // B: Question
+      answer,             // C: Answer
+      staffHandoff,       // D: StaffHandoff
+      guide || '',        // E: Guide
+      keyData || '',      // F: KeyData
+      '',                 // G: ExpiryDate (빈값)
+      timestamp,          // H: CreatedAt
+      timestamp,          // I: UpdatedAt
+      vectorUuid          // J: VectorUUID
     ];
 
-    console.log(`[add-to-sheet] Adding row to sheet: ${sheetId}`);
+    console.log(`[add-to-sheet] Adding row to master sheet: ${masterSheetId}`);
 
-    // ✅ 5. Google Sheets에 행 추가
+    // ✅ 6. Google Sheets에 행 추가
     await sheets.spreadsheets.values.append({
-      spreadsheetId: sheetId,
-      range: 'FAQs!A:J', // FAQs 시트의 A~J 열
+      spreadsheetId: masterSheetId,
+      range: 'FAQ_Master!A:J', // ⭐ FAQ_Master 시트 사용
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [newRow],
       },
     });
 
-    console.log(`[add-to-sheet] ✅ Successfully added data for conversation: ${conversationId}`);
+    console.log(`[add-to-sheet] ✅ Successfully added data for tenant: ${tenantId}, conversation: ${conversationId}`);
 
-    // ✅ 6. Firestore에 히스토리 기록 (선택사항)
+    // ✅ 7. Firestore에 히스토리 기록 (선택사항)
     await db.collection('faq_additions').add({
       tenantId,
       conversationId,
@@ -116,14 +111,39 @@ export default async function handler(req, res) {
       needsHandoff,
       addedBy,
       source,
+      vectorUuid,
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
       status: 'completed',
     });
 
+    // ✅ 8. N8N Webhook 호출 (벡터 임베딩 업데이트)
+    if (process.env.N8N_WEBHOOK_URL) {
+      try {
+        await fetch(process.env.N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create',
+            tenant: tenantId,
+            question,
+            answer,
+            guide,
+            keyData,
+            vectorUuid,
+            timestamp: new Date().toISOString()
+          })
+        });
+        console.log(`[add-to-sheet] 📡 N8N Webhook sent - ${vectorUuid}`);
+      } catch (webhookError) {
+        console.error('[add-to-sheet] N8N Webhook failed:', webhookError.message);
+      }
+    }
+
     return res.status(200).json({
       success: true,
-      message: 'Data added to sheet successfully',
+      message: 'Data added to master sheet successfully',
       conversationId,
+      vectorUuid,
     });
 
   } catch (error) {

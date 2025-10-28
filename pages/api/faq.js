@@ -1,8 +1,11 @@
+//pages/api/faq.js
+// ✅ 통합 마스터 시트 방식 - 포털 & Slack 완벽 호환
+
 import { google } from 'googleapis';
 
 // 플랜별 제한 설정
 const PLAN_LIMITS = {
-  trail: 300,
+  trial: 300,
   starter: 300,
   pro: Infinity,
   business: Infinity,
@@ -23,7 +26,7 @@ const getSheetsClient = async () => {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
     },
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
@@ -41,11 +44,16 @@ export default async function handler(req, res) {
 
   try {
     const sheets = await getSheetsClient();
+    const sheetId = process.env.GOOGLE_SHEET_ID;
+
+    if (!sheetId) {
+      return res.status(500).json({ error: 'GOOGLE_SHEET_ID가 설정되지 않았습니다.' });
+    }
 
     // ==================== GET: FAQ 조회 ====================
     if (req.method === 'GET') {
       const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
         range: 'FAQ_Master!A2:J1000', // 헤더 제외
       });
 
@@ -54,19 +62,23 @@ export default async function handler(req, res) {
       // 해당 테넌트의 FAQ만 필터링
       const filtered = rows
         .filter(row => row[0] === tenant) // A열: TenantID
-        .map((row, index) => ({
-          id: `faq_${tenant}_${index}`,
-          question: row[1] || '',      // B열: Question
-          answer: row[2] || '',        // C열: Answer
-          staffHandoff: row[3] || '필요없음', // D열: StaffHandoff
-          guide: row[4] || '',         // E열: Guide
-          keyData: row[5] || '',       // F열: KeyData
-          expiryDate: row[6] || null,  // G열: ExpiryDate
-          createdAt: row[7] || '',     // H열: CreatedAt
-          updatedAt: row[8] || '',     // I열: UpdatedAt
-          vectorUuid: row[9] || ''     // J열: VectorUUID
-        }));
+        .map((row, index) => {
+          const vectorUuid = row[9] || `vec_${Date.now()}_${index}`;
+          return {
+            id: vectorUuid,              // ✅ id = vectorUuid (수정/삭제용)
+            vectorUuid: vectorUuid,      // ✅ 명시적으로도 포함
+            question: row[1] || '',      // B열: Question
+            answer: row[2] || '',        // C열: Answer
+            staffHandoff: row[3] || '필요없음', // D열: StaffHandoff
+            guide: row[4] || '',         // E열: Guide
+            keyData: row[5] || '',       // F열: KeyData
+            expiryDate: row[6] || null,  // G열: ExpiryDate
+            createdAt: row[7] || '',     // H열: CreatedAt
+            updatedAt: row[8] || '',     // I열: UpdatedAt
+          };
+        });
 
+      console.log(`✅ [faq] GET - Tenant: ${tenant}, Count: ${filtered.length}`);
       return res.status(200).json(filtered);
     }
 
@@ -81,7 +93,7 @@ export default async function handler(req, res) {
 
       // 현재 FAQ 개수 확인 (플랜 제한 체크용)
       const countResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
         range: 'FAQ_Master!A2:A1000',
       });
       
@@ -89,13 +101,16 @@ export default async function handler(req, res) {
         .filter(row => row[0] === tenant)
         .length;
 
+      const planName = plan || 'starter';
+
       // 플랜 제한 체크
-      if (currentCount >= (PLAN_LIMITS[plan] || 10)) {
+      if (currentCount >= (PLAN_LIMITS[planName] || 300)) {
+        console.warn(`❌ [faq] POST - Tenant: ${tenant}, Plan limit reached: ${currentCount}/${PLAN_LIMITS[planName]}`);
         return res.status(403).json({ error: 'PLAN_LIMIT_REACHED' });
       }
 
       // 만료일 기능 체크
-      if (expiryDate && !PLAN_EXPIRY[plan]) {
+      if (expiryDate && !PLAN_EXPIRY[planName]) {
         return res.status(403).json({ error: 'EXPIRY_NOT_AVAILABLE' });
       }
 
@@ -105,26 +120,26 @@ export default async function handler(req, res) {
 
       // Google Sheets에 추가
       await sheets.spreadsheets.values.append({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
         range: 'FAQ_Master!A:J',
         valueInputOption: 'USER_ENTERED',
         resource: {
           values: [[
-            tenant,
-            question,
-            answer,
-            staffHandoff || '필요없음',
-            guide || '',
-            keyData || '',
-            expiryDate || '',
-            now, // createdAt
-            now, // updatedAt
-            vectorUuid
+            tenant,                      // A: TenantID
+            question,                    // B: Question
+            answer,                      // C: Answer
+            staffHandoff || '필요없음',   // D: StaffHandoff
+            guide || '',                 // E: Guide
+            keyData || '',               // F: KeyData
+            expiryDate || '',            // G: ExpiryDate
+            now,                         // H: CreatedAt
+            now,                         // I: UpdatedAt
+            vectorUuid                   // J: VectorUUID
           ]]
         }
       });
 
-      console.log(`✅ FAQ 추가됨 - Tenant: ${tenant}, Vector UUID: ${vectorUuid}`);
+      console.log(`✅ [faq] POST - Tenant: ${tenant}, Vector UUID: ${vectorUuid}`);
 
       // N8N Webhook 호출 (설정되어 있는 경우)
       if (process.env.N8N_WEBHOOK_URL) {
@@ -143,9 +158,9 @@ export default async function handler(req, res) {
               timestamp: new Date().toISOString()
             })
           });
-          console.log(`📡 N8N Webhook 전송 성공 - ${vectorUuid}`);
+          console.log(`📡 [faq] N8N Webhook sent - ${vectorUuid}`);
         } catch (webhookError) {
-          console.error('N8N Webhook 실패:', webhookError.message);
+          console.error('[faq] N8N Webhook failed:', webhookError.message);
           // Webhook 실패해도 FAQ 추가는 성공으로 처리
         }
       }
@@ -163,7 +178,7 @@ export default async function handler(req, res) {
 
       // 전체 데이터 조회
       const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
         range: 'FAQ_Master!A2:J1000',
       });
 
@@ -175,6 +190,7 @@ export default async function handler(req, res) {
       );
 
       if (rowIndex === -1) {
+        console.error(`❌ [faq] PUT - FAQ not found. Tenant: ${tenant}, UUID: ${vectorUuid}`);
         return res.status(404).json({ error: 'FAQ를 찾을 수 없습니다.' });
       }
 
@@ -183,7 +199,7 @@ export default async function handler(req, res) {
 
       // B열부터 I열까지 업데이트 (A열 TenantID, J열 VectorUUID는 유지)
       await sheets.spreadsheets.values.update({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
         range: `FAQ_Master!B${actualRow}:I${actualRow}`,
         valueInputOption: 'USER_ENTERED',
         resource: {
@@ -200,7 +216,7 @@ export default async function handler(req, res) {
         }
       });
 
-      console.log(`✏️ FAQ 수정됨 - Tenant: ${tenant}, Vector UUID: ${vectorUuid}`);
+      console.log(`✏️ [faq] PUT - Tenant: ${tenant}, Vector UUID: ${vectorUuid}`);
 
       // N8N Webhook 호출
       if (process.env.N8N_WEBHOOK_URL) {
@@ -219,9 +235,9 @@ export default async function handler(req, res) {
               timestamp: new Date().toISOString()
             })
           });
-          console.log(`📡 N8N Webhook 전송 성공 (수정) - ${vectorUuid}`);
+          console.log(`📡 [faq] N8N Webhook sent (update) - ${vectorUuid}`);
         } catch (webhookError) {
-          console.error('N8N Webhook 실패:', webhookError.message);
+          console.error('[faq] N8N Webhook failed:', webhookError.message);
         }
       }
 
@@ -238,7 +254,7 @@ export default async function handler(req, res) {
 
       // 전체 데이터 조회
       const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
         range: 'FAQ_Master!A2:J1000',
       });
 
@@ -250,30 +266,31 @@ export default async function handler(req, res) {
       );
 
       if (rowIndex === -1) {
+        console.error(`❌ [faq] DELETE - FAQ not found. Tenant: ${tenant}, UUID: ${vectorUuid}`);
         return res.status(404).json({ error: 'FAQ를 찾을 수 없습니다.' });
       }
 
       const actualRow = rowIndex + 2;
 
-      // FAQ_Master 시트의 SheetID 가져오기 (보통 첫 번째 시트는 0)
+      // FAQ_Master 시트의 SheetID 가져오기
       const sheetMetadata = await sheets.spreadsheets.get({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
       });
 
       const faqSheet = sheetMetadata.data.sheets.find(
         sheet => sheet.properties.title === 'FAQ_Master'
       );
 
-      const sheetId = faqSheet ? faqSheet.properties.sheetId : 0;
+      const faqSheetId = faqSheet ? faqSheet.properties.sheetId : 0;
 
       // 행 삭제
       await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: process.env.GOOGLE_SHEET_ID,
+        spreadsheetId: sheetId,
         resource: {
           requests: [{
             deleteDimension: {
               range: {
-                sheetId: sheetId,
+                sheetId: faqSheetId,
                 dimension: 'ROWS',
                 startIndex: actualRow - 1, // 0-based
                 endIndex: actualRow
@@ -283,7 +300,7 @@ export default async function handler(req, res) {
         }
       });
 
-      console.log(`🗑️ FAQ 삭제됨 - Tenant: ${tenant}, Vector UUID: ${vectorUuid}`);
+      console.log(`🗑️ [faq] DELETE - Tenant: ${tenant}, Vector UUID: ${vectorUuid}`);
 
       // N8N Webhook 호출
       if (process.env.N8N_WEBHOOK_URL) {
@@ -298,9 +315,9 @@ export default async function handler(req, res) {
               timestamp: new Date().toISOString()
             })
           });
-          console.log(`📡 N8N Webhook 전송 성공 (삭제) - ${vectorUuid}`);
+          console.log(`📡 [faq] N8N Webhook sent (delete) - ${vectorUuid}`);
         } catch (webhookError) {
-          console.error('N8N Webhook 실패:', webhookError.message);
+          console.error('[faq] N8N Webhook failed:', webhookError.message);
         }
       }
 
@@ -311,7 +328,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
 
   } catch (error) {
-    console.error('FAQ API error:', error);
+    console.error('[faq] API error:', error);
     
     return res.status(500).json({ 
       error: '서버 오류가 발생했습니다.',
