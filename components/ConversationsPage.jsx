@@ -3,13 +3,13 @@
 // 애플 스타일 - 깔끔하고 직관적
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, RefreshCw, X, ExternalLink, User, Bot, UserCheck } from 'lucide-react';
 import ConversationCard from './ConversationCard';
-import ConversationDetail from './ConversationDetail';
 
 export default function ConversationsPage({ tenantId }) {
     const [conversations, setConversations] = useState([]);
     const [selectedConv, setSelectedConv] = useState(null);
+    const [detailData, setDetailData] = useState(null); // ✅ 상세 데이터 추가
     const [loading, setLoading] = useState(false);
 
     // 필터 & 검색
@@ -46,6 +46,37 @@ export default function ConversationsPage({ tenantId }) {
         } finally {
             setLoading(false);
         }
+    };
+
+    // ✅ 대화 상세 가져오기 함수 추가
+    const fetchConversationDetail = async (conv) => {
+        if (!tenantId || !conv.chatId) return;
+
+        setSelectedConv(conv);
+        setLoading(true);
+
+        try {
+            const res = await fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${conv.chatId}`);
+            const data = await res.json();
+            if (data.error) {
+                console.error('❌ 대화 상세 조회 실패:', data.error);
+                setDetailData(null);
+                return;
+            }
+            setDetailData(data);
+            console.log('✅ 대화 상세 로드 완료:', data);
+        } catch (error) {
+            console.error('❌ 대화 상세 조회 에러:', error);
+            setDetailData(null);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // ✅ 모달 닫기 함수 추가
+    const closeDetail = () => {
+        setSelectedConv(null);
+        setDetailData(null);
     };
 
     // 필터링 & 검색 로직
@@ -247,7 +278,7 @@ export default function ConversationsPage({ tenantId }) {
                             <ConversationCard
                                 key={conv.id}
                                 conversation={conv}
-                                onClick={() => setSelectedConv(conv)}
+                                onClick={() => fetchConversationDetail(conv)} // ✅ 수정됨
                                 isSelected={selectedConv?.id === conv.id}
                             />
                         ))}
@@ -310,12 +341,179 @@ export default function ConversationsPage({ tenantId }) {
                 </>
             )}
 
-            {/* 대화 상세 모달 */}
-            {selectedConv && (
-                <ConversationDetail
+            {/* ✅ 대화 상세 모달 - 수정됨 */}
+            {selectedConv && detailData && (
+                <ConversationDetailModal
                     conversation={selectedConv}
-                    onClose={() => setSelectedConv(null)}
+                    detailData={detailData}
+                    onClose={closeDetail}
                 />
+            )}
+        </div>
+    );
+}
+
+// ✅ 대화 상세 모달 컴포넌트 추가
+function ConversationDetailModal({ conversation, detailData, onClose }) {
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                {/* 헤더 */}
+                <div className="bg-gradient-to-r from-blue-50 to-cyan-50 px-6 py-4 flex items-center justify-between border-b">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                            <span className="text-white text-sm font-semibold">
+                                {conversation.userName?.charAt(0) || '?'}
+                            </span>
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800">
+                                {conversation.userName || '익명'}
+                            </h2>
+                            <p className="text-xs text-gray-500 font-mono">
+                                {conversation.chatId}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                        <X className="w-5 h-5 text-gray-600" />
+                    </button>
+                </div>
+
+                {/* 메시지 리스트 */}
+                <div className="p-6 overflow-y-auto max-h-[calc(90vh-280px)]">
+                    {detailData.messages && detailData.messages.length > 0 ? (
+                        <div className="space-y-3">
+                            {detailData.messages.map((msg, idx) => (
+                                <MessageBubble key={idx} message={msg} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-gray-400">
+                            메시지가 없습니다
+                        </div>
+                    )}
+                </div>
+
+                {/* 통계 & 슬랙 링크 */}
+                <div className="border-t bg-gray-50 px-6 py-4">
+                    {detailData.stats && (
+                        <div className="grid grid-cols-3 gap-4 mb-4">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-gray-800">{detailData.stats.userChats}</div>
+                                <div className="text-xs text-gray-600 mt-1">사용자 메시지</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-blue-600">{detailData.stats.aiChats}</div>
+                                <div className="text-xs text-gray-600 mt-1">AI 처리</div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-green-600">{detailData.stats.agentChats}</div>
+                                <div className="text-xs text-gray-600 mt-1">상담원 개입</div>
+                            </div>
+                        </div>
+                    )}
+
+                    {detailData.slack?.slackUrl && (
+                        <a
+                            href={detailData.slack.slackUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all font-semibold shadow-lg hover:shadow-xl"
+                        >
+                            <ExternalLink className="w-4 h-4" />
+                            슬랙에서 보기
+                        </a>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ✅ 메시지 버블 컴포넌트 추가
+function MessageBubble({ message }) {
+    const senderConfig = {
+        user: {
+            bg: 'bg-gradient-to-br from-gray-100 to-gray-50',
+            icon: '👤',
+            label: '사용자',
+        },
+        ai: {
+            bg: 'bg-gradient-to-br from-blue-50 to-blue-100/50',
+            icon: '🤖',
+            label: 'AI',
+        },
+        agent: {
+            bg: 'bg-gradient-to-br from-green-50 to-green-100/50',
+            icon: '👨‍💼',
+            label: '상담원',
+        },
+        admin: {
+            bg: 'bg-gradient-to-br from-purple-50 to-purple-100/50',
+            icon: '👨‍💼',
+            label: '관리자',
+        }
+    }[message.sender] || {
+        bg: 'bg-gray-50',
+        icon: '❓',
+        label: '알수없음',
+    };
+
+    return (
+        <div className={`${senderConfig.bg} rounded-xl p-4 shadow-sm border border-gray-100/50`}>
+            {/* 메시지 헤더 */}
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-gray-700">
+                        {senderConfig.icon} {senderConfig.label}
+                    </span>
+                    {message.modeSnapshot && (
+                        <span className="text-xs px-2 py-0.5 bg-white/70 rounded-full text-gray-600 font-semibold">
+                            {message.modeSnapshot}
+                        </span>
+                    )}
+                </div>
+                <span className="text-xs text-gray-500">
+                    {message.timestamp
+                        ? new Date(message.timestamp).toLocaleString('ko-KR', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        })
+                        : '-'
+                    }
+                </span>
+            </div>
+
+            {/* 메시지 내용 */}
+            <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
+                {message.text || ''}
+            </div>
+
+            {/* 이미지 첨부 */}
+            {message.pics && message.pics.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {message.pics.map((pic, picIdx) => (
+                        <div
+                            key={picIdx}
+                            className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden border border-gray-300"
+                        >
+                            <img
+                                src={pic}
+                                alt={`첨부 이미지 ${picIdx + 1}`}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif"%3E🖼️%3C/text%3E%3C/svg%3E';
+                                }}
+                            />
+                        </div>
+                    ))}
+                </div>
             )}
         </div>
     );

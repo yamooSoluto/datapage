@@ -1108,7 +1108,7 @@ export default function TenantPortal() {
 
           {/* ✅ 대화 관리 탭 */}
           {activeTab === 'conversations' && (
-            <ConversationsPage tenantId={currentTenant.tenantId} />
+            <ConversationsPage tenantId={currentTenant.id} />
           )}
 
           {/* ✅ 업무카드 탭 */}
