@@ -6,6 +6,17 @@ import React from 'react';
 import { MessageSquare, User, Bot, UserCheck, Tag } from 'lucide-react';
 
 const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
+    // 디버그 로그 추가
+    if (conversation.hasSlackCard) {
+        console.log('🔍 슬랙 카드 정보:', {
+            chatId: conversation.chatId,
+            hasSlackCard: conversation.hasSlackCard,
+            taskType: conversation.taskType,
+            slackCardType: conversation.slackCardType,
+            isTask: conversation.isTask
+        });
+    }
+
     // 상대 시간 계산
     const getRelativeTime = (dateString) => {
         if (!dateString) return '';
@@ -107,9 +118,9 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
                         </span>
                     </div>
 
-                    {/* 메시지 미리보기 */}
+                    {/* 메시지 미리보기 - summary 우선 */}
                     <p className="text-sm text-gray-600 truncate mb-2">
-                        {conversation.lastMessageText || '메시지 없음'}
+                        {conversation.summary || conversation.lastMessageText || '메시지 없음'}
                     </p>
 
                     {/* ✅ 카테고리 태그 */}

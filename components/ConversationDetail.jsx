@@ -138,19 +138,49 @@ export default function ConversationDetail({ conversation, onClose }) {
 
                     {/* 메타 정보 */}
                     {detail?.conversation && (
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
-                            <div className="flex items-center gap-3">
-                                <span>
-                                    상태: <span className="font-medium text-gray-700">{detail.conversation.status}</span>
-                                </span>
-                                <span>•</span>
-                                <span>
-                                    채널: <span className="font-medium text-gray-700">{detail.conversation.channel}</span>
-                                </span>
-                                <span>•</span>
-                                <span>
-                                    모드: <span className="font-medium text-gray-700">{detail.conversation.modeSnapshot || 'AUTO'}</span>
-                                </span>
+                        <div className="space-y-3 mb-4">
+                            {/* ✅ Summary 표시 */}
+                            {detail.conversation.summary && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                    <div className="text-xs font-semibold text-blue-700 mb-1">
+                                        대화 요약
+                                    </div>
+                                    <div className="text-sm text-blue-900">
+                                        {detail.conversation.summary}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ✅ Categories 표시 */}
+                            {detail.conversation.categories && detail.conversation.categories.length > 0 && (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-semibold text-gray-600">카테고리:</span>
+                                    {detail.conversation.categories.map((cat, idx) => (
+                                        <span
+                                            key={idx}
+                                            className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full font-medium"
+                                        >
+                                            {cat}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* 기존 메타 정보 */}
+                            <div className="flex items-center justify-between text-xs text-gray-500">
+                                <div className="flex items-center gap-3">
+                                    <span>
+                                        상태: <span className="font-medium text-gray-700">{detail.conversation.status}</span>
+                                    </span>
+                                    <span>•</span>
+                                    <span>
+                                        채널: <span className="font-medium text-gray-700">{detail.conversation.channel}</span>
+                                    </span>
+                                    <span>•</span>
+                                    <span>
+                                        모드: <span className="font-medium text-gray-700">{detail.conversation.modeSnapshot || 'AUTO'}</span>
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     )}

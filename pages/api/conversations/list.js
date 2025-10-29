@@ -141,13 +141,13 @@ export default async function handler(req, res) {
             })
             .slice(0, pageSize);
 
-        // 슬랙 스레드 배치 조회
+        // 슬랙 스레드 배치 조회 - doc.id를 직접 사용
         const slackRefs = uniqueDocs.map(({ doc }) =>
-            db.collection("slack_threads").doc(`${tenant}_${doc.data().chat_id}`)
+            db.collection("slack_threads").doc(doc.id)
         );
         const slackDocs = slackRefs.length > 0 ? await db.getAll(...slackRefs) : [];
         const slackMap = new Map(
-            slackDocs.map(sd => [sd.id.split('_').slice(1).join('_'), sd.exists ? sd.data() : null])
+            slackDocs.map((sd, idx) => [uniqueDocs[idx].doc.id, sd.exists ? sd.data() : null])
         );
 
         // 응답 변환
@@ -155,10 +155,16 @@ export default async function handler(req, res) {
             const msgs = Array.isArray(v.messages) ? v.messages : [];
             const userCount = msgs.filter(m => m.sender === "user").length;
             const aiCount = msgs.filter(m => m.sender === "ai").length;
-            const agentCount = msgs.filter(m => m.sender === "agent" || m.sender === "admin").length;
+
+            // ✅ agent 카운트 제대로 계산 (admin도 포함)
+            const agentCount = msgs.filter(m => {
+                const sender = String(m.sender || '').toLowerCase();
+                return sender === 'agent' || sender === 'admin';
+            }).length;
+
             const lastMsg = msgs[msgs.length - 1];
 
-            const slack = slackMap.get(v.chat_id);
+            const slack = slackMap.get(doc.id);
 
             // ✅ 슬랙 카드 타입 분류
             const cardInfo = slack ? classifyCardType(slack.card_type) : null;
@@ -187,7 +193,11 @@ export default async function handler(req, res) {
                 status: v.status || "waiting",
                 modeSnapshot: v.modeSnapshot || "AUTO",
                 lastMessageAt: v.lastMessageAt?.toDate?.()?.toISOString() || null,
-                lastMessageText: lastMsg?.text?.slice(0, 80) || (lastMsg?.pics?.length ? "(이미지)" : ""),
+
+                // ✅ summary 우선, 없으면 마지막 메시지 텍스트
+                lastMessageText: v.summary || lastMsg?.text?.slice(0, 80) || (lastMsg?.pics?.length ? "(이미지)" : ""),
+                summary: v.summary || null, // ✅ summary 필드 추가
+
                 messageCount: {
                     user: userCount,
                     ai: aiCount,
