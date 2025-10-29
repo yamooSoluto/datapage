@@ -72,6 +72,9 @@ export default async function handler(req, res) {
                 modeSnapshot: d.modeSnapshot || "AUTO",
                 lastMessageAt: safeIso(d.lastMessageAt),
                 cwConversationId: d.cw_conversation_id || null,
+                // ✅ summary 및 categories 추가
+                summary: d.summary || null,
+                categories: Array.isArray(d.categories) ? d.categories : [],
             },
             messages,
             slack: slackData

@@ -44,7 +44,7 @@ function encodeCursor(ts, chatId) {
     return Buffer.from(JSON.stringify({ ts, chatId }), "utf8").toString("base64");
 }
 
-// ✅ 슬랙 카드 타입 분류 (업무 필요 여부)
+// ✅ 슬랙 카드 타입 분류 (card_type 기반)
 function classifyCardType(cardType) {
     const type = String(cardType || "").toLowerCase();
 
@@ -52,7 +52,7 @@ function classifyCardType(cardType) {
     if (type.includes('create') || type.includes('update') || type.includes('upgrade')) {
         return {
             isTask: true,
-            taskType: 'work', // 업무 카드
+            taskType: 'work',
             cardType: type
         };
     }
@@ -61,7 +61,7 @@ function classifyCardType(cardType) {
     if (type.includes('shadow') || type.includes('skip')) {
         return {
             isTask: false,
-            taskType: 'shadow', // 자동 처리
+            taskType: 'shadow',
             cardType: type
         };
     }
@@ -71,6 +71,53 @@ function classifyCardType(cardType) {
         isTask: !!type,
         taskType: type ? 'other' : null,
         cardType: type
+    };
+}
+
+// ✅ slack_route 기반 카드 타입 분류 (폴백)
+function classifyCardTypeFromRoute(route) {
+    const r = String(route || "").toLowerCase();
+
+    // Shadow 라우트
+    if (r.includes('shadow') || r === 'skip') {
+        return {
+            isTask: false,
+            taskType: 'shadow',
+            cardType: route
+        };
+    }
+
+    // 업무 라우트
+    if (r.includes('create') || r.includes('update') || r.includes('upgrade')) {
+        return {
+            isTask: true,
+            taskType: 'work',
+            cardType: route
+        };
+    }
+
+    // Confirm 라우트
+    if (r.includes('confirm')) {
+        return {
+            isTask: false,
+            taskType: 'confirm',
+            cardType: route
+        };
+    }
+
+    // Agent 라우트
+    if (r.includes('agent')) {
+        return {
+            isTask: true,
+            taskType: 'agent',
+            cardType: route
+        };
+    }
+
+    return {
+        isTask: false,
+        taskType: null,
+        cardType: route
     };
 }
 
@@ -164,10 +211,26 @@ export default async function handler(req, res) {
 
             const lastMsg = msgs[msgs.length - 1];
 
+            // ✅ 이미지 첨부 정보 수집
+            const allPics = [];
+            msgs.forEach(m => {
+                if (Array.isArray(m.pics) && m.pics.length > 0) {
+                    m.pics.forEach(p => {
+                        if (p?.url) allPics.push(p.url);
+                    });
+                }
+            });
+
             const slack = slackMap.get(doc.id);
 
             // ✅ 슬랙 카드 타입 분류
-            const cardInfo = slack ? classifyCardType(slack.card_type) : null;
+            // slack_threads 없으면 FAQ_realtime_cw의 slack_route 사용
+            const slackRoute = v.slack_route || null;
+            const cardTypeFromSlack = slack?.card_type || null;
+
+            const cardInfo = cardTypeFromSlack
+                ? classifyCardType(cardTypeFromSlack)
+                : (slackRoute ? classifyCardTypeFromRoute(slackRoute) : null);
 
             // ✅ 사용자 이름에서 중간 글자 추출 (예: "화곡역 송아지" -> "송")
             const extractMiddleChar = (name) => {
@@ -195,8 +258,13 @@ export default async function handler(req, res) {
                 lastMessageAt: v.lastMessageAt?.toDate?.()?.toISOString() || null,
 
                 // ✅ summary 우선, 없으면 마지막 메시지 텍스트
-                lastMessageText: v.summary || lastMsg?.text?.slice(0, 80) || (lastMsg?.pics?.length ? "(이미지)" : ""),
+                lastMessageText: v.summary || lastMsg?.text?.slice(0, 80) || (allPics.length > 0 ? `(이미지 ${allPics.length}개)` : ""),
                 summary: v.summary || null, // ✅ summary 필드 추가
+
+                // ✅ 이미지 정보 추가
+                hasImages: allPics.length > 0,
+                imageCount: allPics.length,
+                firstImageUrl: allPics[0] || null,
 
                 messageCount: {
                     user: userCount,

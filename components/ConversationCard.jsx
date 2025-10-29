@@ -3,20 +3,9 @@
 // 채널 이모지 제거, 카테고리 태그 추가, 업무 타입별 차별화
 
 import React from 'react';
-import { MessageSquare, User, Bot, UserCheck, Tag } from 'lucide-react';
+import { MessageSquare, User, Bot, UserCheck, Tag, Image as ImageIcon } from 'lucide-react';
 
 const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
-    // 디버그 로그 추가
-    if (conversation.hasSlackCard) {
-        console.log('🔍 슬랙 카드 정보:', {
-            chatId: conversation.chatId,
-            hasSlackCard: conversation.hasSlackCard,
-            taskType: conversation.taskType,
-            slackCardType: conversation.slackCardType,
-            isTask: conversation.isTask
-        });
-    }
-
     // 상대 시간 계산
     const getRelativeTime = (dateString) => {
         if (!dateString) return '';
@@ -50,8 +39,8 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
 
     // ✅ 업무 타입별 썸네일 스타일
     const getAvatarStyle = () => {
-        if (!conversation.hasSlackCard) {
-            // 슬랙 카드 없음 - 기본 스타일
+        if (!conversation.hasSlackCard && !conversation.taskType) {
+            // 슬랙 카드 정보 없음 - 기본 스타일
             return {
                 bg: 'bg-gradient-to-br from-blue-500 to-blue-600',
                 text: 'text-white'
@@ -74,9 +63,25 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
             };
         }
 
+        if (conversation.taskType === 'confirm') {
+            // Confirm 카드 - 보라색 (승인 대기)
+            return {
+                bg: 'bg-gradient-to-br from-purple-400 to-purple-500',
+                text: 'text-white'
+            };
+        }
+
+        if (conversation.taskType === 'agent') {
+            // Agent 카드 - 빨간색 (상담원 직접 응대)
+            return {
+                bg: 'bg-gradient-to-br from-red-400 to-red-500',
+                text: 'text-white'
+            };
+        }
+
         // 기타
         return {
-            bg: 'bg-gradient-to-br from-purple-400 to-purple-500',
+            bg: 'bg-gradient-to-br from-indigo-400 to-indigo-500',
             text: 'text-white'
         };
     };
@@ -119,9 +124,32 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
                     </div>
 
                     {/* 메시지 미리보기 - summary 우선 */}
-                    <p className="text-sm text-gray-600 truncate mb-2">
-                        {conversation.summary || conversation.lastMessageText || '메시지 없음'}
-                    </p>
+                    <div className="flex items-start gap-2 mb-2">
+                        {/* ✅ 이미지 썸네일 (있을 경우) */}
+                        {conversation.hasImages && conversation.firstImageUrl && (
+                            <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+                                <img
+                                    src={conversation.firstImageUrl}
+                                    alt="첨부 이미지"
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-400 text-xs">🖼️</div>';
+                                    }}
+                                />
+                            </div>
+                        )}
+
+                        {/* 텍스트 미리보기 */}
+                        <p className="flex-1 text-sm text-gray-600 truncate">
+                            {conversation.summary || conversation.lastMessageText || '메시지 없음'}
+                            {conversation.imageCount > 1 && (
+                                <span className="ml-1 text-xs text-gray-400">
+                                    +{conversation.imageCount - 1}
+                                </span>
+                            )}
+                        </p>
+                    </div>
 
                     {/* ✅ 카테고리 태그 */}
                     {conversation.categories && conversation.categories.length > 0 && (
@@ -168,21 +196,40 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
                                     {conversation.messageCount.agent}
                                 </span>
                             )}
+                            {/* ✅ 이미지 첨부 표시 */}
+                            {conversation.hasImages && (
+                                <span className="flex items-center gap-1 text-green-500" title={`이미지 ${conversation.imageCount}개`}>
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                    {conversation.imageCount}
+                                </span>
+                            )}
                         </div>
 
                         {/* ✅ 업무 타입 표시 */}
                         <div className="flex items-center gap-1.5">
                             {conversation.taskType === 'work' && (
-                                <span
-                                    className="w-1.5 h-1.5 rounded-full bg-orange-500"
-                                    title="업무 필요"
-                                />
+                                <div className="flex items-center gap-1" title="업무 필요">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                                    <span className="text-xs text-orange-600">업무</span>
+                                </div>
                             )}
                             {conversation.taskType === 'shadow' && (
-                                <span
-                                    className="w-1.5 h-1.5 rounded-full bg-gray-400"
-                                    title="자동 처리됨"
-                                />
+                                <div className="flex items-center gap-1" title="자동 처리됨">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                                    <span className="text-xs text-gray-500">자동</span>
+                                </div>
+                            )}
+                            {conversation.taskType === 'confirm' && (
+                                <div className="flex items-center gap-1" title="승인 대기">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                                    <span className="text-xs text-purple-600">승인</span>
+                                </div>
+                            )}
+                            {conversation.taskType === 'agent' && (
+                                <div className="flex items-center gap-1" title="상담원 응대">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                    <span className="text-xs text-red-600">상담</span>
+                                </div>
                             )}
                         </div>
                     </div>
