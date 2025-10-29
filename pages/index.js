@@ -16,14 +16,14 @@ const PLAN_CONFIG = {
 
 // ✅ Tailwind 동적 클래스 방지
 const PLAN_BADGE_CLASS = {
-  trial: 'bg-green-50 text-green-700 border border-green-200',
-  starter: 'bg-blue-50 text-blue-700 border border-blue-200',
-  pro: 'bg-purple-50 text-purple-700 border border-purple-200',
-  business: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
-  enterprise: 'bg-pink-50 text-pink-700 border border-pink-200',
+  trial: 'bg-green-100 text-green-700 border border-green-300',
+  starter: 'bg-blue-100 text-blue-700 border border-blue-300',
+  pro: 'bg-purple-100 text-purple-700 border border-purple-300',
+  business: 'bg-indigo-100 text-indigo-700 border border-indigo-300',
+  enterprise: 'bg-pink-100 text-pink-700 border border-pink-300',
 };
 
-const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1'];
+const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
 export default function TenantPortal() {
   console.log('🔧 TenantPortal 컴포넌트 렌더링됨!');
@@ -44,18 +44,21 @@ export default function TenantPortal() {
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [copiedWidget, setCopiedWidget] = useState(false);
   const [copiedNaver, setCopiedNaver] = useState(false);
-  const [canDismissOnboarding, setCanDismissOnboarding] = useState(false);
+  const [canDismissOnboarding, setCanDismissOnboarding] = useState(false); // ✅ FAQ 작성 후 닫기 가능
 
   const [activeTab, setActiveTab] = useState('faq');
   const [faqData, setFaqData] = useState([]);
   const [statsData, setStatsData] = useState(null);
 
+
+  // ✅ 업무카드 탭용 상태
   const [tasksData, setTasksData] = useState({ tasks: [], summary: {} });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
 
+  // ✅ 설정 메뉴
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -107,6 +110,7 @@ export default function TenantPortal() {
     return { total: faqData.length, expired, needStaff };
   }, [faqData]);
 
+  // ✅ 구독 만료일 계산
   const subscriptionInfo = useMemo(() => {
     if (!currentTenant) return null;
 
@@ -172,18 +176,15 @@ export default function TenantPortal() {
       setCurrentTenant(data);
       setIsLoggedIn(true);
 
+      // ✅ 온보딩 표시 조건: FAQ가 없으면 무조건 표시
       const shouldShowOnboarding = !data.onboardingDismissed && (data.faqCount === 0 || data.showOnboarding);
       setShowOnboarding(shouldShowOnboarding);
-      setCanDismissOnboarding(true);
+      setCanDismissOnboarding(true); // ✅ 항상 닫기 가능
 
-      fetchFaqData(data.id);
-      fetchStatsData(data.id);
-    } catch (error) {
-      console.error('❌ [Auth] 테넌트 조회 에러:', error);
-      localStorage.removeItem('userEmail');
-      localStorage.removeItem('tenantId');
-      localStorage.removeItem('magicLogin');
-    } finally {
+      console.log('✅ [Auth] 자동 로그인 성공(세션)');
+      setIsLoading(false);
+    } catch (err) {
+      console.error('❌ [Auth] 조회 에러:', err);
       setIsLoading(false);
     }
   }
@@ -191,124 +192,186 @@ export default function TenantPortal() {
   async function verifyToken(token) {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/data/verify-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
-      });
-
+      const res = await fetch(`/api/auth/verify-token?token=${token}`);
       const data = await res.json();
 
       if (data?.error) {
+        console.error('❌ [Auth] 토큰 검증 실패:', data.error);
         setLoginError(data.error);
         setIsLoading(false);
         return;
       }
 
-      setCurrentTenant(data);
-      setIsLoggedIn(true);
+      // ✅ Slack에서 온 경우 온보딩 스킵
+      const fromSlack = data.source === 'slack';
 
-      localStorage.setItem('userEmail', data.email);
-      localStorage.setItem('tenantId', data.id);
-      localStorage.setItem('magicLogin', 'true');
+      if (data.tenants && data.tenants.length > 1) {
+        setAvailableTenants(data.tenants);
+        setShowTenantSelector(true);
+      } else if (data.tenants && data.tenants.length === 1) {
+        selectTenant(data.tenants[0], fromSlack);
+      } else {
+        setLoginError('연결된 테넌트가 없습니다.');
+      }
 
-      const shouldShowOnboarding = !data.onboardingDismissed && (data.faqCount === 0 || data.showOnboarding);
-      setShowOnboarding(shouldShowOnboarding);
-      setCanDismissOnboarding(true);
-
-      window.history.replaceState({}, document.title, window.location.pathname);
-
-      fetchFaqData(data.id);
-      fetchStatsData(data.id);
-    } catch (error) {
-      console.error('❌ [Auth] 토큰 검증 에러:', error);
-      setLoginError('로그인에 실패했습니다. 다시 시도해주세요.');
-    } finally {
+      setIsLoading(false);
+    } catch (err) {
+      console.error('❌ [Auth] 토큰 검증 에러:', err);
+      setLoginError('토큰 검증 중 오류가 발생했습니다.');
       setIsLoading(false);
     }
   }
 
-  async function handleEmailSubmit(e) {
-    e.preventDefault();
-    if (!email.trim()) return;
+  function selectTenant(tenant, fromSlack = false) {
+    setCurrentTenant(tenant);
+    setIsLoggedIn(true);
+    setShowTenantSelector(false);
 
+    localStorage.setItem('userEmail', tenant.email || '');
+    localStorage.setItem('tenantId', tenant.id);
+    localStorage.setItem('magicLogin', 'true');
+
+    // ✅ Slack에서 온 경우 온보딩 무조건 스킵
+    const shouldShowOnboarding = fromSlack
+      ? false
+      : !tenant.onboardingDismissed && (tenant.faqCount === 0 || tenant.showOnboarding);
+
+    setShowOnboarding(shouldShowOnboarding);
+    setCanDismissOnboarding(true);
+
+    console.log(`✅ [Auth] 테넌트 선택 완료: ${tenant.id}${fromSlack ? ' (from Slack)' : ''}`);
+  }
+
+  async function handleEmailLogin(e) {
+    e.preventDefault();
     setIsLoading(true);
     setLoginError('');
 
     try {
-      const res = await fetch('/api/data/send-magic-link', {
+      const res = await fetch('/api/auth/send-magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() })
+        body: JSON.stringify({ email })
       });
 
       const data = await res.json();
-
       if (data?.error) {
         setLoginError(data.error);
-        return;
+      } else {
+        alert('✅ 이메일로 로그인 링크가 발송되었습니다!');
+        setEmail('');
       }
-
-      alert('이메일로 로그인 링크를 발송했습니다. 메일함을 확인해주세요.');
-      setEmail('');
-    } catch (error) {
-      console.error('❌ 매직링크 발송 에러:', error);
-      setLoginError('로그인 링크 발송에 실패했습니다.');
+    } catch (err) {
+      setLoginError('로그인 요청 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
   }
 
-  const fetchFaqData = async (tenantId) => {
-    if (!tenantId) return;
-    try {
-      const res = await fetch(`/api/data/list?tenant=${tenantId}`);
-      const data = await res.json();
-      setFaqData(data.items || []);
-    } catch (error) {
-      console.error('❌ FAQ 데이터 로드 실패:', error);
-    }
-  };
+  function handleLogout() {
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('tenantId');
+    localStorage.removeItem('magicLogin');
+    setIsLoggedIn(false);
+    setCurrentTenant(null);
+    setFaqData([]);
+    setStatsData(null);
+    console.log('✅ 로그아웃 완료');
+  }
 
-  const fetchStatsData = async (tenantId) => {
-    if (!tenantId) return;
+  useEffect(() => {
+    if (isLoggedIn && currentTenant && activeTab === 'faq') {
+      fetchFAQData();
+    }
+  }, [isLoggedIn, currentTenant, activeTab]);
+
+  useEffect(() => {
+    if (isLoggedIn && currentTenant && activeTab === 'stats') {
+      fetchStatsData();
+    }
+  }, [isLoggedIn, currentTenant, activeTab, dateRange]);
+
+  // ✅ 탭 전환 시 대화 리스트/업무카드 로드
+  useEffect(() => {
+    if (!isLoggedIn || !currentTenant?.id) return;
+    if (activeTab === 'tasks') {
+      fetchTasks();
+    }
+    // 대화 탭은 ConversationsPage 컴포넌트가 자체적으로 로드
+  }, [activeTab, currentTenant, isLoggedIn]);
+
+  async function fetchFAQData() {
+    if (!currentTenant) return;
+    setIsLoading(true);
     try {
-      const res = await fetch(`/api/data/stats?tenant=${tenantId}&days=${dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90}`);
+      // ✅ 통합 마스터 시트 API (faq.js)
+      const res = await fetch(`/api/faq?tenant=${currentTenant.id}`);
       const data = await res.json();
+      if (data?.error) {
+        console.error('❌ FAQ 조회 실패:', data.error);
+        return;
+      }
+      // ✅ faq.js는 배열을 직접 리턴
+      setFaqData(Array.isArray(data) ? data : []);
+      console.log('✅ FAQ 데이터 로드 완료:', data?.length || 0);
+    } catch (error) {
+      console.error('❌ FAQ 조회 에러:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function fetchStatsData() {
+    if (!currentTenant) return;
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/stats/${currentTenant.id}?range=${dateRange}`);
+      const data = await res.json();
+      if (data?.error) {
+        console.error('❌ 통계 조회 실패:', data.error);
+        return;
+      }
       setStatsData(data);
+      console.log('✅ 통계 데이터 로드 완료');
     } catch (error) {
-      console.error('❌ 통계 데이터 로드 실패:', error);
+      console.error('❌ 통계 조회 에러:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }
 
-  const fetchTasksData = async (tenantId) => {
-    if (!tenantId) return;
+  // ✅ 대화 탭은 ConversationsPage 컴포넌트가 자체적으로 관리
+
+  // ✅ 업무카드 대시보드 가져오기
+  async function fetchTasks() {
+    if (!currentTenant?.id) return;
+    setIsLoading(true);
     try {
-      const res = await fetch(`/api/data/tasks?tenant=${tenantId}`);
+      const res = await fetch(`/api/tasks/dashboard?tenant=${currentTenant.id}`);
       const data = await res.json();
-      setTasksData(data || { tasks: [], summary: {} });
+      if (data.error) {
+        console.error('❌ 업무카드 조회 실패:', data.error);
+        return;
+      }
+      setTasksData(data);
+      console.log('✅ 업무카드 데이터 로드 완료:', data.summary);
     } catch (error) {
-      console.error('❌ 업무카드 데이터 로드 실패:', error);
+      console.error('❌ 업무카드 조회 에러:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }
 
-  useEffect(() => {
-    if (currentTenant?.id && activeTab === 'stats') {
-      fetchStatsData(currentTenant.id);
-    }
-  }, [activeTab, dateRange, currentTenant]);
-
-  useEffect(() => {
-    if (currentTenant?.id && activeTab === 'tasks') {
-      fetchTasksData(currentTenant.id);
-    }
-  }, [activeTab, currentTenant]);
-
-  const openModal = (item = null) => {
+  function openModal(item = null) {
     if (item) {
       setEditingItem(item);
+      // ✅ faq.js는 question을 문자열로 저장 (줄바꿈으로 여러 질문 구분)
+      const questions = item.question
+        ? item.question.split('\n').filter(q => q.trim())
+        : [''];
+
       setFormData({
-        questions: item.questions || [''],
+        questions: questions.length > 0 ? questions : [''],
         answer: item.answer || '',
         staffHandoff: item.staffHandoff || '필요없음',
         guide: item.guide || '',
@@ -327,9 +390,9 @@ export default function TenantPortal() {
       });
     }
     setIsModalOpen(true);
-  };
+  }
 
-  const closeModal = () => {
+  function closeModal() {
     setIsModalOpen(false);
     setEditingItem(null);
     setFormData({
@@ -340,40 +403,46 @@ export default function TenantPortal() {
       keyData: '',
       expiryDate: ''
     });
-  };
+  }
 
-  const handleSubmit = async () => {
-    if (formData.questions.every(q => !q.trim()) || !formData.answer.trim()) {
-      alert('질문과 답변은 필수 항목입니다.');
+  async function handleSubmit() {
+    if (formData.questions.some(q => !q.trim())) {
+      alert('모든 질문을 입력해주세요.');
+      return;
+    }
+    if (!formData.answer.trim()) {
+      alert('답변을 입력해주세요.');
       return;
     }
 
-    const filteredQuestions = formData.questions.filter(q => q.trim());
-    if (filteredQuestions.length === 0) {
-      alert('최소 1개의 질문을 입력해주세요.');
+    // ✅ FAQ 개수 제한 체크
+    if (!editingItem && faqStats.total >= currentPlanConfig.maxFAQs) {
+      alert(`${currentPlanConfig.name} 플랜은 최대 ${currentPlanConfig.maxFAQs}개까지 등록 가능합니다.`);
       return;
     }
 
     setIsLoading(true);
-
     try {
-      const endpoint = editingItem ? '/api/data/update' : '/api/data/add';
+      // ✅ 통합 마스터 시트 API (faq.js)
       const payload = {
-        tenant: currentTenant.id,
-        questions: filteredQuestions,
+        question: formData.questions.join('\n'), // 여러 질문을 줄바꿈으로 연결
         answer: formData.answer,
-        staffHandoff: formData.staffHandoff,
-        guide: formData.guide || null,
-        keyData: formData.keyData || null,
-        expiryDate: formData.expiryDate || null
+        staffHandoff: formData.staffHandoff || '필요없음',
+        guide: formData.guide || '',
+        keyData: formData.keyData || '',
+        expiryDate: formData.expiryDate || '',
+        plan: currentTenant.plan || 'starter'
       };
 
-      if (editingItem) {
-        payload.id = editingItem.id;
+      const method = editingItem ? 'PUT' : 'POST';
+
+      // 수정일 경우 vectorUuid 추가
+      if (editingItem && editingItem.vectorUuid) {
+        payload.vectorUuid = editingItem.vectorUuid;
       }
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
+      const res = await fetch(`/api/faq?tenant=${currentTenant.id}`, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
@@ -381,900 +450,1001 @@ export default function TenantPortal() {
       const data = await res.json();
 
       if (data?.error) {
-        alert(`오류: ${data.error}`);
+        if (data.error === 'PLAN_LIMIT_REACHED') {
+          alert(`❌ 플랜 제한에 도달했습니다. 최대 ${currentPlanConfig.maxFAQs}개까지 등록 가능합니다.`);
+        } else if (data.error === 'EXPIRY_NOT_AVAILABLE') {
+          alert('❌ 만료일 기능은 Pro 이상 플랜에서만 사용 가능합니다.');
+        } else {
+          alert(`❌ ${editingItem ? '수정' : '추가'} 실패: ${data.error}`);
+        }
         return;
       }
 
-      alert(editingItem ? 'FAQ가 수정되었습니다!' : 'FAQ가 추가되었습니다!');
+      alert(`✅ FAQ ${editingItem ? '수정' : '추가'} 완료!`);
       closeModal();
-      fetchFaqData(currentTenant.id);
-
-      if (!editingItem && showOnboarding) {
-        setCanDismissOnboarding(true);
-      }
+      fetchFAQData();
     } catch (error) {
-      console.error('❌ FAQ 저장 에러:', error);
-      alert('저장에 실패했습니다. 다시 시도해주세요.');
+      alert(`❌ ${editingItem ? '수정' : '추가'} 중 오류 발생`);
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
-  const handleDelete = async (id) => {
+  async function handleDelete(item) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
 
     setIsLoading(true);
     try {
-      const res = await fetch('/api/data/delete', {
-        method: 'POST',
+      // ✅ 통합 마스터 시트 API (faq.js)
+      const vectorUuid = item.vectorUuid || item.id;
+
+      const res = await fetch(`/api/faq?tenant=${currentTenant.id}`, {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: currentTenant.id, id })
+        body: JSON.stringify({ vectorUuid })
       });
 
       const data = await res.json();
       if (data?.error) {
-        alert(`오류: ${data.error}`);
+        alert('❌ 삭제 실패: ' + data.error);
         return;
       }
-
-      alert('FAQ가 삭제되었습니다!');
-      fetchFaqData(currentTenant.id);
+      alert('✅ 삭제 완료!');
+      fetchFAQData();
     } catch (error) {
-      console.error('❌ FAQ 삭제 에러:', error);
-      alert('삭제에 실패했습니다.');
+      alert('❌ 삭제 중 오류 발생');
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
-  const handleLogout = () => {
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('tenantId');
-    localStorage.removeItem('magicLogin');
-    setIsLoggedIn(false);
-    setCurrentTenant(null);
-    setEmail('');
-    setLoginError('');
-  };
-
-  const filteredData = useMemo(() => {
-    if (!searchTerm.trim()) return faqData;
-    const query = searchTerm.toLowerCase();
-    return faqData.filter(item =>
-      item.questions?.some(q => q.toLowerCase().includes(query)) ||
-      item.answer?.toLowerCase().includes(query)
-    );
+  const filteredFAQData = useMemo(() => {
+    if (!searchTerm) return faqData;
+    const term = searchTerm.toLowerCase();
+    return faqData.filter(item => {
+      // ✅ faq.js는 question을 문자열로 저장
+      const questionText = item.question || '';
+      return questionText.toLowerCase().includes(term) ||
+        item.answer?.toLowerCase().includes(term);
+    });
   }, [faqData, searchTerm]);
 
-  const dismissOnboarding = async () => {
-    if (!canDismissOnboarding) {
-      alert('먼저 FAQ를 1개 이상 작성해주세요!');
-      return;
-    }
-
+  // ✅ 온보딩 닫기 (항상 가능)
+  async function dismissOnboarding() {
     try {
       await fetch('/api/data/dismiss-onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenant: currentTenant.id })
+        body: JSON.stringify({ tenantId: currentTenant.id })
       });
       setShowOnboarding(false);
-    } catch (error) {
-      console.error('❌ 온보딩 닫기 에러:', error);
+    } catch (err) {
+      console.error('온보딩 닫기 실패:', err);
+      // 실패해도 모달은 닫기
+      setShowOnboarding(false);
     }
-  };
+  }
 
-  const copyToClipboard = (text, setter) => {
-    navigator.clipboard.writeText(text);
-    setter(true);
-    setTimeout(() => setter(false), 2000);
-  };
+  // ✅ 온보딩 다시 보기
+  function reopenOnboarding() {
+    setOnboardingStep(1);
+    setShowOnboarding(true);
+    setShowSettingsMenu(false);
+  }
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          {/* 로고 */}
+      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-yellow-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob" />
+          <div className="absolute top-40 right-10 w-72 h-72 bg-amber-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-2000" />
+          <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-orange-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-4000" />
+        </div>
+
+        <div className="relative bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl shadow-yellow-200/30 p-8 max-w-md w-full">
           <div className="text-center mb-8">
-            <div className="w-20 h-20 mx-auto mb-4 bg-yellow-400 rounded-2xl flex items-center justify-center">
-              <Zap className="w-10 h-10 text-white" />
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-yellow-400 to-amber-400 rounded-3xl shadow-lg shadow-yellow-400/40 mb-4">
+              <Database className="w-10 h-10 text-gray-800" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">YAMU</h1>
-            <p className="text-sm text-gray-500">AI 고객 상담 자동화</p>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent mb-2">
+              야무 포털
+            </h1>
+            <p className="text-gray-600 text-sm font-semibold">CS 자동화 관리 시스템</p>
           </div>
 
-          {/* 로그인 카드 */}
-          <div className="bg-white rounded-2xl p-8 border border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">로그인</h2>
-
-            <form onSubmit={handleEmailSubmit} className="space-y-4">
+          {showTenantSelector ? (
+            <div className="space-y-3">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">관리할 사업장을 선택하세요</h2>
+              {availableTenants.map(tenant => (
+                <button
+                  key={tenant.id}
+                  onClick={() => selectTenant(tenant)}
+                  className="w-full p-4 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl hover:shadow-lg hover:scale-[1.02] transition-all text-center border border-yellow-200"
+                >
+                  <div className="font-bold text-gray-800 text-lg">{tenant.name || tenant.brandName || tenant.id}</div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <form onSubmit={handleEmailLogin} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  이메일
-                </label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">이메일</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-white/70 backdrop-blur-sm rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-gray-800 placeholder:text-gray-400"
                   placeholder="your@email.com"
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all"
                   required
                 />
               </div>
-
               {loginError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600">{loginError}</p>
-                </div>
+                <div className="text-red-600 text-sm bg-red-50 p-3 rounded-xl">{loginError}</div>
               )}
-
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full px-4 py-3 bg-yellow-400 text-gray-900 rounded-xl font-semibold hover:bg-yellow-500 transition-colors disabled:opacity-50"
+                className="w-full px-6 py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold disabled:opacity-50 shadow-lg shadow-yellow-400/30"
               >
-                {isLoading ? '전송 중...' : '로그인 링크 받기'}
+                {isLoading ? '처리 중...' : '로그인 링크 받기'}
               </button>
             </form>
-
-            <p className="text-xs text-gray-500 text-center mt-6">
-              이메일로 전송된 링크를 클릭하여 로그인하세요
-            </p>
-          </div>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* 로고 */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-yellow-400 rounded-xl flex items-center justify-center">
-                <Zap className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">YAMU</h1>
-                <p className="text-xs text-gray-500">{currentTenant?.name || '관리 포털'}</p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-yellow-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob" />
+        <div className="absolute top-40 right-10 w-72 h-72 bg-amber-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000" />
+        <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-orange-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000" />
+      </div>
 
-            {/* 우측 메뉴 */}
-            <div className="flex items-center gap-3">
-              {/* 플랜 배지 */}
-              {currentTenant?.plan && (
-                <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${PLAN_BADGE_CLASS[currentTenant.plan.toLowerCase()] || PLAN_BADGE_CLASS.trial}`}>
-                  {currentPlanConfig.name}
+      <div className="relative">
+        {/* ✅ 모바일 최적화 헤더 */}
+        <div className="bg-white/70 backdrop-blur-xl border-b border-white/30 sticky top-0 z-40 shadow-sm">
+          <div className="max-w-7xl mx-auto px-3 py-3 sm:px-6 sm:py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3 flex-1 min-w-0">
+                <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-yellow-400 to-amber-400 rounded-2xl shadow-lg shadow-yellow-400/30 flex items-center justify-center">
+                  <Database className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
                 </div>
-              )}
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-base sm:text-xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent truncate">
+                    {currentTenant?.brandName || '야무 포털'}
+                  </h1>
+                  {/* ✅ 플랜 뱃지 */}
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${PLAN_BADGE_CLASS[currentTenant?.plan?.toLowerCase()] || PLAN_BADGE_CLASS.trial}`}>
+                      {currentPlanConfig.name}
+                    </span>
+                    {subscriptionInfo && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${subscriptionInfo.isExpired ? 'bg-red-100 text-red-700' :
+                        subscriptionInfo.isExpiringSoon ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                        {subscriptionInfo.isExpired
+                          ? '만료됨'
+                          : `D-${subscriptionInfo.daysLeft}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-              {/* 설정 메뉴 */}
-              <div className="relative">
+              {/* ✅ 설정 버튼 (로그아웃 숨김) */}
+              <div className="relative flex-shrink-0">
                 <button
                   onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 sm:p-2.5 bg-white/60 backdrop-blur-sm rounded-xl hover:bg-white/80 transition-all"
                 >
-                  <Settings className="w-5 h-5" />
+                  <Settings className="w-5 h-5 text-gray-600" />
                 </button>
 
                 {showSettingsMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-gray-200 shadow-lg py-1 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                    <button
+                      onClick={reopenOnboarding}
+                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      <span>설치 가이드</span>
+                    </button>
                     <button
                       onClick={handleLogout}
-                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      className="w-full px-4 py-3 text-left hover:bg-red-50 flex items-center gap-2 text-sm text-red-600 border-t"
                     >
                       <LogOut className="w-4 h-4" />
-                      로그아웃
+                      <span>로그아웃</span>
                     </button>
                   </div>
                 )}
               </div>
             </div>
           </div>
-
-          {/* 탭 네비게이션 */}
-          <div className="flex gap-1 -mb-px">
-            <button
-              onClick={() => setActiveTab('faq')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'faq'
-                ? 'border-yellow-400 text-gray-900'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-              <div className="flex items-center gap-2">
-                <Database className="w-4 h-4" />
-                FAQ 관리
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'stats'
-                ? 'border-yellow-400 text-gray-900'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4" />
-                통계
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('tasks')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'tasks'
-                ? 'border-yellow-400 text-gray-900'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
-                업무카드
-                {tasksData.summary?.total > 0 && (
-                  <span className="px-1.5 py-0.5 bg-red-500 text-white text-xs rounded-full">
-                    {tasksData.summary.total}
-                  </span>
-                )}
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('conversations')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'conversations'
-                ? 'border-yellow-400 text-gray-900'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-            >
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
-                대화 목록
-              </div>
-            </button>
-          </div>
         </div>
-      </header>
 
-      {/* 메인 컨텐츠 */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 구독 만료 경고 */}
-        {subscriptionInfo?.isExpiringSoon && !subscriptionInfo.isExpired && (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-semibold text-yellow-900">구독 만료 임박</h3>
-                <p className="text-sm text-yellow-700 mt-1">
-                  {subscriptionInfo.daysLeft}일 후 구독이 만료됩니다. 서비스 연장을 원하시면 문의해주세요.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {subscriptionInfo?.isExpired && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-semibold text-red-900">구독 만료</h3>
-                <p className="text-sm text-red-700 mt-1">
-                  구독이 만료되었습니다. 서비스를 계속 이용하시려면 문의해주세요.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* FAQ 탭 */}
-        {activeTab === 'faq' && (
-          <div className="space-y-6">
-            {/* 통계 카드 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">총 FAQ</p>
-                    <p className="text-3xl font-bold text-gray-900">{faqStats.total}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <Database className="w-6 h-6 text-blue-600" />
-                  </div>
+        {/* ✅ 온보딩 모달 (스와이프 가능) */}
+        {showOnboarding && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+              {/* 진행 표시 */}
+              <div className="bg-gradient-to-r from-yellow-100 to-amber-100 px-6 py-4 flex items-center justify-between">
+                <div className="flex gap-2">
+                  {[1, 2, 3].map(step => (
+                    <div
+                      key={step}
+                      className={`w-2 h-2 rounded-full transition-all ${step === onboardingStep ? 'bg-yellow-600 w-8' : 'bg-yellow-300'
+                        }`}
+                    />
+                  ))}
                 </div>
-                {currentPlanConfig.maxFAQs !== Infinity && (
-                  <p className="text-xs text-gray-500 mt-3">
-                    최대 {currentPlanConfig.maxFAQs}개
-                  </p>
+                <span className="text-sm text-gray-600 font-semibold">
+                  {onboardingStep} / 3
+                </span>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+                {onboardingStep === 1 && (
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800">
+                      🎉 환영합니다!
+                    </h2>
+                    <p className="text-gray-600 text-sm">
+                      야무지니가 정확한 답변을 하려면 먼저 기본 정보를 입력해주세요.
+                    </p>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                      <ul className="space-y-2 text-sm text-gray-700">
+                        <li>✅ 영업시간, 위치, 연락처</li>
+                        <li>✅ 주요 상품/서비스 정보</li>
+                        <li>✅ 자주 받는 질문과 답변</li>
+                      </ul>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const formLink = currentTenant?.OnboardingFormLink || currentTenant?.onboardingFormLink;
+                        if (!formLink || formLink === '#' || formLink === '') {
+                          alert('⚠️ 온보딩 폼 링크가 설정되지 않았습니다.\n관리자에게 문의해주세요.');
+                          return;
+                        }
+                        window.open(formLink, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="block w-full px-6 py-4 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl transition-all font-bold text-center cursor-pointer"
+                    >
+                      <ExternalLink className="inline w-5 h-5 mr-2" />
+                      기본 정보 입력하러 가기
+                    </button>
+                    <p className="text-xs text-gray-500 text-center">
+                      💡 작성하신 정보는 언제든 포털에서 수정 가능합니다
+                    </p>
+                  </div>
                 )}
-              </div>
 
-              <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">만료된 FAQ</p>
-                    <p className="text-3xl font-bold text-gray-900">{faqStats.expired}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-red-600" />
-                  </div>
-                </div>
-              </div>
+                {onboardingStep === 2 && (
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800">
+                      💬 문의 위젯 링크
+                    </h2>
+                    <p className="text-gray-600 text-sm">
+                      고객에게 전달하거나 테스트할 수 있는 문의 창 링크입니다.
+                    </p>
 
-              <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">담당자 전달 필요</p>
-                    <p className="text-3xl font-bold text-gray-900">{faqStats.needStaff}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                    <Users className="w-6 h-6 text-purple-600" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 검색 & 추가 버튼 */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="FAQ 검색..."
-                  className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                />
-              </div>
-              <button
-                onClick={() => openModal()}
-                disabled={currentPlanConfig.maxFAQs !== Infinity && faqData.length >= currentPlanConfig.maxFAQs}
-                className="px-6 py-3 bg-yellow-400 text-gray-900 rounded-xl font-semibold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
-              >
-                <Plus className="w-5 h-5" />
-                FAQ 추가
-              </button>
-            </div>
-
-            {/* FAQ 리스트 */}
-            <div className="space-y-3">
-              {filteredData.length === 0 ? (
-                <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
-                  <Database className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">
-                    {searchTerm ? '검색 결과가 없습니다' : 'FAQ를 추가해보세요'}
-                  </p>
-                </div>
-              ) : (
-                filteredData.map((item) => (
-                  <div
-                    key={item.id}
-                    className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        {/* 질문들 */}
-                        <div className="mb-3">
-                          {item.questions?.map((q, idx) => (
-                            <div key={idx} className="flex items-start gap-2 mb-2">
-                              <span className="text-gray-400 text-sm flex-shrink-0">Q{idx + 1}</span>
-                              <p className="text-gray-900 font-medium">{q}</p>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* 답변 */}
-                        <div className="mb-4">
-                          <p className="text-sm text-gray-600 line-clamp-2">{item.answer}</p>
-                        </div>
-
-                        {/* 메타 정보 */}
-                        <div className="flex flex-wrap gap-2">
-                          {item.staffHandoff && item.staffHandoff !== '필요없음' && (
-                            <span className="px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded-md border border-purple-200">
-                              {item.staffHandoff}
-                            </span>
-                          )}
-                          {item.expiryDate && (
-                            <span className={`px-2 py-1 text-xs rounded-md border ${new Date(item.expiryDate) < new Date()
-                              ? 'bg-red-50 text-red-700 border-red-200'
-                              : 'bg-gray-50 text-gray-700 border-gray-200'
-                              }`}>
-                              {new Date(item.expiryDate) < new Date() ? '만료됨' : `${item.expiryDate}까지`}
-                            </span>
-                          )}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                      <div className="mb-3">
+                        <div className="text-xs text-gray-600 mb-2 font-semibold">문의 위젯 링크</div>
+                        <div className="bg-white p-3 rounded-lg font-mono text-sm break-all border border-blue-100">
+                          {currentTenant?.WidgetLink || '링크가 설정되지 않았습니다'}
                         </div>
                       </div>
 
-                      {/* 액션 버튼 */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => openModal(item)}
-                          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => {
+                          if (currentTenant?.WidgetLink) {
+                            navigator.clipboard.writeText(currentTenant.WidgetLink);
+                            setCopiedWidget(true);
+                            setTimeout(() => setCopiedWidget(false), 2000);
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold flex items-center justify-center gap-2"
+                      >
+                        {copiedWidget ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            복사됨!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            링크 복사하기
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                      <p className="font-semibold text-gray-800">✨ 활용 방법</p>
+                      <ul className="space-y-1 text-gray-600 ml-4">
+                        <li>• 고객에게 "여기로 문의해주세요" 전달</li>
+                        <li>• SNS/카톡 프로필에 링크 게시</li>
+                        <li>• 링크로 직접 테스트 가능</li>
+                      </ul>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+                )}
 
-        {/* 통계 탭 */}
-        {activeTab === 'stats' && (
-          <div className="space-y-6">
-            {/* 기간 선택 */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setDateRange('7d')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${dateRange === '7d'
-                  ? 'bg-yellow-400 text-gray-900'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                최근 7일
-              </button>
-              <button
-                onClick={() => setDateRange('30d')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${dateRange === '30d'
-                  ? 'bg-yellow-400 text-gray-900'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                최근 30일
-              </button>
-              <button
-                onClick={() => setDateRange('90d')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${dateRange === '90d'
-                  ? 'bg-yellow-400 text-gray-900'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                최근 90일
-              </button>
-            </div>
+                {onboardingStep === 3 && (
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800">
+                      💚 네이버톡톡 연동 (선택)
+                    </h2>
+                    <p className="text-gray-600 text-sm">
+                      네이버 스마트플레이스에서 톡톡 상담을 사용 중이신가요?<br />
+                      아래 링크를 연동하면 톡톡 문의도 자동 응답됩니다.
+                    </p>
 
-            {/* 차트 영역 */}
-            {statsData ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* 일별 대화 수 */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">일별 대화 수</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={statsData.dailyChats}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                      <XAxis dataKey="date" stroke="#6b7280" style={{ fontSize: '12px' }} />
-                      <YAxis stroke="#6b7280" style={{ fontSize: '12px' }} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="count" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                      <div className="flex items-start gap-2 mb-3">
+                        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-amber-800">
+                          <strong>네이버톡톡이 없으신가요?</strong>
+                          <p className="text-xs mt-1">건너뛰고 나중에 설정할 수 있습니다</p>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* 채널별 분포 */}
-                <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">채널별 분포</h3>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={statsData.byChannel}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={(entry) => `${entry.name}: ${entry.value}`}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <div className="mb-3">
+                        <div className="text-xs text-gray-600 mb-2 font-semibold">
+                          연동 경로
+                        </div>
+                        <div className="bg-white p-3 rounded-lg text-sm border border-green-100 space-y-1">
+                          <p className="font-semibold text-green-700">네이버톡톡 관리자센터</p>
+                          <p className="text-gray-600">→ 연동관리</p>
+                          <p className="text-gray-600">→ 챗봇API설정</p>
+                          <p className="text-gray-600">→ Event받을 URL 입력</p>
+                        </div>
+                      </div>
+
+                      <div className="mb-3">
+                        <div className="text-xs text-gray-600 mb-2 font-semibold">입력할 URL</div>
+                        <div className="bg-white p-3 rounded-lg font-mono text-xs break-all border border-green-100">
+                          {currentTenant?.NaverOutbound || '링크가 설정되지 않았습니다'}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          if (currentTenant?.NaverOutbound) {
+                            navigator.clipboard.writeText(currentTenant.NaverOutbound);
+                            setCopiedNaver(true);
+                            setTimeout(() => setCopiedNaver(false), 2000);
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold flex items-center justify-center gap-2"
                       >
-                        {statsData.byChannel.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
-                <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">통계 데이터를 불러오는 중...</p>
-              </div>
-            )}
-          </div>
-        )}
+                        {copiedNaver ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            복사됨!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            URL 복사하기
+                          </>
+                        )}
+                      </button>
+                    </div>
 
-        {/* 업무카드 탭 */}
-        {activeTab === 'tasks' && (
-          <div className="space-y-6">
-            {/* 요약 카드 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">전체 업무</p>
-                    <p className="text-3xl font-bold text-gray-900">{tasksData.summary?.total || 0}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <MessageSquare className="w-6 h-6 text-blue-600" />
-                  </div>
-                </div>
-              </div>
+                    {/* ✅ 설치 가이드 재확인 안내 */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                      <div className="flex items-start gap-2">
+                        <BookOpen className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-blue-800">
+                          <strong>이 가이드를 다시 보려면?</strong>
+                          <p className="text-xs mt-1">
+                            포털 우측 상단 <Settings className="inline w-3 h-3" /> 설정 메뉴 → 📖 설치 가이드를 클릭하세요
+                          </p>
+                        </div>
+                      </div>
+                    </div>
 
-              <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">긴급</p>
-                    <p className="text-3xl font-bold text-red-600">{tasksData.summary?.high || 0}</p>
+                    <p className="text-xs text-gray-500 text-center">
+                      💡 네이버톡톡 연동은 선택사항입니다. 나중에 설정할 수 있습니다.
+                    </p>
                   </div>
-                  <div className="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
-                    <AlertCircle className="w-6 h-6 text-red-600" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-6 rounded-2xl border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">일반</p>
-                    <p className="text-3xl font-bold text-gray-900">{tasksData.summary?.normal || 0}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-gray-600" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 업무 리스트 */}
-            <div className="space-y-3">
-              {tasksData.tasks && tasksData.tasks.length > 0 ? (
-                tasksData.tasks.map((task, idx) => (
-                  <TaskCard key={idx} task={task} />
-                ))
-              ) : (
-                <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
-                  <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500">업무가 없습니다</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 대화 목록 탭 */}
-        {activeTab === 'conversations' && currentTenant?.id && (
-          <ConversationsPage tenantId={currentTenant.id} />
-        )}
-      </main>
-
-      {/* 온보딩 모달 */}
-      {showOnboarding && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            {/* 헤더 */}
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">시작하기</h2>
-                {canDismissOnboarding && (
-                  <button
-                    onClick={dismissOnboarding}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
                 )}
               </div>
 
-              {/* 단계 표시 */}
-              <div className="flex items-center gap-2 mt-4">
-                {[1, 2, 3].map((step) => (
-                  <div
-                    key={step}
-                    className={`flex-1 h-1 rounded-full ${step <= onboardingStep ? 'bg-yellow-400' : 'bg-gray-200'
-                      }`}
-                  />
-                ))}
+              {/* 네비게이션 */}
+              <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t">
+                <button
+                  onClick={() => setOnboardingStep(Math.max(1, onboardingStep - 1))}
+                  disabled={onboardingStep === 1}
+                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  이전
+                </button>
+
+                <div className="flex gap-2">
+                  {onboardingStep < 3 ? (
+                    <button
+                      onClick={() => setOnboardingStep(onboardingStep + 1)}
+                      className="px-6 py-2 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-xl hover:shadow-lg transition-all font-semibold flex items-center gap-2"
+                    >
+                      다음
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={dismissOnboarding}
+                      className="px-6 py-2 bg-gradient-to-r from-green-400 to-emerald-400 text-white rounded-xl hover:shadow-lg transition-all font-semibold"
+                    >
+                      완료하고 시작하기 🚀
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* 컨텐츠 */}
-            <div className="p-6">
-              {onboardingStep === 1 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">1. 위젯 설치</h3>
-                  <p className="text-sm text-gray-600">
-                    웹사이트에 다음 코드를 추가하세요.
-                  </p>
-                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 font-mono text-xs overflow-x-auto">
-                    <code>{`<script src="https://yamu.im/widget/${currentTenant?.id || 'YOUR_ID'}.js"></script>`}</code>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(`<script src="https://yamu.im/widget/${currentTenant?.id || 'YOUR_ID'}.js"></script>`, setCopiedWidget)}
-                    className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {copiedWidget ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    {copiedWidget ? '복사됨' : '복사하기'}
-                  </button>
-                </div>
-              )}
-
-              {onboardingStep === 2 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">2. 네이버 톡톡 연동</h3>
-                  <p className="text-sm text-gray-600">
-                    네이버 톡톡 관리자 페이지에서 웹훅 URL을 설정하세요.
-                  </p>
-                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 font-mono text-xs overflow-x-auto">
-                    <code>{`https://api.yamu.im/webhook/naver/${currentTenant?.id || 'YOUR_ID'}`}</code>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(`https://api.yamu.im/webhook/naver/${currentTenant?.id || 'YOUR_ID'}`, setCopiedNaver)}
-                    className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-                  >
-                    {copiedNaver ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    {copiedNaver ? '복사됨' : '복사하기'}
-                  </button>
-                </div>
-              )}
-
-              {onboardingStep === 3 && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900">3. FAQ 작성</h3>
-                  <p className="text-sm text-gray-600">
-                    AI가 답변할 FAQ를 작성해보세요.
-                  </p>
-                  <button
-                    onClick={() => {
-                      dismissOnboarding();
-                      openModal();
-                    }}
-                    className="w-full px-4 py-3 bg-yellow-400 text-gray-900 rounded-xl font-semibold hover:bg-yellow-500 transition-colors"
-                  >
-                    FAQ 추가하기
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 푸터 네비게이션 */}
-            <div className="p-6 border-t border-gray-200 flex items-center justify-between">
-              <button
-                onClick={() => setOnboardingStep(Math.max(1, onboardingStep - 1))}
-                disabled={onboardingStep === 1}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                이전
-              </button>
-
-              <span className="text-sm text-gray-500">
-                {onboardingStep} / 3
-              </span>
-
-              {onboardingStep < 3 ? (
-                <button
-                  onClick={() => setOnboardingStep(Math.min(3, onboardingStep + 1))}
-                  className="px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg hover:bg-yellow-500 transition-colors font-medium flex items-center gap-2"
-                >
-                  다음
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  onClick={dismissOnboarding}
-                  disabled={!canDismissOnboarding}
-                  className="px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg hover:bg-yellow-500 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  완료
-                </button>
-              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* FAQ 추가/수정 모달 */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            {/* 헤더 */}
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {editingItem ? 'FAQ 수정' : 'FAQ 추가'}
-                </h2>
-                <button
-                  onClick={closeModal}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+        <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-6">
+          {/* ✅ 구독 정보 카드 (모바일 최적화) */}
+          {subscriptionInfo && (
+            <div className={`mb-4 p-3 sm:p-4 rounded-2xl border-2 ${subscriptionInfo.isExpired
+              ? 'bg-red-50 border-red-200'
+              : subscriptionInfo.isExpiringSoon
+                ? 'bg-orange-50 border-orange-200'
+                : 'bg-blue-50 border-blue-200'
+              }`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <Clock className={`w-4 h-4 sm:w-5 sm:h-5 ${subscriptionInfo.isExpired ? 'text-red-600' :
+                    subscriptionInfo.isExpiringSoon ? 'text-orange-600' :
+                      'text-blue-600'
+                    }`} />
+                  <div>
+                    <div className="text-xs sm:text-sm font-bold text-gray-800">
+                      {subscriptionInfo.isExpired ? '구독 만료' : '구독 중'}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {subscriptionInfo.endDate.toLocaleDateString('ko-KR')}까지
+                    </div>
+                  </div>
+                </div>
+                {(subscriptionInfo.isExpired || subscriptionInfo.isExpiringSoon) && (
+                  <button className="text-xs px-3 py-1.5 bg-white rounded-lg font-semibold hover:shadow-md transition-all">
+                    연장하기
+                  </button>
+                )}
               </div>
             </div>
+          )}
 
-            {/* 폼 */}
-            <div className="p-6 space-y-6">
-              {/* 질문 */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-3">
-                  질문 <span className="text-red-500">*</span>
-                </label>
+          {/* ✅ 탭 버튼 (모바일 최적화) */}
+          <div className="flex gap-2 border-b border-white/30 backdrop-blur-xl pb-3 mb-4 overflow-x-auto">
+            {/* FAQ */}
+            <button
+              onClick={() => setActiveTab('faq')}
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'faq'
+                ? 'bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 shadow-lg shadow-yellow-400/30'
+                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
+                }`}
+            >
+              <Database className="inline w-4 h-4 mr-1 sm:mr-2" />
+              FAQ 관리
+            </button>
 
-                {formData.questions.map((question, index) => (
-                  <div key={index} className="flex items-start gap-2 mb-3">
-                    <input
-                      type="text"
-                      value={question}
-                      onChange={(e) => updateQuestion(index, e.target.value)}
-                      className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                      placeholder={`질문 ${index + 1}`}
-                    />
-                    {formData.questions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeQuestion(index)}
-                        className="p-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    )}
+            {/* ✅ 대화 관리 */}
+            <button
+              onClick={() => setActiveTab('conversations')}
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'conversations'
+                ? 'bg-gradient-to-r from-blue-400 via-blue-300 to-cyan-400 text-gray-800 shadow-lg shadow-blue-400/30'
+                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
+                }`}
+            >
+              <MessageSquare className="inline w-4 h-4 mr-1 sm:mr-2" />
+              대화 관리
+            </button>
+
+            {/* ✅ 업무카드 */}
+            <button
+              onClick={() => setActiveTab('tasks')}
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'tasks'
+                ? 'bg-gradient-to-r from-red-400 via-red-300 to-orange-400 text-gray-800 shadow-lg shadow-red-400/30'
+                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
+                }`}
+            >
+              <AlertCircle className="inline w-4 h-4 mr-1 sm:mr-2" />
+              업무카드
+              {tasksData?.summary?.pending > 0 && (
+                <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                  {tasksData.summary.pending}
+                </span>
+              )}
+            </button>
+
+            {/* 통계 */}
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'stats'
+                ? 'bg-gradient-to-r from-purple-400 via-purple-300 to-pink-400 text-gray-800 shadow-lg shadow-purple-400/30'
+                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
+                }`}
+            >
+              <BarChart3 className="inline w-4 h-4 mr-1 sm:mr-2" />
+              통계
+            </button>
+          </div>
+
+          {/* FAQ 탭 */}
+          {activeTab === 'faq' && (
+            <div className="space-y-4">
+              {/* ✅ FAQ 제한 게이지 (trial도 표시) */}
+              {currentPlanConfig.maxFAQs !== Infinity && (
+                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm sm:text-base font-bold text-gray-700">
+                      FAQ 사용량
+                    </span>
+                    <span className="text-xs sm:text-sm text-gray-600 font-semibold">
+                      {faqStats.total} / {currentPlanConfig.maxFAQs}
+                    </span>
                   </div>
-                ))}
+                  <div className="w-full h-3 sm:h-4 bg-gray-200/70 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all rounded-full ${faqStats.total >= currentPlanConfig.maxFAQs
+                        ? 'bg-gradient-to-r from-red-500 to-red-600'
+                        : 'bg-gradient-to-r from-yellow-400 to-amber-400'
+                        }`}
+                      style={{ width: `${(faqStats.total / currentPlanConfig.maxFAQs) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
 
+              {/* 검색 & 추가 */}
+              <div className="flex gap-2 sm:gap-4">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 sm:pl-12 pr-4 py-2.5 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                    placeholder="FAQ 검색..."
+                  />
+                </div>
                 <button
-                  type="button"
-                  onClick={addQuestion}
-                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  onClick={() => openModal()}
+                  className="px-4 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-xl sm:rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold shadow-lg shadow-yellow-400/30 text-sm sm:text-base whitespace-nowrap"
                 >
-                  <Plus className="w-4 h-4" />
-                  질문 추가
+                  <Plus className="inline w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                  추가
                 </button>
-
-                <p className="text-xs text-gray-500 mt-2">
-                  같은 답변에 여러 질문을 등록할 수 있습니다
-                </p>
               </div>
 
-              {/* 답변 */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-3">
-                  답변 <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={formData.answer}
-                  onChange={(e) => setFormData({ ...formData, answer: e.target.value })}
-                  rows="4"
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none"
-                  placeholder="AI가 고객에게 제공할 답변을 입력하세요"
-                />
-              </div>
+              {/* FAQ 리스트 (모바일 최적화) */}
+              {filteredFAQData.length > 0 ? (
+                <div className="space-y-3 sm:space-y-4">
+                  {filteredFAQData.map(item => {
+                    // ✅ faq.js는 question을 문자열로 저장 (줄바꿈으로 여러 질문 구분)
+                    const questions = item.question
+                      ? item.question.split('\n').filter(q => q.trim())
+                      : [item.question || '질문 없음'];
+                    const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date();
 
-              {/* 담당자 전달 */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-3">
-                  담당자 전달
-                </label>
+                    return (
+                      <div
+                        key={item.id}
+                        className={`bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6 hover:shadow-xl transition-all ${isExpired ? 'opacity-50 border-2 border-red-200' : ''
+                          }`}
+                      >
+                        <div className="space-y-3">
+                          <div>
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex-1 space-y-1">
+                                {questions.map((q, idx) => (
+                                  <div key={idx} className="text-sm sm:text-base font-bold text-gray-800">
+                                    {idx > 0 && '➕ '}{q}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+                                <button
+                                  onClick={() => openModal(item)}
+                                  className="p-1.5 sm:p-2 bg-yellow-100 text-yellow-600 rounded-lg hover:bg-yellow-200 transition-all"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(item)}
+                                  className="p-1.5 sm:p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">{item.answer}</p>
+                          </div>
+
+                          <div className="flex flex-wrap gap-1.5 sm:gap-2 text-xs">
+                            {item.staffHandoff && item.staffHandoff !== '필요없음' && (
+                              <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-blue-100 text-blue-700 rounded-lg font-semibold">
+                                {item.staffHandoff}
+                              </span>
+                            )}
+                            {item.expiryDate && (
+                              <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg font-semibold ${isExpired
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-green-100 text-green-700'
+                                }`}>
+                                {isExpired ? '만료됨' : new Date(item.expiryDate).toLocaleDateString('ko-KR')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-8 sm:p-16 text-center">
+                  <Database className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 text-base sm:text-lg font-semibold">
+                    {searchTerm ? 'FAQ를 찾을 수 없습니다' : 'FAQ를 추가해주세요'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ✅ 대화 관리 탭 */}
+          {activeTab === 'conversations' && (
+            <ConversationsPage tenantId={currentTenant.id} />
+          )}
+
+          {/* ✅ 업무카드 탭 */}
+          {activeTab === 'tasks' && (
+            <div className="space-y-6">
+              {/* 업무 요약 */}
+              {tasksData?.summary && (
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-orange-50 rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-orange-600">{tasksData.summary.pending || 0}</div>
+                    <div className="text-sm text-gray-600 font-semibold">대기중</div>
+                  </div>
+                  <div className="bg-blue-50 rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-blue-600">{tasksData.summary.inProgress || 0}</div>
+                    <div className="text-sm text-gray-600 font-semibold">진행중</div>
+                  </div>
+                  <div className="bg-green-50 rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-green-600">{tasksData.summary.completed || 0}</div>
+                    <div className="text-sm text-gray-600 font-semibold">완료</div>
+                  </div>
+                </div>
+              )}
+
+              {/* 업무카드 리스트 */}
+              {tasksData?.tasks && tasksData.tasks.length > 0 ? (
+                <div className="space-y-3">
+                  {tasksData.tasks.map(task => (
+                    <TaskCard key={task.id} task={task} />
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-8 sm:p-16 text-center">
+                  <AlertCircle className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 text-base sm:text-lg font-semibold">
+                    업무카드가 없습니다
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 통계 탭 (기존 유지, 모바일 최적화) */}
+          {activeTab === 'stats' && (
+            <div className="space-y-4">
+              {/* 날짜 필터 */}
+              <div className="flex justify-end">
                 <select
-                  value={formData.staffHandoff}
-                  onChange={(e) => setFormData({ ...formData, staffHandoff: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                  value={dateRange}
+                  onChange={(e) => setDateRange(e.target.value)}
+                  className="px-3 py-2 sm:px-4 sm:py-2 bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-purple-400 focus:outline-none text-sm sm:text-base"
                 >
-                  <option value="필요없음">필요없음</option>
-                  <option value="전달필요">전달필요</option>
-                  <option value="조건부전달">조건부전달</option>
+                  <option value="7d">최근 7일</option>
+                  <option value="30d">최근 30일</option>
+                  <option value="90d">최근 90일</option>
                 </select>
               </div>
 
-              {/* 가이드 */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-3">
-                  가이드 (선택)
-                </label>
-                <input
-                  type="text"
-                  value={formData.guide}
-                  onChange={(e) => setFormData({ ...formData, guide: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                  placeholder="답변 생성 시 추가 주의사항"
-                />
-              </div>
+              {statsData ? (
+                <>
+                  {/* KPI 카드 (모바일 2열) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-3 sm:p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
+                        <TrendingUp className="w-4 h-4 text-green-500" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-gray-800">{statsData.stats?.total || 0}</div>
+                      <div className="text-xs sm:text-sm text-gray-600 font-semibold">총 대화</div>
+                    </div>
 
-              {/* 핵심 데이터 */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-3">
-                  핵심 데이터 (선택)
-                </label>
-                <input
-                  type="text"
-                  value={formData.keyData}
-                  onChange={(e) => setFormData({ ...formData, keyData: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                  placeholder="전화번호, 링크 등 변형되어선 안되는 고정값"
-                />
-              </div>
+                    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-3 sm:p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <Zap className="w-6 h-6 sm:w-8 sm:h-8 text-yellow-600" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-gray-800">{statsData.stats?.aiAutoRate || 0}%</div>
+                      <div className="text-xs sm:text-sm text-gray-600 font-semibold">AI 처리율</div>
+                    </div>
 
-              {/* 만료일 (Pro 이상) */}
-              {currentPlanConfig?.hasExpiryDate && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-3">
-                    만료일 (선택)
-                    <span className="ml-2 px-2 py-1 bg-purple-50 text-purple-700 text-xs rounded-md border border-purple-200">
-                      <Crown className="inline w-3 h-3 mr-1" />
-                      {currentPlanConfig.name} 전용
-                    </span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={formData.expiryDate}
-                      onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                    />
-                    <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-3 sm:p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <Clock className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-gray-800">{statsData.stats?.avgResponseTime || 0}초</div>
+                      <div className="text-xs sm:text-sm text-gray-600 font-semibold">평균 응답</div>
+                    </div>
+
+                    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-3 sm:p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <Users className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-gray-800">{statsData.stats?.aiAutoMessages || 0}</div>
+                      <div className="text-xs sm:text-sm text-gray-600 font-semibold">AI 메시지</div>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    휴가 일정 등 기간 한정 정보에 활용하세요
-                  </p>
+
+                  {/* 차트 (모바일은 세로 정렬) */}
+                  {statsData.chartData && (
+                    <>
+                      {statsData.chartData.mediumData && statsData.chartData.mediumData.length > 0 && (
+                        <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6">
+                          <h3 className="text-base sm:text-lg font-bold mb-4 text-gray-800">채널별 분포</h3>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <PieChart>
+                              <Pie
+                                data={statsData.chartData.mediumData}
+                                dataKey="count"
+                                nameKey="name"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={60}
+                                label={(entry) => `${entry.name} (${entry.count})`}
+                              >
+                                {statsData.chartData.mediumData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+
+                      {statsData.conversations && statsData.conversations.length > 0 && (
+                        <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6">
+                          <h3 className="text-base sm:text-lg font-bold mb-4 text-gray-800">최근 상담 내역</h3>
+                          <div className="space-y-2">
+                            {statsData.conversations.slice(0, 10).map((conv) => {
+                              const dt = conv.firstOpenedAt ? new Date(conv.firstOpenedAt) : null;
+                              const mediumLabel = conv.mediumName === "appKakao" ? "카카오" :
+                                conv.mediumName === "appNaverTalk" ? "네이버" :
+                                  conv.mediumName === "widget" ? "위젯" :
+                                    conv.mediumName || "기타";
+                              return (
+                                <div key={conv.id} className="flex justify-between items-center p-3 sm:p-4 border-b border-white/30 hover:bg-white/40 rounded-xl transition-all">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-gray-800 text-sm sm:text-base truncate">{conv.userName || "Unknown"}</p>
+                                    <p className="text-xs text-gray-600 font-semibold">{mediumLabel} · {dt ? dt.toLocaleString("ko-KR", { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "-"}</p>
+                                  </div>
+                                  <div className="text-right text-xs sm:text-sm space-x-1 sm:space-x-2 flex-shrink-0">
+                                    <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 font-bold rounded-lg whitespace-nowrap">AI {conv.aiAutoChats || 0}</span>
+                                    {(conv.agentChats || 0) > 0 && <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-gradient-to-r from-blue-100 to-cyan-100 text-blue-700 font-bold rounded-lg whitespace-nowrap">상담 {conv.agentChats}</span>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              ) : (
+                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-8 sm:p-16 text-center">
+                  <BarChart3 className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 text-base sm:text-lg font-semibold">통계 데이터를 불러오는 중...</p>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* 버튼 */}
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={closeModal}
-                  className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
-                >
-                  취소
-                </button>
-                <button
-                  onClick={handleSubmit}
-                  disabled={isLoading}
-                  className="flex-1 px-4 py-3 bg-yellow-400 text-gray-900 rounded-xl font-semibold hover:bg-yellow-500 transition-colors disabled:opacity-50"
-                >
-                  {editingItem ? '수정 완료' : '추가'}
-                </button>
+          {/* FAQ 모달 (모바일 최적화) */}
+          {isModalOpen && (
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl shadow-yellow-200/30 max-w-2xl w-full max-h-[90vh] overflow-hidden">
+                <div className="sticky top-0 bg-gradient-to-r from-yellow-100/80 to-amber-100/80 backdrop-blur-xl px-4 py-4 sm:px-6 sm:py-5 rounded-t-3xl">
+                  <h2 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-yellow-700 to-amber-700 bg-clip-text text-transparent">
+                    {editingItem ? 'FAQ 수정 ✏️' : '새 FAQ 추가 ✨'}
+                  </h2>
+                </div>
+                <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto max-h-[calc(90vh-160px)]">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">
+                      질문 또는 기본 정보 <span className="text-red-500">*</span>
+                    </label>
+
+                    {formData.questions.map((question, index) => (
+                      <div key={index} className="flex items-start space-x-2 mb-2">
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={question}
+                            onChange={(e) => updateQuestion(index, e.target.value)}
+                            className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                            placeholder={`질문 ${index + 1}`}
+                          />
+                        </div>
+                        {formData.questions.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeQuestion(index)}
+                            className="p-2 text-red-600 hover:bg-red-50/70 rounded-xl transition-all"
+                            title="이 질문 삭제"
+                          >
+                            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={addQuestion}
+                      className="mt-2 flex items-center space-x-2 px-3 py-1.5 sm:px-4 sm:py-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors text-xs sm:text-sm font-bold"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>질문 추가</span>
+                    </button>
+
+                    <p className="text-xs text-gray-500 mt-2">
+                      💡 같은 답변에 여러 질문을 등록할 수 있습니다
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">답변 <span className="text-red-500">*</span></label>
+                    <textarea
+                      value={formData.answer}
+                      onChange={(e) => setFormData({ ...formData, answer: e.target.value })}
+                      rows="4"
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none resize-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                      placeholder="AI가 고객에게 제공할 답변을 입력하세요"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">담당자 전달</label>
+                    <select
+                      value={formData.staffHandoff}
+                      onChange={(e) => setFormData({ ...formData, staffHandoff: e.target.value })}
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base"
+                    >
+                      <option value="필요없음">필요없음</option>
+                      <option value="전달필요">전달필요</option>
+                      <option value="조건부전달">조건부전달</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">가이드 (선택)</label>
+                    <input
+                      type="text"
+                      value={formData.guide}
+                      onChange={(e) => setFormData({ ...formData, guide: e.target.value })}
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                      placeholder="답변 생성 시 추가 주의사항"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">핵심 데이터 (선택)</label>
+                    <input
+                      type="text"
+                      value={formData.keyData}
+                      onChange={(e) => setFormData({ ...formData, keyData: e.target.value })}
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                      placeholder="전화번호, 링크 등 변형되어선 안되는 고정값"
+                    />
+                  </div>
+
+                  {currentPlanConfig?.hasExpiryDate && (
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">
+                        만료일 (선택)
+                        <span className="ml-2 text-xs bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 px-2 py-1 rounded-full font-bold">
+                          <Crown className="inline w-3 h-3 mr-1" />{currentPlanConfig.name} 전용
+                        </span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="date"
+                          value={formData.expiryDate}
+                          onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                          className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800"
+                        />
+                        <Calendar className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2 font-semibold">휴가 일정 등 기간 한정 정보에 활용하세요</p>
+                    </div>
+                  )}
+
+                  <div className="flex space-x-3 pt-4">
+                    <button
+                      onClick={closeModal}
+                      className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 bg-gray-100/70 backdrop-blur-sm text-gray-700 rounded-xl sm:rounded-2xl hover:bg-gray-200/70 transition-all font-bold text-sm sm:text-base"
+                    >
+                      취소
+                    </button>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isLoading}
+                      className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-xl sm:rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold disabled:opacity-50 shadow-lg shadow-yellow-400/30 text-sm sm:text-base"
+                    >
+                      {editingItem ? '수정 완료 ✓' : '추가 ✨'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          <style jsx>{`
+            @keyframes blob {
+              0%, 100% { transform: translate(0, 0) scale(1); }
+              33% { transform: translate(30px, -50px) scale(1.1); }
+              66% { transform: translate(-20px, 20px) scale(0.9); }
+            }
+            .animate-blob { animation: blob 7s infinite; }
+            .animation-delay-2000 { animation-delay: 2s; }
+            .animation-delay-4000 { animation-delay: 4s; }
+          `}</style>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// 업무카드 컴포넌트
+// ✅ 업무카드 컴포넌트
 function TaskCard({ task }) {
   const channelBadge = {
-    widget: 'bg-blue-50 text-blue-700 border border-blue-200',
-    naver: 'bg-green-50 text-green-700 border border-green-200',
-    kakao: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
-  }[task.channel] || 'bg-gray-50 text-gray-700 border border-gray-200';
+    widget: 'bg-blue-100 text-blue-700',
+    naver: 'bg-green-100 text-green-700',
+    kakao: 'bg-yellow-100 text-yellow-700',
+  }[task.channel] || 'bg-gray-100 text-gray-700';
 
   return (
-    <div className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 transition-colors">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="font-semibold text-gray-900">{task.userName}</span>
-            <span className={`px-2 py-1 rounded-md text-xs font-medium ${channelBadge}`}>
-              {task.channel}
-            </span>
+    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-4 mb-3 hover:shadow-xl transition-all">
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-bold">{task.userName}</span>
+            <span className={`text-xs px-2 py-1 rounded-lg font-semibold ${channelBadge}`}>{task.channel}</span>
             {task.priority === 'high' && (
-              <span className="px-2 py-1 bg-red-50 text-red-700 border border-red-200 rounded-md text-xs font-medium">
-                긴급
-              </span>
+              <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg font-semibold">🚨 긴급</span>
             )}
           </div>
-          <p className="text-sm text-gray-600 mb-3">{task.lastMessage}</p>
+          <p className="text-sm text-gray-600 mb-2">{task.lastMessage}</p>
           <p className="text-xs text-gray-400">
             {task.lastMessageAt ? new Date(task.lastMessageAt).toLocaleString('ko-KR') : '-'}
           </p>
@@ -1284,9 +1454,8 @@ function TaskCard({ task }) {
             href={task.slackUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors font-medium flex items-center gap-2 flex-shrink-0"
+            className="px-4 py-2 bg-purple-600 text-white text-sm rounded-xl hover:bg-purple-700 transition-all font-semibold"
           >
-            <ExternalLink className="w-4 h-4" />
             슬랙에서 보기
           </a>
         )}

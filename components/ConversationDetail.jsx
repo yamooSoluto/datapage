@@ -1,6 +1,5 @@
 // components/ConversationDetail.jsx
-// 애플 스타일 대화 상세 모달 - 최적화 버전
-// 클라이언트에게 의미 있는 정보만 표시
+// 애플 스타일 대화 상세 모달 - 클라이언트 중심 최적화
 
 import { useState, useEffect, useRef } from 'react';
 import { X, ExternalLink, User, Bot, UserCheck, ZoomIn } from 'lucide-react';
@@ -37,7 +36,6 @@ export default function ConversationDetail({ conversation, onClose }) {
         }
     };
 
-    // ESC 키로 닫기 (이미지 프리뷰 우선)
     useEffect(() => {
         const handleEsc = (e) => {
             if (e.key === 'Escape') {
@@ -114,7 +112,7 @@ export default function ConversationDetail({ conversation, onClose }) {
 
                     {/* 하단 정보 */}
                     <div className="px-6 py-4 bg-white border-t border-gray-200 flex-shrink-0">
-                        {/* 통계 - 실제로 의미 있는 정보만 */}
+                        {/* 통계 */}
                         {detail?.stats && (
                             <div className="grid grid-cols-3 gap-4 mb-4">
                                 <div className="text-center">
@@ -147,10 +145,10 @@ export default function ConversationDetail({ conversation, onClose }) {
                             </div>
                         )}
 
-                        {/* 메타 정보 - 유용한 것만 */}
+                        {/* 메타 정보 */}
                         {detail?.conversation && (
                             <div className="space-y-3 mb-4">
-                                {/* Summary (AI 분석 결과) */}
+                                {/* Summary */}
                                 {detail.conversation.summary && (
                                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                                         <div className="text-xs font-semibold text-blue-700 mb-1">
@@ -162,7 +160,7 @@ export default function ConversationDetail({ conversation, onClose }) {
                                     </div>
                                 )}
 
-                                {/* Categories (AI 분석 결과) */}
+                                {/* Categories */}
                                 {detail.conversation.categories && detail.conversation.categories.length > 0 && (
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-xs font-semibold text-gray-600">카테고리:</span>
@@ -177,7 +175,7 @@ export default function ConversationDetail({ conversation, onClose }) {
                                     </div>
                                 )}
 
-                                {/* 채널 정보 (unknown 제외) */}
+                                {/* 채널 정보 (unknown이 아닐 때만) */}
                                 {detail.conversation.channel && detail.conversation.channel !== 'unknown' && (
                                     <div className="text-xs text-gray-600">
                                         채널: <span className="font-medium text-gray-900">{detail.conversation.channel}</span>
@@ -226,18 +224,17 @@ export default function ConversationDetail({ conversation, onClose }) {
     );
 }
 
-// 메시지 버블 컴포넌트 - 최적화
+// 메시지 버블 컴포넌트
 function MessageBubble({ message, onImageClick }) {
     const isUser = message.sender === 'user';
 
-    // ✅ 상담원 구분 로직 개선
-    // 1. sender가 admin/agent면 무조건 상담원
-    // 2. sender가 ai여도 modeSnapshot이 AGENT면 상담원
+    // ✅ 상담원 구분 로직 개선: modeSnapshot이 AGENT면 상담원으로 처리
     const isAgent =
         message.sender === 'admin' ||
         message.sender === 'agent' ||
         (message.sender === 'ai' && message.modeSnapshot === 'AGENT');
 
+    // ✅ AI는 상담원이 아닌 경우에만
     const isAI = message.sender === 'ai' && !isAgent;
 
     const senderConfig = {
@@ -301,8 +298,6 @@ function MessageBubble({ message, onImageClick }) {
 
                 {/* 버블 */}
                 <div className={`rounded-2xl px-4 py-2.5 ${senderConfig.bubbleBg}`}>
-                    {/* ❌ modeSnapshot 제거 - 클라이언트에게 의미 없음 */}
-
                     {/* 텍스트 */}
                     {message.text && (
                         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
