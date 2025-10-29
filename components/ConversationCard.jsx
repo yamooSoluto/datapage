@@ -1,141 +1,141 @@
 // components/ConversationCard.jsx
-// 애플 스타일 - 절제되고 깔끔한 디자인
-// 높이 최소화, 불필요한 정보 제거
+// 리스트 셀: 채널 태그, 라우팅(업무/패시브) 뱃지, 카테고리, 카운터(유저/AI/Agent)
+import { MessageSquare, Robot, User2 } from "lucide-react";
 
-import React from 'react';
-import { MessageSquare, User, Bot, UserCheck } from 'lucide-react';
+const CHANNEL_LABEL = {
+    naver: "Naver",
+    widget: "Widget",
+    kakao: "Kakao",
+    unknown: "기타",
+};
 
-const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
-    // 상대 시간 계산
-    const getRelativeTime = (dateString) => {
-        if (!dateString) return '';
-        const now = new Date();
-        const date = new Date(dateString);
-        const diff = now - date;
-        const minutes = Math.floor(diff / 60000);
-        const hours = Math.floor(minutes / 60);
-        const days = Math.floor(hours / 24);
+const ROUTE_BADGE = {
+    create: { label: "create", tone: "work" },
+    update: { label: "update", tone: "work" },
+    upgrade: { label: "upgrade", tone: "work" },
+    shadow_create: { label: "shadow", tone: "passive" },
+    shadow_update: { label: "shadow", tone: "passive" },
+    skip: { label: "skip", tone: "passive" },
+};
 
-        if (minutes < 1) return '방금';
-        if (minutes < 60) return `${minutes}분`;
-        if (hours < 24) return `${hours}시간`;
-        if (days < 7) return `${days}일`;
-        return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+function pill(cls, text) {
+    return (
+        <span
+            className={
+                "inline-flex items-center px-2 py-0.5 text-[11px] rounded-full border " +
+                cls
+            }
+        >
+            {text}
+        </span>
+    );
+}
+
+export default function ConversationCard({ item, onClick }) {
+    const {
+        title,
+        preview,
+        lastMessageAt,
+        channel = "unknown",
+        route,
+        routeClass = "passive", // 'work' | 'passive'
+        counts = { user: 0, ai: 0, agent: 0 },
+        categories = [],
+    } = item || {};
+
+    const routeInfo = ROUTE_BADGE[route] || {
+        label: routeClass === "work" ? "work" : "auto",
+        tone: routeClass === "work" ? "work" : "passive",
     };
 
-    // 채널 이모지 (간결하게)
-    const getChannelEmoji = (channel) => {
-        const map = {
-            widget: '💬',
-            naver: '🟢',
-            kakao: '💛',
-            channeltalk_kakao: '📱',
-            channeltalk_naver: '📱',
-        };
-        return map[channel] || '💬';
-    };
-
-    // 상태 색상 (애플 스타일 - 부드러운 색상)
-    const getStatusColor = (status) => {
-        const colors = {
-            waiting: 'bg-orange-50 text-orange-600',
-            in_progress: 'bg-blue-50 text-blue-600',
-            resolved: 'bg-green-50 text-green-600',
-        };
-        return colors[status] || 'bg-gray-50 text-gray-600';
-    };
-
-    const relativeTime = getRelativeTime(conversation.lastMessageAt);
-    const channelEmoji = getChannelEmoji(conversation.channel);
-    const statusColor = getStatusColor(conversation.status);
+    const categoryChips = categories.slice(0, 2);
 
     return (
-        <div
+        <button
             onClick={onClick}
-            className={`
-        group relative bg-white rounded-xl p-3.5
-        border border-gray-100
-        hover:border-gray-200 hover:shadow-sm
-        active:scale-[0.99]
-        transition-all duration-200 cursor-pointer
-        ${isSelected ? 'ring-2 ring-blue-500 border-transparent' : ''}
-      `}
+            className="w-full text-left bg-white/90 backdrop-blur rounded-2xl border border-slate-200 hover:border-slate-300 active:scale-[.997] transition shadow-sm"
         >
-            <div className="flex items-center gap-3">
-                {/* 아바타 (작게) */}
-                <div className="flex-shrink-0">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
-                        <span className="text-white text-sm font-semibold">
-                            {conversation.userName?.charAt(0) || '?'}
-                        </span>
-                    </div>
+            <div className="p-4 flex gap-3">
+                {/* 좌측 원형 썸네일 (업무 여부에 따라 테두리 톤만 달리) */}
+                <div
+                    className={
+                        "w-11 h-11 shrink-0 rounded-full grid place-items-center text-white text-sm font-semibold " +
+                        (routeClass === "work" ? "bg-indigo-500" : "bg-slate-400")
+                    }
+                    title={routeClass === "work" ? "업무 필요 라우팅" : "자동/패시브"}
+                >
+                    {(title || "·").slice(0, 1)}
                 </div>
 
-                {/* 메인 정보 */}
                 <div className="flex-1 min-w-0">
-                    {/* 상단: 이름 + 채널 + 시간 */}
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                            <h3 className="text-sm font-semibold text-gray-900 truncate">
-                                {conversation.userName || '익명'}
-                            </h3>
-                            <span className="text-base flex-shrink-0">{channelEmoji}</span>
+                    {/* 1행: 제목 & 메타 */}
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                            <div className="truncate font-semibold text-slate-900">
+                                {title || "제목 없음"}
+                            </div>
+                            <div className="mt-1 text-[13px] text-slate-500 truncate">
+                                {preview || ""}
+                            </div>
                         </div>
-                        <span className="text-xs text-gray-400 flex-shrink-0">
-                            {relativeTime}
-                        </span>
+
+                        <div className="text-[12px] text-slate-400 whitespace-nowrap">
+                            {lastMessageAt ? timeAgo(lastMessageAt) : ""}
+                        </div>
                     </div>
 
-                    {/* 메시지 미리보기 */}
-                    <p className="text-sm text-gray-600 truncate mb-1.5">
-                        {conversation.lastMessageText || '메시지 없음'}
-                    </p>
+                    {/* 2행: 태그 & 카운터 */}
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {/* 채널 */}
+                        {pill(
+                            "border-slate-200 text-slate-600 bg-slate-50",
+                            CHANNEL_LABEL[channel] || "기타"
+                        )}
 
-                    {/* 하단: 통계 + 상태 */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5 text-xs text-gray-400">
-                            <span className="flex items-center gap-1">
-                                <MessageSquare className="w-3.5 h-3.5" />
-                                {conversation.messageCount?.total || 0}
+                        {/* 라우팅 뱃지(세련된 톤, 컬러 과하지 않게) */}
+                        {pill(
+                            routeInfo.tone === "work"
+                                ? "border-indigo-200 text-indigo-700 bg-indigo-50"
+                                : "border-slate-200 text-slate-600 bg-slate-50",
+                            routeInfo.label
+                        )}
+
+                        {/* 카테고리(최대 2개 프리뷰) */}
+                        {categoryChips.map((c) =>
+                            pill("border-amber-200 text-amber-700 bg-amber-50", c)
+                        )}
+
+                        <div className="ml-auto flex items-center gap-4 text-[13px] text-slate-600">
+                            <span className="inline-flex items-center gap-1">
+                                <MessageSquare className="w-4 h-4" /> {counts.user ?? 0}
                             </span>
-                            {conversation.messageCount?.user > 0 && (
-                                <span className="flex items-center gap-1">
-                                    <User className="w-3.5 h-3.5" />
-                                    {conversation.messageCount.user}
-                                </span>
-                            )}
-                            {conversation.messageCount?.ai > 0 && (
-                                <span className="flex items-center gap-1 text-blue-500">
-                                    <Bot className="w-3.5 h-3.5" />
-                                    {conversation.messageCount.ai}
-                                </span>
-                            )}
-                            {conversation.messageCount?.agent > 0 && (
-                                <span className="flex items-center gap-1 text-purple-500">
-                                    <UserCheck className="w-3.5 h-3.5" />
-                                    {conversation.messageCount.agent}
-                                </span>
-                            )}
-                        </div>
-
-                        {/* 상태 (작은 점으로 표시 - 애플 스타일) */}
-                        <div className="flex items-center gap-1.5">
-                            {conversation.isTask && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-500" title="업무" />
-                            )}
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor}`}>
-                                {conversation.status === 'waiting' ? '대기'
-                                    : conversation.status === 'in_progress' ? '진행'
-                                        : '완료'}
+                            <span className="inline-flex items-center gap-1">
+                                <Robot className="w-4 h-4" /> {counts.ai ?? 0}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                                <User2 className="w-4 h-4" /> {counts.agent ?? 0}
                             </span>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </button>
     );
-});
+}
 
-ConversationCard.displayName = 'ConversationCard';
-
-export default ConversationCard;
+function timeAgo(iso) {
+    try {
+        const t = typeof iso === "number" ? iso : Date.parse(iso);
+        const diff = Date.now() - t;
+        const sec = Math.max(1, Math.floor(diff / 1000));
+        if (sec < 60) return `${sec}초 전`;
+        const min = Math.floor(sec / 60);
+        if (min < 60) return `${min}분 전`;
+        const hr = Math.floor(min / 60);
+        if (hr < 24) return `${hr}시간 전`;
+        const d = Math.floor(hr / 24);
+        return `${d}일 전`;
+    } catch {
+        return "";
+    }
+}
