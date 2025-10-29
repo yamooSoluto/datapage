@@ -63,34 +63,40 @@ const lastSnippet = (d) => {
     return any?.text || "";
 };
 
+const asArray = (v) => {
+    if (!v) return [];
+    if (Array.isArray(v)) return v.filter(Boolean);
+    return String(v).split(",").map(s => s.trim()).filter(Boolean);
+};
+
 const makeItem = ({ tenantId, convId, base, counters }) => {
     const routeKinds = toRouteKinds(base);
     const hasWork = routeKinds.some(isWorkRoute);
     const channel = normalizeChannel(base.channel || base.source);
-    const categories = Array.isArray(base.categories) ? base.categories : [];
+    const categories = asArray(base.categories || base.category);
     const name =
         base.user_name ||
         base.contact_name ||
         base.alias ||
         `${base.brandName || base.brand_name || ""} (${convId})`;
 
+    // 프론트엔드가 기대하는 필드명으로 매핑
     return {
         id: `${tenantId}_${convId}`,
         tenantId,
         chatId: String(convId),
-        userName: name,
+        title: name,                                      // ✅ userName → title
+        preview: lastSnippet(base),                       // ✅ lastMessageText → preview
         lastMessageAt: asMs(base.lastMessageAt) || asMs(base.messages?.slice(-1)[0]?.timestamp) || null,
-        lastMessageText: lastSnippet(base),
         channel,
-        routeKinds,
+        route: routeKinds[0] || (hasWork ? "work" : "auto"),  // ✅ 대표 route 추가
         routeClass: hasWork ? "work" : "passive",
         categories,
-        counters: {
+        counts: {                                          // ✅ counters → counts
             user: counters.user || 0,
             ai: counters.ai || 0,
             agent: counters.agent || 0,
         },
-        // status는 더 이상 의미 없으면 프론트에서 숨겨도 OK
         status: base.status || null,
     };
 };
@@ -106,6 +112,8 @@ async function listByStats(tenantId) {
         .where(idField, ">=", start)
         .where(idField, "<", end)
         .get();
+
+    console.log(`[listByStats] Found ${snap.size} stats docs for tenant: ${tenantId}`);
 
     if (snap.empty) return [];
 
@@ -127,13 +135,13 @@ async function listByStats(tenantId) {
         const qs = await db
             .collection("FAQ_realtime_cw")
             .where("chat_id", "==", String(convId))
+            .where("tenant_id", "==", tenantId)  // ✅ tenant_id 조건 추가
             .orderBy("lastMessageAt", "desc")
             .limit(1)
             .get();
 
         const doc = qs.empty ? null : qs.docs[0];
-        const base = doc ? doc.data() : { chat_id: convId };
-        if (!base.tenant_id) base.tenant_id = tenantId;
+        const base = doc ? doc.data() : { chat_id: convId, tenant_id: tenantId };
 
         const counters = {
             user: data.user_chats || 0,
@@ -152,6 +160,8 @@ async function listByStats(tenantId) {
 
 // ── Fallback: scan FAQ_realtime_cw (when no stats) ──────────
 async function listByFallback(tenantId) {
+    console.log(`[listByFallback] Scanning FAQ_realtime_cw for tenant: ${tenantId}`);
+
     // 최근 문서부터 모으되, chat_id 단위로 1개씩만
     const qs = await db
         .collection("FAQ_realtime_cw")
@@ -159,6 +169,8 @@ async function listByFallback(tenantId) {
         .orderBy("lastMessageAt", "desc")
         .limit(400) // 여유로 많이 가져와 chatId uniq 처리
         .get();
+
+    console.log(`[listByFallback] Found ${qs.size} docs`);
 
     if (qs.empty) return [];
 
@@ -185,15 +197,23 @@ async function listByFallback(tenantId) {
 export default async function handler(req, res) {
     try {
         const tenantId = String(req.query.tenant || req.headers["x-tenant-id"] || "").trim();
-        if (!tenantId) return res.status(400).json({ ok: false, error: "tenant required" });
+        if (!tenantId) {
+            console.log("[list] Missing tenant parameter");
+            return res.status(400).json({ ok: false, error: "tenant required" });
+        }
+
+        console.log(`[list] Processing request for tenant: ${tenantId}`);
 
         // 1) stats 우선
         let items = await listByStats(tenantId);
 
         // 2) 폴백
         if (!items.length) {
+            console.log(`[list] No stats found, trying fallback`);
             items = await listByFallback(tenantId);
         }
+
+        console.log(`[list] Returning ${items.length} items for tenant: ${tenantId}`);
 
         return res.status(200).json({ ok: true, items });
     } catch (e) {
@@ -201,11 +221,3 @@ export default async function handler(req, res) {
         return res.status(500).json({ ok: false, error: e.message });
     }
 }
-// before (예시)
-// const url = `/api/faq?tenant=${tenantId}`;
-
-// after
-const url = `/api/conversations/list?tenant=${tenantId}`;
-const resp = await fetch(url, { method: "GET" });
-const data = await resp.json();
-setItems(Array.isArray(data.items) ? data.items : []);
