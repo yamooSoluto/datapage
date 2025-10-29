@@ -201,3 +201,11 @@ export default async function handler(req, res) {
         return res.status(500).json({ ok: false, error: e.message });
     }
 }
+// before (예시)
+// const url = `/api/faq?tenant=${tenantId}`;
+
+// after
+const url = `/api/conversations/list?tenant=${tenantId}`;
+const resp = await fetch(url, { method: "GET" });
+const data = await resp.json();
+setItems(Array.isArray(data.items) ? data.items : []);
