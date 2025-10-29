@@ -956,103 +956,127 @@ export default function TenantPortal() {
         )}
       </main>
 
-
-      {/* ✅ 개선된 온보딩 모달 - 웹사이트 디자인 일관성 */}
+      {/* 온보딩 모달 */}
       {showOnboarding && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-gray-200">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* 헤더 */}
-            <div className="relative p-8 text-center">
-              {/* 닫기 버튼 (오른쪽 상단) */}
-              {canDismissOnboarding && (
-                <button
-                  onClick={dismissOnboarding}
-                  className="absolute top-4 right-4 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">시작하기</h2>
+                {canDismissOnboarding && (
+                  <button
+                    onClick={dismissOnboarding}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              {/* 단계 표시 */}
+              <div className="flex items-center gap-2 mt-4">
+                {[1, 2, 3].map((step) => (
+                  <div
+                    key={step}
+                    className={`flex-1 h-1 rounded-full ${step <= onboardingStep ? 'bg-yellow-400' : 'bg-gray-200'
+                      }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* 컨텐츠 */}
+            <div className="p-6">
+              {onboardingStep === 1 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900">1. 위젯 설치</h3>
+                  <p className="text-sm text-gray-600">
+                    웹사이트에 다음 코드를 추가하세요.
+                  </p>
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 font-mono text-xs overflow-x-auto">
+                    <code>{`<script src="https://yamu.im/widget/${currentTenant?.id || 'YOUR_ID'}.js"></script>`}</code>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(`<script src="https://yamu.im/widget/${currentTenant?.id || 'YOUR_ID'}.js"></script>`, setCopiedWidget)}
+                    className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {copiedWidget ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    {copiedWidget ? '복사됨' : '복사하기'}
+                  </button>
+                </div>
               )}
 
-              {/* 로고 아이콘 */}
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-2xl shadow-lg mb-6">
-                <Zap className="w-10 h-10 text-white" />
-              </div>
+              {onboardingStep === 2 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900">2. 네이버 톡톡 연동</h3>
+                  <p className="text-sm text-gray-600">
+                    네이버 톡톡 관리자 페이지에서 웹훅 URL을 설정하세요.
+                  </p>
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 font-mono text-xs overflow-x-auto">
+                    <code>{`https://api.yamu.im/webhook/naver/${currentTenant?.id || 'YOUR_ID'}`}</code>
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(`https://api.yamu.im/webhook/naver/${currentTenant?.id || 'YOUR_ID'}`, setCopiedNaver)}
+                    className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {copiedNaver ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    {copiedNaver ? '복사됨' : '복사하기'}
+                  </button>
+                </div>
+              )}
 
-              {/* ✅ 제목 - 줄바꿈 수정 */}
-              <h2 className="text-2xl font-bold text-gray-900 mb-3">
-                YAMU에 오신 것을
-                <br />
-                환영합니다!
-              </h2>
-
-              <p className="text-gray-600 leading-relaxed">
-                AI 챗봇 설정을 시작해볼까요?
-              </p>
+              {onboardingStep === 3 && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900">3. FAQ 작성</h3>
+                  <p className="text-sm text-gray-600">
+                    AI가 답변할 FAQ를 작성해보세요.
+                  </p>
+                  <button
+                    onClick={() => {
+                      dismissOnboarding();
+                      openModal();
+                    }}
+                    className="w-full px-4 py-3 bg-yellow-400 text-gray-900 rounded-xl font-semibold hover:bg-yellow-500 transition-colors"
+                  >
+                    FAQ 추가하기
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* 단계 카드 */}
-            <div className="px-8 pb-8 space-y-3">
-              {/* 1. FAQ 추가 */}
-              <div className="p-5 bg-gray-50 rounded-2xl border border-gray-200 hover:border-gray-300 transition-all">
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center">
-                    <span className="text-lg font-bold text-gray-900">1</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 mb-1">
-                      FAQ 추가
-                    </h3>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      자주 묻는 질문과 답변을 등록하세요
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 2. 채널 연동 */}
-              <div className="p-5 bg-gray-50 rounded-2xl border border-gray-200 hover:border-gray-300 transition-all">
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center">
-                    <span className="text-lg font-bold text-gray-900">2</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 mb-1">
-                      채널 연동
-                    </h3>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      네이버톡톡, 카카오톡 등을 연결하세요
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. 테스트 */}
-              <div className="p-5 bg-gray-50 rounded-2xl border border-gray-200 hover:border-gray-300 transition-all">
-                <div className="flex items-start gap-4">
-                  <div className="flex-shrink-0 w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center">
-                    <span className="text-lg font-bold text-gray-900">3</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 mb-1">
-                      테스트
-                    </h3>
-                    <p className="text-sm text-gray-600 leading-relaxed">
-                      챗봇이 잘 작동하는지 확인하세요
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ✅ 시작하기 버튼 - 작동 보장 */}
-            <div className="px-8 pb-8">
+            {/* 푸터 네비게이션 */}
+            <div className="p-6 border-t border-gray-200 flex items-center justify-between">
               <button
-                onClick={dismissOnboarding}
-                disabled={!canDismissOnboarding}
-                className="w-full px-6 py-4 bg-gray-900 text-white rounded-2xl font-semibold hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setOnboardingStep(Math.max(1, onboardingStep - 1))}
+                disabled={onboardingStep === 1}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                시작하기
+                <ChevronLeft className="w-4 h-4" />
+                이전
               </button>
+
+              <span className="text-sm text-gray-500">
+                {onboardingStep} / 3
+              </span>
+
+              {onboardingStep < 3 ? (
+                <button
+                  onClick={() => setOnboardingStep(Math.min(3, onboardingStep + 1))}
+                  className="px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg hover:bg-yellow-500 transition-colors font-medium flex items-center gap-2"
+                >
+                  다음
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={dismissOnboarding}
+                  disabled={!canDismissOnboarding}
+                  className="px-4 py-2 bg-yellow-400 text-gray-900 rounded-lg hover:bg-yellow-500 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  완료
+                </button>
+              )}
             </div>
           </div>
         </div>
