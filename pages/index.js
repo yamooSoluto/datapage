@@ -54,14 +54,6 @@ export default function TenantPortal() {
   // ✅ 업무카드 탭용 상태
   const [tasksData, setTasksData] = useState({ tasks: [], summary: {} });
 
-  // ✅ 대화 목록 탭용 상태
-  const [conversationsData, setConversationsData] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [conversationFilters, setConversationFilters] = useState({
-    status: 'all',
-    channel: 'all'
-  });
-
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -1526,3 +1518,4 @@ function TaskCard({ task }) {
     </div>
   );
 }
+
