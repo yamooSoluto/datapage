@@ -1,6 +1,7 @@
 // components/ConversationCard.jsx
 // 리스트 셀: 채널 태그, 라우팅(업무/패시브) 뱃지, 카테고리, 카운터(유저/AI/Agent)
-import { MessageSquare, Robot, User2 } from "lucide-react";
+import { MessageSquare, User2 } from "lucide-react";
+import { Bot } from "lucide-react"; // Robot 대신 Bot 사용
 
 const CHANNEL_LABEL = {
     naver: "Naver",
@@ -110,7 +111,7 @@ export default function ConversationCard({ item, onClick }) {
                                 <MessageSquare className="w-4 h-4" /> {counts.user ?? 0}
                             </span>
                             <span className="inline-flex items-center gap-1">
-                                <Robot className="w-4 h-4" /> {counts.ai ?? 0}
+                                <Bot className="w-4 h-4" /> {counts.ai ?? 0}
                             </span>
                             <span className="inline-flex items-center gap-1">
                                 <User2 className="w-4 h-4" /> {counts.agent ?? 0}

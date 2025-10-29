@@ -1,7 +1,8 @@
 // components/ConversationDetail.jsx
 // 상세 모달: 상단 메타(채널/라우팅/카테고리/카운터) + 대화 버블
 import { useEffect, useMemo, useState } from "react";
-import { X, Robot, User2, MessageSquare, Loader2 } from "lucide-react";
+import { X, User2, MessageSquare, Loader2 } from "lucide-react";
+import { Bot } from "lucide-react"; // Robot 대신 Bot 사용
 
 export default function ConversationDetail({
     tenantId,
@@ -16,7 +17,7 @@ export default function ConversationDetail({
     async function load() {
         setLoading(true);
         try {
-            const url = new URL(`${apiBase}/detail`, location.origin);
+            const url = new URL(`${apiBase}/conversations/detail`, location.origin);
             if (id) url.searchParams.set("id", id);
             if (!id && chatId) url.searchParams.set("chatId", chatId);
             url.searchParams.set("tenant", tenantId || "");
@@ -55,7 +56,7 @@ export default function ConversationDetail({
                             {counts.user ?? 0}
                         </span>
                         <span className="inline-flex items-center gap-1">
-                            <Robot className="w-4 h-4" />
+                            <Bot className="w-4 h-4" />
                             {counts.ai ?? 0}
                         </span>
                         <span className="inline-flex items-center gap-1">

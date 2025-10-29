@@ -1,14 +1,36 @@
 // pages/api/conversations/list.js
-import { getFirestore, FieldPath, Timestamp } from "firebase-admin/firestore";
-import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
+import admin from "firebase-admin";
 
-// ── Firebase Admin singleton ────────────────────────────────
-if (!getApps().length) {
-    initializeApp({
-        credential: applicationDefault(),
-    });
+// ── Firebase Admin singleton (환경변수 기반) ────────────────
+if (!admin.apps.length) {
+    try {
+        // 환경변수가 있으면 명시적 credential 사용
+        if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+            admin.initializeApp({
+                credential: admin.credential.cert({
+                    projectId: process.env.FIREBASE_PROJECT_ID,
+                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                    privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+                }),
+            });
+            console.log("[Firebase] Initialized with explicit credentials");
+        } else {
+            // Vercel/GCP 환경에서는 applicationDefault() 사용
+            admin.initializeApp({
+                credential: admin.credential.applicationDefault(),
+            });
+            console.log("[Firebase] Initialized with application default credentials");
+        }
+    } catch (error) {
+        console.error("[Firebase] Initialization error:", error);
+        // 이미 초기화된 경우 무시
+        if (!error.message?.includes("already exists")) {
+            throw error;
+        }
+    }
 }
-const db = getFirestore();
+
+const db = admin.firestore();
 
 // Vercel 서버리스 리전 (Node 런타임)
 export const config = { regions: ["icn1"] };
@@ -105,7 +127,7 @@ const makeItem = ({ tenantId, convId, base, counters }) => {
 async function listByStats(tenantId) {
     const start = `${tenantId}_`;
     const end = `${tenantId}_\uf8ff`;
-    const idField = FieldPath.documentId();
+    const idField = admin.firestore.FieldPath.documentId();
 
     const snap = await db
         .collection("stats_conversations")
@@ -218,6 +240,6 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, items });
     } catch (e) {
         console.error("[list] fatal:", e);
-        return res.status(500).json({ ok: false, error: e.message });
+        return res.status(500).json({ ok: false, error: e.message, stack: process.env.NODE_ENV === 'development' ? e.stack : undefined });
     }
 }
