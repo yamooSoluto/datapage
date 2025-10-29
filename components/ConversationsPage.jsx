@@ -1,11 +1,11 @@
-// components/ConversationDetail.jsx
-// 애플 스타일 대화 상세 모달
-// 깔끔하고 직관적인 메시지 표시
+// components/ConversationsPage
+// 검색, 필터, 페이지네이션이 포함된 대화 목록 페이지
+// 애플 스타일 - 깔끔하고 직관적
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Filter, Calendar, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import ConversationCard from '../components/ConversationCard';
-import ConversationDetail from '../components/ConversationDetail';
+import ConversationCard from './ConversationCard';
+import ConversationDetail from './ConversationDetail';
 
 export default function ConversationsPage({ tenantId }) {
     const [conversations, setConversations] = useState([]);
