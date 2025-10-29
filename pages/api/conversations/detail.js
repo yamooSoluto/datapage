@@ -47,9 +47,37 @@ export default async function handler(req, res) {
             text: m.text || "",
             pics: Array.isArray(m.pics) ? m.pics : [],
             timestamp: safeIso(m.timestamp),
-            modeSnapshot: m.modeSnapshot || null,
             msgId: m.msgId || null,
+            modeSnapshot: m.modeSnapshot || null, // ✅ 상담원 구분용 (UI에는 표시 안 함)
         }));
+
+        // ✅ channel 보정: unknown이면 integrations에서 inboxId로 매핑
+        let channel = d.channel || "unknown";
+        if (channel === "unknown" && d.cw_inbox_id) {
+            try {
+                const integrationDoc = await db
+                    .collection("integrations")
+                    .doc(tenant)
+                    .get();
+
+                if (integrationDoc.exists) {
+                    const integrationData = integrationDoc.data();
+                    const cwConfig = integrationData?.cw;
+
+                    if (cwConfig && Array.isArray(cwConfig.inboxes)) {
+                        const inbox = cwConfig.inboxes.find(
+                            (ib) => ib.inboxId === d.cw_inbox_id
+                        );
+                        if (inbox?.channel) {
+                            channel = inbox.channel;
+                            console.log(`[detail] Channel resolved: ${channel} (from inbox ${d.cw_inbox_id})`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("[detail] Failed to resolve channel:", e);
+            }
+        }
 
         // 2) 슬랙/통계 배치 조회
         const [slackDoc, statsDoc] = await Promise.all([
@@ -67,12 +95,11 @@ export default async function handler(req, res) {
                 userId: d.user_id,
                 userName: d.user_name || "익명",
                 brandName: d.brandName || null,
-                channel: d.channel || "unknown",
+                channel: channel, // ✅ 보정된 channel 사용
                 status: d.status || "waiting",
                 modeSnapshot: d.modeSnapshot || "AUTO",
                 lastMessageAt: safeIso(d.lastMessageAt),
                 cwConversationId: d.cw_conversation_id || null,
-                // ✅ summary 및 categories 추가
                 summary: d.summary || null,
                 categories: Array.isArray(d.categories) ? d.categories : [],
             },
