@@ -125,13 +125,14 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
 
                     {/* 메시지 미리보기 - summary 우선 */}
                     <div className="flex items-start gap-2 mb-2">
-                        {/* ✅ 이미지 썸네일 (있을 경우) */}
-                        {conversation.hasImages && conversation.firstImageUrl && (
+                        {/* 리스트에서 썸네일 표시 (옵션) */}
+                        {conversation.hasImages && conversation.firstThumbnailUrl && (
                             <div className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
                                 <img
-                                    src={conversation.firstImageUrl}
+                                    src={conversation.firstThumbnailUrl}  // ✅ 썸네일 URL
                                     alt="첨부 이미지"
                                     className="w-full h-full object-cover"
+                                    loading="lazy"
                                     onError={(e) => {
                                         e.target.style.display = 'none';
                                         e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-400 text-xs">🖼️</div>';

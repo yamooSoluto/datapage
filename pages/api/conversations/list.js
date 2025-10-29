@@ -212,11 +212,18 @@ export default async function handler(req, res) {
             const lastMsg = msgs[msgs.length - 1];
 
             // ✅ 이미지 첨부 정보 수집
+            // ✅ 썸네일 URL 추출
             const allPics = [];
+            const allThumbnails = [];
+
             msgs.forEach(m => {
                 if (Array.isArray(m.pics) && m.pics.length > 0) {
                     m.pics.forEach(p => {
-                        if (p?.url) allPics.push(p.url);
+                        if (p?.url) {
+                            allPics.push(p.url);
+                            // ✅ 썸네일 URL 우선, 없으면 원본
+                            allThumbnails.push(p.thumbnail_url || p.url);
+                        }
                     });
                 }
             });
@@ -265,6 +272,7 @@ export default async function handler(req, res) {
                 hasImages: allPics.length > 0,
                 imageCount: allPics.length,
                 firstImageUrl: allPics[0] || null,
+                firstThumbnailUrl: allThumbnails[0] || null,
 
                 messageCount: {
                     user: userCount,

@@ -1,307 +1,316 @@
-// pages/api/conversations/list.js
-import admin from "firebase-admin";
+// components/ConversationDetail.jsx
+// 애플 스타일 대화 상세 모달
+// 깔끔하고 직관적인 메시지 표시
 
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
-    });
-}
+import { useState, useEffect, useRef } from 'react';
+import { X, ExternalLink, User, Bot, UserCheck } from 'lucide-react';
 
-const db = admin.firestore();
+export default function ConversationDetail({ conversation, onClose }) {
+    const [detail, setDetail] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const messagesEndRef = useRef(null);
 
-// ── helpers
-function normalizeChannel(v) {
-    const s = String(v || "").toLowerCase().trim();
-    if (!s) return "widget";
-    if (s.includes("naver")) return "naver";
-    if (s.includes("kakao")) return "kakao";
-    if (s.includes("channel")) return s; // channeltalk_kakao 등
-    if (s.includes("widget") || s.includes("web")) return "widget";
-    return "unknown";
-}
+    useEffect(() => {
+        fetchDetail();
+    }, [conversation.chatId]);
 
-function clampLimit(x, def = 50, max = 100) {
-    const n = Number(x) || def;
-    return Math.max(1, Math.min(max, n));
-}
-
-function decodeCursor(cur) {
-    try {
-        if (!cur) return null;
-        const obj = JSON.parse(Buffer.from(cur, "base64").toString("utf8"));
-        if (Number.isFinite(obj.ts) && typeof obj.chatId === "string") return obj;
-        return null;
-    } catch {
-        return null;
-    }
-}
-
-function encodeCursor(ts, chatId) {
-    return Buffer.from(JSON.stringify({ ts, chatId }), "utf8").toString("base64");
-}
-
-// ✅ 슬랙 카드 타입 분류 (card_type 기반)
-function classifyCardType(cardType) {
-    const type = String(cardType || "").toLowerCase();
-
-    // 업무 카드 (create/update/upgrade)
-    if (type.includes('create') || type.includes('update') || type.includes('upgrade')) {
-        return {
-            isTask: true,
-            taskType: 'work',
-            cardType: type
-        };
-    }
-
-    // Shadow 카드 (skip/shadow - 자동 처리됨)
-    if (type.includes('shadow') || type.includes('skip')) {
-        return {
-            isTask: false,
-            taskType: 'shadow',
-            cardType: type
-        };
-    }
-
-    // 기타
-    return {
-        isTask: !!type,
-        taskType: type ? 'other' : null,
-        cardType: type
-    };
-}
-
-// ✅ slack_route 기반 카드 타입 분류 (폴백)
-function classifyCardTypeFromRoute(route) {
-    const r = String(route || "").toLowerCase();
-
-    // Shadow 라우트
-    if (r.includes('shadow') || r === 'skip') {
-        return {
-            isTask: false,
-            taskType: 'shadow',
-            cardType: route
-        };
-    }
-
-    // 업무 라우트
-    if (r.includes('create') || r.includes('update') || r.includes('upgrade')) {
-        return {
-            isTask: true,
-            taskType: 'work',
-            cardType: route
-        };
-    }
-
-    // Confirm 라우트
-    if (r.includes('confirm')) {
-        return {
-            isTask: false,
-            taskType: 'confirm',
-            cardType: route
-        };
-    }
-
-    // Agent 라우트
-    if (r.includes('agent')) {
-        return {
-            isTask: true,
-            taskType: 'agent',
-            cardType: route
-        };
-    }
-
-    return {
-        isTask: false,
-        taskType: null,
-        cardType: route
-    };
-}
-
-export default async function handler(req, res) {
-    try {
-        const {
-            tenant,
-            channel = "all",
-            category = "all",
-            limit,
-            cursor
-        } = req.query;
-
-        if (!tenant) return res.status(400).json({ error: "tenant is required" });
-
-        const pageSize = clampLimit(limit);
-
-        // ✅ chat_id 기반 조회 (각 채팅방의 최신 세션만)
-        let q = db
-            .collection("FAQ_realtime_cw")
-            .where("tenant_id", "==", tenant)
-            .orderBy("lastMessageAt", "desc");
-
-        // 필터 적용
-        if (channel !== "all") q = q.where("channel", "==", normalizeChannel(channel));
-
-        // ✅ 카테고리 필터 추가 (array-contains)
-        if (category !== "all") {
-            q = q.where("categories", "array-contains", category);
+    useEffect(() => {
+        // 메시지 로드 후 맨 아래로 스크롤
+        if (detail?.messages && messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
+    }, [detail?.messages]);
 
-        // 커서 적용 (타임스탬프 기반)
-        const cur = decodeCursor(cursor);
-        if (cur) {
-            const lastTs = admin.firestore.Timestamp.fromMillis(cur.ts);
-            q = q.startAfter(lastTs);
+    const fetchDetail = async () => {
+        setLoading(true);
+        try {
+            const tenantId = conversation.id?.split('_')[0] || 'default';
+            const res = await fetch(
+                `/api/conversations/detail?tenant=${tenantId}&chatId=${conversation.chatId}`
+            );
+            const data = await res.json();
+            setDetail(data);
+        } catch (error) {
+            console.error('Failed to fetch detail:', error);
+        } finally {
+            setLoading(false);
         }
+    };
 
-        // ✅ 더 많이 가져와서 chat_id 중복 제거 (pageSize * 3)
-        const snap = await q.limit(pageSize * 3).get();
+    // ESC 키로 닫기
+    useEffect(() => {
+        const handleEsc = (e) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', handleEsc);
+        return () => window.removeEventListener('keydown', handleEsc);
+    }, [onClose]);
 
-        // ✅ chat_id 기준으로 그룹핑 (최신 문서만 사용)
-        const chatMap = new Map();
-        snap.docs.forEach(doc => {
-            const data = doc.data();
-            const chatId = data.chat_id;
+    return (
+        <div
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={(e) => e.target === e.currentTarget && onClose()}
+        >
+            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl">
+                {/* 헤더 - 애플 스타일 */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                            <span className="text-white text-sm font-semibold">
+                                {conversation.userName?.charAt(0) || '?'}
+                            </span>
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-semibold text-gray-900">
+                                {conversation.userName || '익명'}
+                            </h2>
+                            <p className="text-xs text-gray-500 font-mono">
+                                {conversation.chatId}
+                            </p>
+                        </div>
+                    </div>
 
-            if (!chatMap.has(chatId)) {
-                chatMap.set(chatId, { doc, data });
-            } else {
-                // 이미 있으면 더 최신 것만 유지
-                const existing = chatMap.get(chatId);
-                const existingTs = existing.data.lastMessageAt?.toMillis() || 0;
-                const currentTs = data.lastMessageAt?.toMillis() || 0;
+                    <button
+                        onClick={onClose}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
 
-                if (currentTs > existingTs) {
-                    chatMap.set(chatId, { doc, data });
-                }
-            }
+                {/* 메시지 영역 */}
+                <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+                    {loading ? (
+                        <div className="flex items-center justify-center py-20">
+                            <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600" />
+                        </div>
+                    ) : detail?.messages && detail.messages.length > 0 ? (
+                        <div className="space-y-3">
+                            {detail.messages.map((msg, idx) => (
+                                <MessageBubble key={idx} message={msg} />
+                            ))}
+                            <div ref={messagesEndRef} />
+                        </div>
+                    ) : (
+                        <div className="text-center py-20">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                <User className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <p className="text-gray-500">메시지가 없습니다</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* 하단 정보 - 애플 스타일 */}
+                <div className="px-6 py-4 bg-white border-t border-gray-100">
+                    {/* 통계 */}
+                    {detail?.stats && (
+                        <div className="grid grid-cols-3 gap-4 mb-4">
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-gray-900">
+                                    {detail.stats.userChats}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1">
+                                    <User className="w-3 h-3" />
+                                    사용자
+                                </div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-blue-600">
+                                    {detail.stats.aiChats}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1">
+                                    <Bot className="w-3 h-3" />
+                                    AI
+                                </div>
+                            </div>
+                            <div className="text-center">
+                                <div className="text-2xl font-bold text-purple-600">
+                                    {detail.stats.agentChats}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1">
+                                    <UserCheck className="w-3 h-3" />
+                                    상담원
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 메타 정보 */}
+                    {detail?.conversation && (
+                        <div className="space-y-3 mb-4">
+                            {/* ✅ Summary 표시 */}
+                            {detail.conversation.summary && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                    <div className="text-xs font-semibold text-blue-700 mb-1">
+                                        대화 요약
+                                    </div>
+                                    <div className="text-sm text-blue-900">
+                                        {detail.conversation.summary}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ✅ Categories 표시 */}
+                            {detail.conversation.categories && detail.conversation.categories.length > 0 && (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-semibold text-gray-600">카테고리:</span>
+                                    {detail.conversation.categories.map((cat, idx) => (
+                                        <span
+                                            key={idx}
+                                            className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full font-medium"
+                                        >
+                                            {cat}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* 기존 메타 정보 */}
+                            <div className="flex items-center justify-between text-xs text-gray-500">
+                                <div className="flex items-center gap-3">
+                                    <span>
+                                        상태: <span className="font-medium text-gray-700">{detail.conversation.status}</span>
+                                    </span>
+                                    <span>•</span>
+                                    <span>
+                                        채널: <span className="font-medium text-gray-700">{detail.conversation.channel}</span>
+                                    </span>
+                                    <span>•</span>
+                                    <span>
+                                        모드: <span className="font-medium text-gray-700">{detail.conversation.modeSnapshot || 'AUTO'}</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 슬랙 링크 */}
+                    {detail?.slack?.slackUrl && (
+                        <a
+                            href={detail.slack.slackUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+                        >
+                            <ExternalLink className="w-4 h-4" />
+                            Slack에서 보기
+                        </a>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// 메시지 버블 컴포넌트 - 애플 iMessage 스타일
+function MessageBubble({ message }) {
+    const isUser = message.sender === 'user';
+    const isAI = message.sender === 'ai';
+    const isAgent = message.sender === 'admin' || message.sender === 'agent';
+
+    // 발신자 설정
+    const senderConfig = {
+        user: {
+            name: '사용자',
+            icon: User,
+            align: 'flex-row-reverse',
+            bubbleBg: 'bg-blue-600 text-white',
+            bubbleAlign: 'ml-auto',
+            iconBg: 'bg-gray-300',
+            iconColor: 'text-gray-700',
+        },
+        ai: {
+            name: 'AI',
+            icon: Bot,
+            align: 'flex-row',
+            bubbleBg: 'bg-gray-200 text-gray-900',
+            bubbleAlign: 'mr-auto',
+            iconBg: 'bg-blue-500',
+            iconColor: 'text-white',
+        },
+        agent: {
+            name: '상담원',
+            icon: UserCheck,
+            align: 'flex-row',
+            bubbleBg: 'bg-purple-100 text-purple-900',
+            bubbleAlign: 'mr-auto',
+            iconBg: 'bg-purple-500',
+            iconColor: 'text-white',
+        },
+    }[isUser ? 'user' : isAI ? 'ai' : 'agent'];
+
+    const Icon = senderConfig.icon;
+
+    // 시간 포맷
+    const formatTime = (timestamp) => {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
         });
+    };
 
-        // ✅ 최신순 정렬 후 페이지 크기만큼만 반환
-        const uniqueDocs = Array.from(chatMap.values())
-            .sort((a, b) => {
-                const tsA = a.data.lastMessageAt?.toMillis() || 0;
-                const tsB = b.data.lastMessageAt?.toMillis() || 0;
-                return tsB - tsA;
-            })
-            .slice(0, pageSize);
+    return (
+        <div className={`flex items-end gap-2 ${senderConfig.align}`}>
+            {/* 아바타 (사용자 제외) */}
+            {!isUser && (
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full ${senderConfig.iconBg} flex items-center justify-center`}>
+                    <Icon className={`w-4 h-4 ${senderConfig.iconColor}`} />
+                </div>
+            )}
 
-        // 슬랙 스레드 배치 조회 - doc.id를 직접 사용
-        const slackRefs = uniqueDocs.map(({ doc }) =>
-            db.collection("slack_threads").doc(doc.id)
-        );
-        const slackDocs = slackRefs.length > 0 ? await db.getAll(...slackRefs) : [];
-        const slackMap = new Map(
-            slackDocs.map((sd, idx) => [uniqueDocs[idx].doc.id, sd.exists ? sd.data() : null])
-        );
+            {/* 메시지 버블 */}
+            <div className={`max-w-[70%] ${senderConfig.bubbleAlign}`}>
+                {/* 발신자 이름 (사용자 제외) */}
+                {!isUser && (
+                    <div className="text-xs text-gray-500 mb-1 px-1">
+                        {senderConfig.name}
+                    </div>
+                )}
 
-        // 응답 변환
-        const conversations = uniqueDocs.map(({ doc, data: v }) => {
-            const msgs = Array.isArray(v.messages) ? v.messages : [];
-            const userCount = msgs.filter(m => m.sender === "user").length;
-            const aiCount = msgs.filter(m => m.sender === "ai").length;
+                {/* 버블 */}
+                <div className={`rounded-2xl px-4 py-2.5 ${senderConfig.bubbleBg}`}>
+                    {/* 모드 스냅샷 */}
+                    {message.modeSnapshot && (
+                        <div className={`text-xs mb-1 ${isUser ? 'text-blue-200' : 'text-gray-500'}`}>
+                            [{message.modeSnapshot}]
+                        </div>
+                    )}
 
-            // ✅ agent 카운트 제대로 계산 (admin도 포함)
-            const agentCount = msgs.filter(m => {
-                const sender = String(m.sender || '').toLowerCase();
-                return sender === 'agent' || sender === 'admin';
-            }).length;
+                    {/* 텍스트 */}
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                        {message.text || '(내용 없음)'}
+                    </p>
 
-            const lastMsg = msgs[msgs.length - 1];
+                    {/* 이미지 */}
+                    {message.pics && message.pics.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            {message.pics.map((pic, idx) => (
+                                <img
+                                    key={idx}
+                                    src={pic.url || pic}
+                                    alt={`첨부 ${idx + 1}`}
+                                    className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                    onClick={() => window.open(pic.url || pic, '_blank')}
+                                    onError={(e) => {
+                                        e.target.style.display = 'none';
+                                        e.target.parentElement.insertAdjacentHTML('beforeend',
+                                            '<div class="w-20 h-20 rounded-lg bg-gray-100 border border-gray-300 flex items-center justify-center text-gray-400 text-xs">이미지<br/>로드 실패</div>'
+                                        );
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
 
-            // ✅ 이미지 첨부 정보 수집
-            const allPics = [];
-            msgs.forEach(m => {
-                if (Array.isArray(m.pics) && m.pics.length > 0) {
-                    m.pics.forEach(p => {
-                        if (p?.url) allPics.push(p.url);
-                    });
-                }
-            });
-
-            const slack = slackMap.get(doc.id);
-
-            // ✅ 슬랙 카드 타입 분류
-            // slack_threads 없으면 FAQ_realtime_cw의 slack_route 사용
-            const slackRoute = v.slack_route || null;
-            const cardTypeFromSlack = slack?.card_type || null;
-
-            const cardInfo = cardTypeFromSlack
-                ? classifyCardType(cardTypeFromSlack)
-                : (slackRoute ? classifyCardTypeFromRoute(slackRoute) : null);
-
-            // ✅ 사용자 이름에서 중간 글자 추출 (예: "화곡역 송아지" -> "송")
-            const extractMiddleChar = (name) => {
-                if (!name || name.length < 3) return name?.charAt(0) || '?';
-                const parts = name.trim().split(/\s+/);
-                if (parts.length > 1) {
-                    // 공백으로 구분된 경우 두번째 단어의 첫 글자
-                    return parts[1]?.charAt(0) || parts[0]?.charAt(1) || '?';
-                }
-                // 공백 없으면 중간 글자
-                const mid = Math.floor(name.length / 2);
-                return name.charAt(mid);
-            };
-
-            return {
-                id: doc.id,
-                chatId: v.chat_id,
-                userId: v.user_id,
-                userName: v.user_name || "익명",
-                userNameInitial: extractMiddleChar(v.user_name), // ✅ 중간 글자 추가
-                brandName: v.brand_name || v.brandName || null,
-                channel: v.channel || "unknown",
-                status: v.status || "waiting",
-                modeSnapshot: v.modeSnapshot || "AUTO",
-                lastMessageAt: v.lastMessageAt?.toDate?.()?.toISOString() || null,
-
-                // ✅ summary 우선, 없으면 마지막 메시지 텍스트
-                lastMessageText: v.summary || lastMsg?.text?.slice(0, 80) || (allPics.length > 0 ? `(이미지 ${allPics.length}개)` : ""),
-                summary: v.summary || null, // ✅ summary 필드 추가
-
-                // ✅ 이미지 정보 추가
-                hasImages: allPics.length > 0,
-                imageCount: allPics.length,
-                firstImageUrl: allPics[0] || null,
-
-                messageCount: {
-                    user: userCount,
-                    ai: aiCount,
-                    agent: agentCount, // ✅ Agent 카운트 추가
-                    total: msgs.length
-                },
-                // ✅ 카테고리 정보 추가
-                categories: Array.isArray(v.categories) ? v.categories : [],
-                // ✅ 슬랙 카드 정보 추가
-                hasSlackCard: !!slack,
-                isTask: cardInfo?.isTask || false,
-                taskType: cardInfo?.taskType || null, // 'work', 'shadow', 'other'
-                slackCardType: cardInfo?.cardType || null,
-            };
-        });
-
-        // 다음 페이지 커서
-        const last = uniqueDocs[uniqueDocs.length - 1];
-        const nextCursor = last
-            ? encodeCursor(
-                last.data.lastMessageAt?.toMillis() || 0,
-                last.data.chat_id
-            )
-            : null;
-
-        return res.json({
-            conversations,
-            nextCursor,
-            _meta: {
-                totalDocs: snap.size,
-                uniqueChats: chatMap.size,
-                returned: conversations.length,
-            }
-        });
-    } catch (error) {
-        console.error("[conversations/list] error:", error);
-        return res.status(500).json({ error: error.message || "internal_error" });
-    }
+                {/* 시간 */}
+                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-right' : 'text-left'}`}>
+                    {formatTime(message.timestamp)}
+                </div>
+            </div>
+        </div>
+    );
 }
