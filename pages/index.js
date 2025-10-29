@@ -294,16 +294,11 @@ export default function TenantPortal() {
   // ✅ 탭 전환 시 대화 리스트/업무카드 로드
   useEffect(() => {
     if (!isLoggedIn || !currentTenant?.id) return;
-    if (activeTab === 'conversations') {
-      fetchConversations();
-    } else if (activeTab === 'tasks') {
+    if (activeTab === 'tasks') {
       fetchTasks();
     }
-    // 탭이 바뀌면 상세 초기화
-    if (activeTab !== 'conversations' && selectedConversation) {
-      setSelectedConversation(null);
-    }
-  }, [activeTab, conversationFilters, currentTenant, isLoggedIn]);
+    // 대화 탭은 ConversationsPage 컴포넌트가 자체적으로 로드
+  }, [activeTab, currentTenant, isLoggedIn]);
 
   async function fetchFAQData() {
     if (!currentTenant) return;
@@ -345,57 +340,7 @@ export default function TenantPortal() {
     }
   }
 
-  // ✅ 대화 리스트 가져오기
-  async function fetchConversations() {
-    if (!currentTenant?.id) return;
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams({
-        tenant: currentTenant.id,
-        limit: 50,
-      });
-      // 'all'은 전송하지 않음
-      if (conversationFilters.status && conversationFilters.status !== 'all') {
-        params.set('status', conversationFilters.status);
-      }
-      if (conversationFilters.channel && conversationFilters.channel !== 'all') {
-        params.set('channel', conversationFilters.channel);
-      }
-
-      const res = await fetch(`/api/conversations/list?${params}`);
-      const data = await res.json();
-      if (data.error) {
-        console.error('❌ 대화 데이터 조회 실패:', data.error);
-        return;
-      }
-      setConversationsData(data.conversations || []);
-      console.log('✅ 대화 데이터 로드 완료:', data.conversations?.length || 0);
-    } catch (error) {
-      console.error('❌ 대화 조회 에러:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // ✅ 대화 상세 가져오기
-  async function fetchConversationDetail(chatId) {
-    if (!currentTenant?.id || !chatId) return;
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/conversations/detail?tenant=${currentTenant.id}&chatId=${chatId}`);
-      const data = await res.json();
-      if (data.error) {
-        console.error('❌ 대화 상세 조회 실패:', data.error);
-        return;
-      }
-      setSelectedConversation(data);
-      console.log('✅ 대화 상세 로드 완료:', data);
-    } catch (error) {
-      console.error('❌ 대화 상세 조회 에러:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  // ✅ 대화 탭은 ConversationsPage 컴포넌트가 자체적으로 관리
 
   // ✅ 업무카드 대시보드 가져오기
   async function fetchTasks() {
@@ -1518,4 +1463,3 @@ function TaskCard({ task }) {
     </div>
   );
 }
-
