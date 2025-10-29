@@ -3,7 +3,6 @@ import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, Alert
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import ConversationsPage from '../components/ConversationsPage';
 
-
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
 
 // ✅ 플랜 설정
@@ -1519,3 +1518,4 @@ function TaskCard({ task }) {
     </div>
   );
 }
+
