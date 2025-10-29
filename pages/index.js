@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, AlertCircle, Crown, Calendar, BarChart3, Users, MessageSquare, Zap, Building2, ChevronDown, X, Copy, Check, ChevronLeft, ChevronRight, Settings, ExternalLink, BookOpen } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import ConversationsPage from '../components/ConversationsPage';
+
 
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
 
@@ -49,13 +51,6 @@ export default function TenantPortal() {
   const [faqData, setFaqData] = useState([]);
   const [statsData, setStatsData] = useState(null);
 
-  // ✅ 대화/업무 탭용 상태
-  const [conversationsData, setConversationsData] = useState([]);
-  const [conversationFilters, setConversationFilters] = useState({
-    status: 'all',
-    channel: 'all',
-  });
-  const [selectedConversation, setSelectedConversation] = useState(null);
 
   // ✅ 업무카드 탭용 상태
   const [tasksData, setTasksData] = useState({ tasks: [], summary: {} });
@@ -1169,56 +1164,7 @@ export default function TenantPortal() {
 
           {/* ✅ 대화 관리 탭 */}
           {activeTab === 'conversations' && (
-            <div className="space-y-6">
-              {/* 필터 */}
-              <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6">
-                <div className="flex flex-wrap gap-3">
-                  <select
-                    value={conversationFilters.status}
-                    onChange={(e) => setConversationFilters(prev => ({ ...prev, status: e.target.value }))}
-                    className="px-4 py-2 bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-400 focus:outline-none text-sm"
-                  >
-                    <option value="all">전체 상태</option>
-                    <option value="waiting">대기중</option>
-                    <option value="in_progress">진행중</option>
-                    <option value="resolved">해결됨</option>
-                  </select>
-
-                  <select
-                    value={conversationFilters.channel}
-                    onChange={(e) => setConversationFilters(prev => ({ ...prev, channel: e.target.value }))}
-                    className="px-4 py-2 bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-400 focus:outline-none text-sm"
-                  >
-                    <option value="all">전체 채널</option>
-                    <option value="widget">웹 위젯</option>
-                    <option value="naver">네이버톡톡</option>
-                    <option value="kakao">카카오톡</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* 대화 리스트 */}
-              {conversationsData.length > 0 ? (
-                <div className="space-y-4">
-                  {conversationsData.map(conv => (
-                    <ConversationCard
-                      key={conv.id}
-                      conversation={conv}
-                      onDetail={() => fetchConversationDetail(conv.chatId || conv.id)}
-                      onClose={() => setSelectedConversation(null)}
-                      selectedConversation={selectedConversation}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-8 sm:p-16 text-center">
-                  <MessageSquare className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-base sm:text-lg font-semibold">
-                    대화 내역이 없습니다
-                  </p>
-                </div>
-              )}
-            </div>
+            <ConversationsPage tenantId={currentTenant.tenantId} />
           )}
 
           {/* ✅ 업무카드 탭 */}
@@ -1535,461 +1481,40 @@ export default function TenantPortal() {
   );
 }
 
-// ✅ 대화 카드 컴포넌트 (개선 버전)
-function ConversationCard({ conversation, onDetail, onClose, selectedConversation }) {
-  const [expanded, setExpanded] = React.useState(false);
-
-  const handleClick = () => {
-    if (!expanded) {
-      onDetail();
-    }
-    setExpanded(!expanded);
-  };
-
-  const channelBadge = {
-    widget: 'bg-blue-100 text-blue-700 border border-blue-200',
-    naver: 'bg-green-100 text-green-700 border border-green-200',
-    kakao: 'bg-yellow-100 text-yellow-700 border border-yellow-200',
-    unknown: 'bg-gray-100 text-gray-700 border border-gray-200',
-  }[conversation.channel] || 'bg-gray-100 text-gray-700 border border-gray-200';
-
-  const statusConfig = {
-    waiting: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', label: '대기중', icon: '⏳' },
-    in_progress: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: '진행중', icon: '💬' },
-    resolved: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: '해결됨', icon: '✅' },
-  }[conversation.status] || { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200', label: '알수없음', icon: '❓' };
-
-  // 상대 시간 표시 (예: "5분 전", "2시간 전")
-  const getRelativeTime = (dateString) => {
-    if (!dateString) return '-';
-    const now = new Date();
-    const date = new Date(dateString);
-    const diff = now - date;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (minutes < 1) return '방금 전';
-    if (minutes < 60) return `${minutes}분 전`;
-    if (hours < 24) return `${hours}시간 전`;
-    if (days < 7) return `${days}일 전`;
-    return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
-  };
-
-  return (
-    <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 overflow-hidden">
-      {/* 📌 요약 카드 */}
-      <div
-        className="p-5 cursor-pointer hover:bg-gray-50/50 transition-colors"
-        onClick={handleClick}
-      >
-        <div className="flex justify-between items-start gap-4">
-          <div className="flex-1 min-w-0">
-            {/* 헤더: 이름 + 배지들 */}
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <h3 className="font-bold text-lg text-gray-800">{conversation.userName || '익명'}</h3>
-              <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold ${channelBadge}`}>
-                {conversation.channel}
-              </span>
-              <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border} border`}>
-                {statusConfig.icon} {statusConfig.label}
-              </span>
-              {conversation.brandName && (
-                <span className="text-xs px-2.5 py-1 rounded-lg font-semibold bg-purple-100 text-purple-700 border border-purple-200">
-                  🏢 {conversation.brandName}
-                </span>
-              )}
-              {conversation.isTask && (
-                <span className="text-xs px-2.5 py-1 rounded-lg font-semibold bg-red-100 text-red-700 border border-red-200">
-                  📌 업무
-                </span>
-              )}
-            </div>
-
-            {/* 마지막 메시지 미리보기 */}
-            <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-              {conversation.lastMessageText || '(메시지 없음)'}
-            </p>
-
-            {/* 통계 정보 */}
-            <div className="flex items-center gap-4 text-xs text-gray-500">
-              <span className="flex items-center gap-1">
-                💬 <span className="font-semibold">{conversation.messageCount?.total ?? 0}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                👤 <span className="font-semibold">{conversation.messageCount?.user ?? 0}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                🤖 <span className="font-semibold">{conversation.messageCount?.ai ?? 0}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                👨‍💼 <span className="font-semibold">{conversation.messageCount?.agent ?? 0}</span>
-              </span>
-            </div>
-          </div>
-
-          {/* 시간 표시 */}
-          <div className="flex flex-col items-end gap-1 text-right shrink-0">
-            <span className="text-xs font-semibold text-gray-500">
-              {getRelativeTime(conversation.lastMessageAt)}
-            </span>
-            <span className="text-xs text-gray-400">
-              {conversation.lastMessageAt
-                ? new Date(conversation.lastMessageAt).toLocaleTimeString('ko-KR', {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-                : '-'
-              }
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 📄 상세 내용 (펼쳤을 때) */}
-      {expanded && selectedConversation && (
-        (selectedConversation.conversation?.chatId === conversation.chatId ||
-          selectedConversation.conversation?.id === conversation.id) && (
-          <div className="border-t border-gray-200 bg-gradient-to-b from-gray-50/50 to-white/50">
-            <div className="p-5">
-              {/* 상세 헤더 */}
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-bold text-lg text-gray-800 flex items-center gap-2">
-                  💬 대화 내용
-                  <span className="text-xs font-normal text-gray-500">
-                    ({selectedConversation.messages?.length || 0}개 메시지)
-                  </span>
-                </h4>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpanded(false);
-                    onClose();
-                  }}
-                  className="p-2 hover:bg-gray-200/70 rounded-lg transition-colors"
-                  title="닫기"
-                >
-                  <X className="w-5 h-5 text-gray-600" />
-                </button>
-              </div>
-
-              {/* 대화 메시지 리스트 */}
-              <div className="space-y-3 max-h-[500px] overflow-y-auto mb-4 pr-2 custom-scrollbar">
-                {selectedConversation.messages && selectedConversation.messages.length > 0 ? (
-                  selectedConversation.messages.map((msg, idx) => {
-                    const senderConfig = {
-                      user: {
-                        bg: 'bg-gradient-to-br from-gray-100 to-gray-50',
-                        icon: '👤',
-                        label: '사용자',
-                        align: 'items-start'
-                      },
-                      ai: {
-                        bg: 'bg-gradient-to-br from-blue-50 to-blue-100/50',
-                        icon: '🤖',
-                        label: 'AI',
-                        align: 'items-start'
-                      },
-                      agent: {
-                        bg: 'bg-gradient-to-br from-green-50 to-green-100/50',
-                        icon: '👨‍💼',
-                        label: '상담원',
-                        align: 'items-start'
-                      },
-                      admin: {
-                        bg: 'bg-gradient-to-br from-purple-50 to-purple-100/50',
-                        icon: '👨‍💼',
-                        label: '관리자',
-                        align: 'items-start'
-                      }
-                    }[msg.sender] || {
-                      bg: 'bg-gray-50',
-                      icon: '❓',
-                      label: '알수없음',
-                      align: 'items-start'
-                    };
-
-                    return (
-                      <div
-                        key={idx}
-                        className={`${senderConfig.bg} rounded-xl p-4 shadow-sm border border-gray-100/50`}
-                      >
-                        {/* 메시지 헤더 */}
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-700">
-                              {senderConfig.icon} {senderConfig.label}
-                            </span>
-                            {msg.modeSnapshot && (
-                              <span className="text-xs px-2 py-0.5 bg-white/70 rounded-full text-gray-600 font-semibold">
-                                {msg.modeSnapshot}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {msg.timestamp
-                              ? new Date(msg.timestamp).toLocaleString('ko-KR', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
-                              : '-'
-                            }
-                          </span>
-                        </div>
-
-                        {/* 메시지 내용 */}
-                        <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">
-                          {msg.text || ''}
-                        </div>
-
-                        {/* 이미지 첨부 */}
-                        {msg.pics && msg.pics.length > 0 && (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {msg.pics.map((pic, picIdx) => (
-                              <div
-                                key={picIdx}
-                                className="w-20 h-20 bg-gray-200 rounded-lg overflow-hidden border border-gray-300"
-                              >
-                                <img
-                                  src={pic}
-                                  alt={`첨부 이미지 ${picIdx + 1}`}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Crect fill="%23ddd" width="100" height="100"/%3E%3Ctext x="50" y="50" text-anchor="middle" dy=".3em" fill="%23999" font-family="sans-serif"%3E🖼️%3C/text%3E%3C/svg%3E';
-                                  }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-8 text-gray-400">
-                    메시지가 없습니다
-                  </div>
-                )}
-              </div>
-
-              {/* 통계 정보 */}
-              {selectedConversation.stats && (
-                <div className="bg-gradient-to-r from-purple-50 via-pink-50 to-yellow-50 rounded-xl p-4 mb-4 border border-purple-100">
-                  <h5 className="font-bold text-sm mb-3 text-gray-800 flex items-center gap-2">
-                    📊 대화 통계
-                  </h5>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-800">{selectedConversation.stats.userChats}</div>
-                      <div className="text-xs text-gray-600 mt-1">사용자 메시지</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">{selectedConversation.stats.aiChats}</div>
-                      <div className="text-xs text-gray-600 mt-1">AI 처리</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">{selectedConversation.stats.agentChats}</div>
-                      <div className="text-xs text-gray-600 mt-1">상담원 개입</div>
-                    </div>
-                  </div>
-
-                  {/* AI 세부 통계 */}
-                  {(selectedConversation.stats.aiAuto > 0 ||
-                    selectedConversation.stats.aiConfirmApproved > 0 ||
-                    selectedConversation.stats.aiConfirmEdited > 0) && (
-                      <div className="mt-4 pt-4 border-t border-purple-200/50">
-                        <div className="text-xs text-gray-600 mb-2 font-semibold">AI 응답 상세</div>
-                        <div className="grid grid-cols-3 gap-2 text-xs">
-                          <div className="bg-white/70 rounded-lg p-2 text-center">
-                            <div className="font-bold text-blue-600">{selectedConversation.stats.aiAuto}</div>
-                            <div className="text-gray-600">자동</div>
-                          </div>
-                          <div className="bg-white/70 rounded-lg p-2 text-center">
-                            <div className="font-bold text-green-600">{selectedConversation.stats.aiConfirmApproved}</div>
-                            <div className="text-gray-600">승인됨</div>
-                          </div>
-                          <div className="bg-white/70 rounded-lg p-2 text-center">
-                            <div className="font-bold text-orange-600">{selectedConversation.stats.aiConfirmEdited}</div>
-                            <div className="text-gray-600">수정됨</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                </div>
-              )}
-
-              {/* 대화 메타 정보 */}
-              {selectedConversation.conversation && (
-                <div className="bg-gray-50/70 rounded-xl p-4 mb-4 text-xs space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">대화 ID</span>
-                    <span className="font-mono text-gray-800">{selectedConversation.conversation.chatId}</span>
-                  </div>
-                  {selectedConversation.conversation.cwConversationId && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Chatwoot ID</span>
-                      <span className="font-mono text-gray-800">{selectedConversation.conversation.cwConversationId}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">현재 모드</span>
-                    <span className="font-semibold text-gray-800">{selectedConversation.conversation.modeSnapshot || 'AUTO'}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* 슬랙 링크 */}
-              {selectedConversation.slack?.slackUrl && (
-                <a
-                  href={selectedConversation.slack.slackUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all font-semibold shadow-lg hover:shadow-xl"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  슬랙에서 보기
-                </a>
-              )}
-            </div>
-          </div>
-        )
-      )}
-
-      {/* 커스텀 스크롤바 스타일 */}
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #f1f1f1;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-      `}</style>
-    </div>
-  );
-}
-
-// ✅ 업무카드 컴포넌트 (개선 버전)
+// ✅ 업무카드 컴포넌트
 function TaskCard({ task }) {
-  const channelConfig = {
-    widget: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', icon: '🌐' },
-    naver: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', icon: '💚' },
-    kakao: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-200', icon: '💛' },
-  }[task.channel] || { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200', icon: '❓' };
-
-  const statusConfig = {
-    pending: { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', label: '대기', icon: '⏳' },
-    inProgress: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200', label: '진행중', icon: '💬' },
-    completed: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200', label: '완료', icon: '✅' },
-  }[task.status] || { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200', label: '알수없음', icon: '❓' };
-
-  // 상대 시간 표시
-  const getRelativeTime = (dateString) => {
-    if (!dateString) return '-';
-    const now = new Date();
-    const date = new Date(dateString);
-    const diff = now - date;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (minutes < 1) return '방금 전';
-    if (minutes < 60) return `${minutes}분 전`;
-    if (hours < 24) return `${hours}시간 전`;
-    if (days < 7) return `${days}일 전`;
-    return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
-  };
+  const channelBadge = {
+    widget: 'bg-blue-100 text-blue-700',
+    naver: 'bg-green-100 text-green-700',
+    kakao: 'bg-yellow-100 text-yellow-700',
+  }[task.channel] || 'bg-gray-100 text-gray-700';
 
   return (
-    <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 border border-gray-100 p-5">
-      <div className="flex justify-between items-start gap-4">
-        <div className="flex-1 min-w-0">
-          {/* 헤더: 이름 + 배지들 */}
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <h3 className="font-bold text-lg text-gray-800">{task.userName || '익명'}</h3>
-
-            <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold ${channelConfig.bg} ${channelConfig.text} ${channelConfig.border} border flex items-center gap-1`}>
-              {channelConfig.icon} {task.channel}
-            </span>
-
-            <span className={`text-xs px-2.5 py-1 rounded-lg font-semibold ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border} border flex items-center gap-1`}>
-              {statusConfig.icon} {statusConfig.label}
-            </span>
-
-            {task.brandName && (
-              <span className="text-xs px-2.5 py-1 rounded-lg font-semibold bg-purple-100 text-purple-700 border border-purple-200">
-                🏢 {task.brandName}
-              </span>
-            )}
-
+    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-4 mb-3 hover:shadow-xl transition-all">
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-bold">{task.userName}</span>
+            <span className={`text-xs px-2 py-1 rounded-lg font-semibold ${channelBadge}`}>{task.channel}</span>
             {task.priority === 'high' && (
-              <span className="text-xs px-2.5 py-1 rounded-lg font-semibold bg-red-100 text-red-700 border border-red-200 animate-pulse">
-                🚨 긴급
-              </span>
-            )}
-
-            {task.cardType && (
-              <span className="text-xs px-2.5 py-1 rounded-lg font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                📋 {task.cardType}
-              </span>
+              <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg font-semibold">🚨 긴급</span>
             )}
           </div>
-
-          {/* 마지막 메시지 */}
-          <p className="text-sm text-gray-700 mb-3 line-clamp-3 leading-relaxed">
-            {task.lastMessage || '(메시지 없음)'}
+          <p className="text-sm text-gray-600 mb-2">{task.lastMessage}</p>
+          <p className="text-xs text-gray-400">
+            {task.lastMessageAt ? new Date(task.lastMessageAt).toLocaleString('ko-KR') : '-'}
           </p>
-
-          {/* 메타 정보 */}
-          <div className="flex items-center gap-4 text-xs text-gray-500">
-            <span className="flex items-center gap-1">
-              🕐 <span className="font-semibold">{getRelativeTime(task.lastMessageAt)}</span>
-            </span>
-            {task.conversationId && (
-              <span className="flex items-center gap-1 font-mono">
-                💬 {task.chatId || task.conversationId.slice(0, 8)}...
-              </span>
-            )}
-            {task.createdAt && (
-              <span className="flex items-center gap-1">
-                📅 생성: {new Date(task.createdAt).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-              </span>
-            )}
-          </div>
         </div>
-
-        {/* 액션 버튼 */}
-        <div className="flex flex-col gap-2 shrink-0">
-          {task.slackUrl && (
-            <a
-              href={task.slackUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm rounded-xl hover:from-purple-700 hover:to-indigo-700 transition-all font-semibold shadow-lg hover:shadow-xl whitespace-nowrap"
-            >
-              <ExternalLink className="w-4 h-4" />
-              슬랙
-            </a>
-          )}
-
-          {task.lastMessageAt && (
-            <div className="text-right text-xs text-gray-400">
-              {new Date(task.lastMessageAt).toLocaleTimeString('ko-KR', {
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
-            </div>
-          )}
-        </div>
+        {task.slackUrl && (
+          <a
+            href={task.slackUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-purple-600 text-white text-sm rounded-xl hover:bg-purple-700 transition-all font-semibold"
+          >
+            슬랙에서 보기
+          </a>
+        )}
       </div>
     </div>
   );
