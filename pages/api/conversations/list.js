@@ -1,236 +1,203 @@
 // pages/api/conversations/list.js
-// Conversations list API (stats-backed) — icn1 region
-export const config = { regions: ['icn1'] };
+import { getFirestore, FieldPath, Timestamp } from "firebase-admin/firestore";
+import { initializeApp, getApps, applicationDefault } from "firebase-admin/app";
 
-import admin from "firebase-admin";
-
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
+// ── Firebase Admin singleton ────────────────────────────────
+if (!getApps().length) {
+    initializeApp({
+        credential: applicationDefault(),
     });
 }
-const db = admin.firestore();
+const db = getFirestore();
 
-// ───────── helpers ─────────
-const toInt = (v, d = 0) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : d;
-};
-const asArray = (v) => {
-    if (!v) return [];
-    if (Array.isArray(v)) return v.filter(Boolean);
-    return String(v).split(",").map(s => s.trim()).filter(Boolean);
-};
+// Vercel 서버리스 리전 (Node 런타임)
+export const config = { regions: ["icn1"] };
+
+// ── Helpers ─────────────────────────────────────────────────
+const N = 50; // 리스트 컷
+const asMs = (ts) =>
+    typeof ts?.toMillis === "function" ? ts.toMillis() : Number(ts) || null;
+
 const normalizeChannel = (v) => {
-    const s = String(v || "").trim().toLowerCase();
+    const s = String(v || "").toLowerCase();
     if (!s) return "unknown";
     if (s.includes("naver")) return "naver";
     if (s.includes("kakao")) return "kakao";
     if (s.includes("widget") || s.includes("web")) return "widget";
-    return ["naver", "kakao", "widget"].includes(s) ? s : "unknown";
+    return "unknown";
 };
-const stripBrandPrefix = (name, brand) => {
-    const n = String(name || "").trim();
-    const b = String(brand || "").trim();
-    if (!n) return "";
-    if (b && n.startsWith(b)) {
-        return n.slice(b.length).trim().replace(/^[-_]+/, '').trim() || n;
+
+const isWorkRoute = (route) => {
+    const r = String(route || "").toLowerCase();
+    return r === "create" || r === "update" || r === "upgrade" || r === "upgrade_task";
+};
+
+const toRouteKinds = (d) => {
+    // 우선순위: 배열 필드가 오면 그대로, 없으면 단일 필드 추론
+    if (Array.isArray(d.routeKinds) && d.routeKinds.length) return d.routeKinds;
+    const r = [];
+    const single = d.slack_route || d.route || d.last_route;
+    if (single) r.push(String(single).toLowerCase());
+    return r;
+};
+
+const countByRole = (messages = []) => {
+    let user = 0, ai = 0, agent = 0;
+    for (const m of messages) {
+        const s = String(m?.sender || "").toLowerCase();
+        if (s === "user") user++;
+        else if (s === "ai") ai++;
+        else if (s === "agent" || s === "admin") agent++;
     }
-    return n;
+    return { user, ai, agent };
 };
 
-// routeClass 계산: 업무카드(create/update/upgrade) / 상호작용(confirm/agent_thread) / shadow / none
-function classifyRouteFromStats(st = {}) {
-    const task =
-        (st.route_upgrade_task || 0) +
-        (st.route_create || 0) +
-        (st.route_update || 0);
+const lastSnippet = (d) => {
+    // 사용자 최근 텍스트 > ai/admin 답변 > 문서 요약
+    const msgs = Array.isArray(d.messages) ? d.messages : [];
+    const lastUser = [...msgs].reverse().find((m) => m.sender === "user" && m.text);
+    if (lastUser?.text) return lastUser.text;
+    if (d.ai_answer) return d.ai_answer;
+    if (d.admin) return d.admin;
+    const any = [...msgs].reverse().find((m) => m.text);
+    return any?.text || "";
+};
 
-    const interaction =
-        (st.route_confirm_draft || 0) +
-        (st.agent_thread || 0);
+const makeItem = ({ tenantId, convId, base, counters }) => {
+    const routeKinds = toRouteKinds(base);
+    const hasWork = routeKinds.some(isWorkRoute);
+    const channel = normalizeChannel(base.channel || base.source);
+    const categories = Array.isArray(base.categories) ? base.categories : [];
+    const name =
+        base.user_name ||
+        base.contact_name ||
+        base.alias ||
+        `${base.brandName || base.brand_name || ""} (${convId})`;
 
-    const shadowOnly =
-        (st.route_shadow_create || 0) +
-        (st.route_shadow_update || 0) +
-        (st.route_skip || 0);
+    return {
+        id: `${tenantId}_${convId}`,
+        tenantId,
+        chatId: String(convId),
+        userName: name,
+        lastMessageAt: asMs(base.lastMessageAt) || asMs(base.messages?.slice(-1)[0]?.timestamp) || null,
+        lastMessageText: lastSnippet(base),
+        channel,
+        routeKinds,
+        routeClass: hasWork ? "work" : "passive",
+        categories,
+        counters: {
+            user: counters.user || 0,
+            ai: counters.ai || 0,
+            agent: counters.agent || 0,
+        },
+        // status는 더 이상 의미 없으면 프론트에서 숨겨도 OK
+        status: base.status || null,
+    };
+};
 
-    if (task > 0) return "task";
-    if (interaction > 0) return "interaction";
-    if (shadowOnly > 0) return "shadow";
-    return "none";
-}
+// ── Query by stats_conversations (fast path) ────────────────
+async function listByStats(tenantId) {
+    const start = `${tenantId}_`;
+    const end = `${tenantId}_\uf8ff`;
+    const idField = FieldPath.documentId();
 
-// UI 톤: task→color / shadow→muted / interaction/none→neutral(필요시 accent로 매핑)
-function toneFromRouteClass(routeClass) {
-    if (routeClass === "task") return "color";
-    if (routeClass === "shadow") return "muted";
-    return "neutral";
-}
+    const snap = await db
+        .collection("stats_conversations")
+        .where(idField, ">=", start)
+        .where(idField, "<", end)
+        .get();
 
-async function loadStatsFor(tenantId, chatIds) {
-    const refs = chatIds.map(cid => db.doc(`stats_conversations/${tenantId}_${cid}`));
-    if (!refs.length) return {};
-    const snaps = await db.getAll(...refs);
-    const out = {};
-    snaps.forEach(s => {
-        if (!s.exists) return;
-        const id = s.id.split("_").slice(1).join("_"); // chatId
-        out[id] = s.data();
+    if (snap.empty) return [];
+
+    // 최신순 정렬 (updated_at 기준, 없으면 id 순)
+    const stats = snap.docs
+        .map((d) => {
+            const data = d.data() || {};
+            const updated = asMs(data.updated_at) || 0;
+            const idx = d.id.indexOf("_");
+            const convId = idx >= 0 ? d.id.slice(idx + 1) : null;
+            return { convId, updated, data };
+        })
+        .filter((x) => x.convId)
+        .sort((a, b) => b.updated - a.updated)
+        .slice(0, N);
+
+    // 각 대화의 최신 문서 1건만 가져와 요약
+    const promises = stats.map(async ({ convId, data }) => {
+        const qs = await db
+            .collection("FAQ_realtime_cw")
+            .where("chat_id", "==", String(convId))
+            .orderBy("lastMessageAt", "desc")
+            .limit(1)
+            .get();
+
+        const doc = qs.empty ? null : qs.docs[0];
+        const base = doc ? doc.data() : { chat_id: convId };
+        if (!base.tenant_id) base.tenant_id = tenantId;
+
+        const counters = {
+            user: data.user_chats || 0,
+            ai: data.ai_allchats || data.ai_autochats || 0,
+            agent: data.agent_chats || 0,
+        };
+        return makeItem({ tenantId, convId, base, counters });
     });
-    return out;
+
+    const items = await Promise.all(promises);
+    // null 방지 및 최종 정렬
+    return items
+        .filter(Boolean)
+        .sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
 }
 
-async function recoverChannelsByInboxId(inboxIds) {
-    const uniq = Array.from(new Set(inboxIds.filter(Boolean)));
-    if (!uniq.length) return {};
-    const out = {};
-    for (let i = 0; i < uniq.length; i += 10) {
-        const chunk = uniq.slice(i, i + 10);
-        const qs = await db.collection("integrations").where("cw.inboxId", "in", chunk).get();
-        qs.forEach(d => {
-            const v = d.data();
-            const inboxId = Number(v?.cw?.inboxId || 0);
-            const ch = String(v?.channel || "").toLowerCase();
-            out[inboxId] = normalizeChannel(ch);
-        });
+// ── Fallback: scan FAQ_realtime_cw (when no stats) ──────────
+async function listByFallback(tenantId) {
+    // 최근 문서부터 모으되, chat_id 단위로 1개씩만
+    const qs = await db
+        .collection("FAQ_realtime_cw")
+        .where("tenant_id", "==", tenantId)
+        .orderBy("lastMessageAt", "desc")
+        .limit(400) // 여유로 많이 가져와 chatId uniq 처리
+        .get();
+
+    if (qs.empty) return [];
+
+    const byChat = new Map();
+    for (const doc of qs.docs) {
+        const d = doc.data();
+        const chatId = String(d.chat_id || "");
+        if (!chatId) continue;
+        if (byChat.has(chatId)) continue; // 최신 1건만
+        byChat.set(chatId, d);
+        if (byChat.size >= N) break;
     }
-    return out;
+
+    const items = [];
+    for (const [convId, base] of byChat.entries()) {
+        const counters = countByRole(base.messages || []);
+        items.push(makeItem({ tenantId, convId, base, counters }));
+    }
+
+    return items.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
 }
 
+// ── API Handler ─────────────────────────────────────────────
 export default async function handler(req, res) {
     try {
-        const tenantId = String(req.query.tenant || req.query.tenantId || "").trim();
-        if (!tenantId) return res.status(400).json({ error: "missing tenant" });
+        const tenantId = String(req.query.tenant || req.headers["x-tenant-id"] || "").trim();
+        if (!tenantId) return res.status(400).json({ ok: false, error: "tenant required" });
 
-        const limit = Math.min(100, Math.max(5, toInt(req.query.limit, 30)));
-        const cursorTs = toInt(req.query.cursor, 0);
-        const qChannel = normalizeChannel(req.query.channel);
-        const qCategories = asArray(req.query.category || req.query.categories);
-        const qSearch = String(req.query.q || "").trim();
+        // 1) stats 우선
+        let items = await listByStats(tenantId);
 
-        let q = db.collection("FAQ_realtime_cw")
-            .where("tenant_id", "==", tenantId)
-            .orderBy("lastMessageAt", "desc");
-
-        if (cursorTs > 0) {
-            q = q.startAfter(new admin.firestore.Timestamp(
-                Math.floor(cursorTs / 1000), (cursorTs % 1000) * 1e6
-            ));
-        }
-        if (["naver", "kakao", "widget", "unknown"].includes(qChannel)) {
-            q = q.where("channel", "==", qChannel);
+        // 2) 폴백
+        if (!items.length) {
+            items = await listByFallback(tenantId);
         }
 
-        const snap = await q.limit(limit * 5).get();
-
-        // chat_id 기준 최신만
-        const byChat = new Map();
-        snap.forEach(doc => {
-            const d = doc.data() || {};
-            const cid = String(d.chat_id || "");
-            if (!cid || byChat.has(cid)) return;
-            byChat.set(cid, { id: doc.id, ...d });
-        });
-        let items = Array.from(byChat.values());
-
-        // category 필터
-        if (qCategories.length > 0) {
-            const wanted = new Set(qCategories.map(s => s.toLowerCase()));
-            items = items.filter(d => {
-                const cats = asArray(d.category || d.categories).map(s => s.toLowerCase());
-                return cats.some(c => wanted.has(c));
-            });
-        }
-        // 소프트 검색
-        if (qSearch) {
-            const ql = qSearch.toLowerCase();
-            items = items.filter(d => {
-                const hay = [
-                    String(d.user_name || ""),
-                    String(d.brandName || d.brand_name || ""),
-                    String(d.admin || ""),
-                    String(d.ai_answer || ""),
-                    ...(Array.isArray(d.messages) ? d.messages.slice(-3).map(m => String(m.text || "")) : [])
-                ].join(" ").toLowerCase();
-                return hay.includes(ql);
-            });
-        }
-
-        const slice = items.slice(0, limit);
-
-        const chatIds = slice.map(d => String(d.chat_id));
-        const statsMap = await loadStatsFor(tenantId, chatIds);
-
-        const inboxIdsNeeding = slice.filter(d => !d.channel && d.cw_inbox_id)
-            .map(d => Number(d.cw_inbox_id));
-        const recovered = await recoverChannelsByInboxId(inboxIdsNeeding);
-
-        const conversations = slice.map(d => {
-            const chatId = String(d.chat_id);
-            const brand = d.brandName || d.brand_name || "";
-            const alias = stripBrandPrefix(d.user_name || "", brand) || (d.user_name || "");
-            const stats = statsMap[chatId] || {};
-
-            const counts = {
-                user: toInt(stats.user_chats, 0),
-                ai: toInt(stats.ai_allchats, 0),
-                agent: toInt(stats.agent_chats, 0),
-            };
-            const categories = asArray(d.category || d.categories);
-            const channel = normalizeChannel(d.channel || recovered[Number(d.cw_inbox_id)] || "unknown");
-
-            // route 분류 + 톤
-            const routeClass = classifyRouteFromStats(stats);           // 'task' | 'interaction' | 'shadow' | 'none'
-            const hasTaskRoute = routeClass === "task";
-            const tone = toneFromRouteClass(routeClass);                // 'color' | 'muted' | 'neutral'
-
-            const lastMs = d.lastMessageAt?.toMillis ? d.lastMessageAt.toMillis() : Date.now();
-
-            return {
-                chatId,
-                lastMessageAt: lastMs,
-                title: `${alias || "손님"} (${chatId})`,
-                preview: String(
-                    d.admin ||
-                    d.ai_answer ||
-                    (Array.isArray(d.messages) && d.messages.length ? d.messages[d.messages.length - 1].text : "") ||
-                    ""
-                ),
-                brandName: brand,
-                avatarInitials: (alias || brand || chatId).slice(0, 2),
-                channel,
-                counts,
-                categories,
-                routeClass,       // NEW
-                hasTaskRoute,     // NEW (업무카드 라우팅 여부)
-                tone,
-                slack_route: d.slack_route || null,
-                status: d.status || null,
-            };
-        });
-
-        const nextCursor = conversations.length
-            ? conversations[conversations.length - 1].lastMessageAt
-            : null;
-
-        return res.json({
-            conversations,
-            nextCursor,
-            _meta: {
-                tenantId,
-                fetched: slice.length,
-                scannedDocs: snap.size,
-                uniqueChats: byChat.size,
-                hasMore: items.length > slice.length,
-            },
-        });
+        return res.status(200).json({ ok: true, items });
     } catch (e) {
-        console.error("[api/conversations/list] error", e);
-        return res.status(500).json({ error: e.message || "internal_error" });
+        console.error("[list] fatal:", e);
+        return res.status(500).json({ ok: false, error: e.message });
     }
 }
