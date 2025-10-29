@@ -1,245 +1,229 @@
 // pages/api/conversations/list.js
 import admin from "firebase-admin";
 
-// ── Firebase Admin singleton (환경변수 기반) ────────────────
 if (!admin.apps.length) {
-    try {
-        // 환경변수가 있으면 명시적 credential 사용
-        if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-            admin.initializeApp({
-                credential: admin.credential.cert({
-                    projectId: process.env.FIREBASE_PROJECT_ID,
-                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                    privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-                }),
-            });
-            console.log("[Firebase] Initialized with explicit credentials");
-        } else {
-            // Vercel/GCP 환경에서는 applicationDefault() 사용
-            admin.initializeApp({
-                credential: admin.credential.applicationDefault(),
-            });
-            console.log("[Firebase] Initialized with application default credentials");
-        }
-    } catch (error) {
-        console.error("[Firebase] Initialization error:", error);
-        // 이미 초기화된 경우 무시
-        if (!error.message?.includes("already exists")) {
-            throw error;
-        }
-    }
+    admin.initializeApp({
+        credential: admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+        }),
+    });
 }
 
 const db = admin.firestore();
 
-// Vercel 서버리스 리전 (Node 런타임)
-export const config = { regions: ["icn1"] };
-
-// ── Helpers ─────────────────────────────────────────────────
-const N = 50; // 리스트 컷
-const asMs = (ts) =>
-    typeof ts?.toMillis === "function" ? ts.toMillis() : Number(ts) || null;
-
-const normalizeChannel = (v) => {
-    const s = String(v || "").toLowerCase();
-    if (!s) return "unknown";
+// ── helpers
+function normalizeChannel(v) {
+    const s = String(v || "").toLowerCase().trim();
+    if (!s) return "widget";
     if (s.includes("naver")) return "naver";
     if (s.includes("kakao")) return "kakao";
+    if (s.includes("channel")) return s; // channeltalk_kakao 등
     if (s.includes("widget") || s.includes("web")) return "widget";
     return "unknown";
-};
+}
 
-const isWorkRoute = (route) => {
-    const r = String(route || "").toLowerCase();
-    return r === "create" || r === "update" || r === "upgrade" || r === "upgrade_task";
-};
+function clampLimit(x, def = 50, max = 100) {
+    const n = Number(x) || def;
+    return Math.max(1, Math.min(max, n));
+}
 
-const toRouteKinds = (d) => {
-    // 우선순위: 배열 필드가 오면 그대로, 없으면 단일 필드 추론
-    if (Array.isArray(d.routeKinds) && d.routeKinds.length) return d.routeKinds;
-    const r = [];
-    const single = d.slack_route || d.route || d.last_route;
-    if (single) r.push(String(single).toLowerCase());
-    return r;
-};
-
-const countByRole = (messages = []) => {
-    let user = 0, ai = 0, agent = 0;
-    for (const m of messages) {
-        const s = String(m?.sender || "").toLowerCase();
-        if (s === "user") user++;
-        else if (s === "ai") ai++;
-        else if (s === "agent" || s === "admin") agent++;
+function decodeCursor(cur) {
+    try {
+        if (!cur) return null;
+        const obj = JSON.parse(Buffer.from(cur, "base64").toString("utf8"));
+        if (Number.isFinite(obj.ts) && typeof obj.chatId === "string") return obj;
+        return null;
+    } catch {
+        return null;
     }
-    return { user, ai, agent };
-};
+}
 
-const lastSnippet = (d) => {
-    // 사용자 최근 텍스트 > ai/admin 답변 > 문서 요약
-    const msgs = Array.isArray(d.messages) ? d.messages : [];
-    const lastUser = [...msgs].reverse().find((m) => m.sender === "user" && m.text);
-    if (lastUser?.text) return lastUser.text;
-    if (d.ai_answer) return d.ai_answer;
-    if (d.admin) return d.admin;
-    const any = [...msgs].reverse().find((m) => m.text);
-    return any?.text || "";
-};
+function encodeCursor(ts, chatId) {
+    return Buffer.from(JSON.stringify({ ts, chatId }), "utf8").toString("base64");
+}
 
-const asArray = (v) => {
-    if (!v) return [];
-    if (Array.isArray(v)) return v.filter(Boolean);
-    return String(v).split(",").map(s => s.trim()).filter(Boolean);
-};
+// ✅ 슬랙 카드 타입 분류 (업무 필요 여부)
+function classifyCardType(cardType) {
+    const type = String(cardType || "").toLowerCase();
 
-const makeItem = ({ tenantId, convId, base, counters }) => {
-    const routeKinds = toRouteKinds(base);
-    const hasWork = routeKinds.some(isWorkRoute);
-    const channel = normalizeChannel(base.channel || base.source);
-    const categories = asArray(base.categories || base.category);
-    const name =
-        base.user_name ||
-        base.contact_name ||
-        base.alias ||
-        `${base.brandName || base.brand_name || ""} (${convId})`;
-
-    // 프론트엔드가 기대하는 필드명으로 매핑
-    return {
-        id: `${tenantId}_${convId}`,
-        tenantId,
-        chatId: String(convId),
-        title: name,                                      // ✅ userName → title
-        preview: lastSnippet(base),                       // ✅ lastMessageText → preview
-        lastMessageAt: asMs(base.lastMessageAt) || asMs(base.messages?.slice(-1)[0]?.timestamp) || null,
-        channel,
-        route: routeKinds[0] || (hasWork ? "work" : "auto"),  // ✅ 대표 route 추가
-        routeClass: hasWork ? "work" : "passive",
-        categories,
-        counts: {                                          // ✅ counters → counts
-            user: counters.user || 0,
-            ai: counters.ai || 0,
-            agent: counters.agent || 0,
-        },
-        status: base.status || null,
-    };
-};
-
-// ── Query by stats_conversations (fast path) ────────────────
-async function listByStats(tenantId) {
-    const start = `${tenantId}_`;
-    const end = `${tenantId}_\uf8ff`;
-    const idField = admin.firestore.FieldPath.documentId();
-
-    const snap = await db
-        .collection("stats_conversations")
-        .where(idField, ">=", start)
-        .where(idField, "<", end)
-        .get();
-
-    console.log(`[listByStats] Found ${snap.size} stats docs for tenant: ${tenantId}`);
-
-    if (snap.empty) return [];
-
-    // 최신순 정렬 (updated_at 기준, 없으면 id 순)
-    const stats = snap.docs
-        .map((d) => {
-            const data = d.data() || {};
-            const updated = asMs(data.updated_at) || 0;
-            const idx = d.id.indexOf("_");
-            const convId = idx >= 0 ? d.id.slice(idx + 1) : null;
-            return { convId, updated, data };
-        })
-        .filter((x) => x.convId)
-        .sort((a, b) => b.updated - a.updated)
-        .slice(0, N);
-
-    // 각 대화의 최신 문서 1건만 가져와 요약
-    const promises = stats.map(async ({ convId, data }) => {
-        const qs = await db
-            .collection("FAQ_realtime_cw")
-            .where("chat_id", "==", String(convId))
-            .where("tenant_id", "==", tenantId)  // ✅ tenant_id 조건 추가
-            .orderBy("lastMessageAt", "desc")
-            .limit(1)
-            .get();
-
-        const doc = qs.empty ? null : qs.docs[0];
-        const base = doc ? doc.data() : { chat_id: convId, tenant_id: tenantId };
-
-        const counters = {
-            user: data.user_chats || 0,
-            ai: data.ai_allchats || data.ai_autochats || 0,
-            agent: data.agent_chats || 0,
+    // 업무 카드 (create/update/upgrade)
+    if (type.includes('create') || type.includes('update') || type.includes('upgrade')) {
+        return {
+            isTask: true,
+            taskType: 'work', // 업무 카드
+            cardType: type
         };
-        return makeItem({ tenantId, convId, base, counters });
-    });
-
-    const items = await Promise.all(promises);
-    // null 방지 및 최종 정렬
-    return items
-        .filter(Boolean)
-        .sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
-}
-
-// ── Fallback: scan FAQ_realtime_cw (when no stats) ──────────
-async function listByFallback(tenantId) {
-    console.log(`[listByFallback] Scanning FAQ_realtime_cw for tenant: ${tenantId}`);
-
-    // 최근 문서부터 모으되, chat_id 단위로 1개씩만
-    const qs = await db
-        .collection("FAQ_realtime_cw")
-        .where("tenant_id", "==", tenantId)
-        .orderBy("lastMessageAt", "desc")
-        .limit(400) // 여유로 많이 가져와 chatId uniq 처리
-        .get();
-
-    console.log(`[listByFallback] Found ${qs.size} docs`);
-
-    if (qs.empty) return [];
-
-    const byChat = new Map();
-    for (const doc of qs.docs) {
-        const d = doc.data();
-        const chatId = String(d.chat_id || "");
-        if (!chatId) continue;
-        if (byChat.has(chatId)) continue; // 최신 1건만
-        byChat.set(chatId, d);
-        if (byChat.size >= N) break;
     }
 
-    const items = [];
-    for (const [convId, base] of byChat.entries()) {
-        const counters = countByRole(base.messages || []);
-        items.push(makeItem({ tenantId, convId, base, counters }));
+    // Shadow 카드 (skip/shadow - 자동 처리됨)
+    if (type.includes('shadow') || type.includes('skip')) {
+        return {
+            isTask: false,
+            taskType: 'shadow', // 자동 처리
+            cardType: type
+        };
     }
 
-    return items.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+    // 기타
+    return {
+        isTask: !!type,
+        taskType: type ? 'other' : null,
+        cardType: type
+    };
 }
 
-// ── API Handler ─────────────────────────────────────────────
 export default async function handler(req, res) {
     try {
-        const tenantId = String(req.query.tenant || req.headers["x-tenant-id"] || "").trim();
-        if (!tenantId) {
-            console.log("[list] Missing tenant parameter");
-            return res.status(400).json({ ok: false, error: "tenant required" });
+        const {
+            tenant,
+            channel = "all",
+            category = "all",
+            limit,
+            cursor
+        } = req.query;
+
+        if (!tenant) return res.status(400).json({ error: "tenant is required" });
+
+        const pageSize = clampLimit(limit);
+
+        // ✅ chat_id 기반 조회 (각 채팅방의 최신 세션만)
+        let q = db
+            .collection("FAQ_realtime_cw")
+            .where("tenant_id", "==", tenant)
+            .orderBy("lastMessageAt", "desc");
+
+        // 필터 적용
+        if (channel !== "all") q = q.where("channel", "==", normalizeChannel(channel));
+
+        // ✅ 카테고리 필터 추가 (array-contains)
+        if (category !== "all") {
+            q = q.where("categories", "array-contains", category);
         }
 
-        console.log(`[list] Processing request for tenant: ${tenantId}`);
-
-        // 1) stats 우선
-        let items = await listByStats(tenantId);
-
-        // 2) 폴백
-        if (!items.length) {
-            console.log(`[list] No stats found, trying fallback`);
-            items = await listByFallback(tenantId);
+        // 커서 적용 (타임스탬프 기반)
+        const cur = decodeCursor(cursor);
+        if (cur) {
+            const lastTs = admin.firestore.Timestamp.fromMillis(cur.ts);
+            q = q.startAfter(lastTs);
         }
 
-        console.log(`[list] Returning ${items.length} items for tenant: ${tenantId}`);
+        // ✅ 더 많이 가져와서 chat_id 중복 제거 (pageSize * 3)
+        const snap = await q.limit(pageSize * 3).get();
 
-        return res.status(200).json({ ok: true, items });
-    } catch (e) {
-        console.error("[list] fatal:", e);
-        return res.status(500).json({ ok: false, error: e.message, stack: process.env.NODE_ENV === 'development' ? e.stack : undefined });
+        // ✅ chat_id 기준으로 그룹핑 (최신 문서만 사용)
+        const chatMap = new Map();
+        snap.docs.forEach(doc => {
+            const data = doc.data();
+            const chatId = data.chat_id;
+
+            if (!chatMap.has(chatId)) {
+                chatMap.set(chatId, { doc, data });
+            } else {
+                // 이미 있으면 더 최신 것만 유지
+                const existing = chatMap.get(chatId);
+                const existingTs = existing.data.lastMessageAt?.toMillis() || 0;
+                const currentTs = data.lastMessageAt?.toMillis() || 0;
+
+                if (currentTs > existingTs) {
+                    chatMap.set(chatId, { doc, data });
+                }
+            }
+        });
+
+        // ✅ 최신순 정렬 후 페이지 크기만큼만 반환
+        const uniqueDocs = Array.from(chatMap.values())
+            .sort((a, b) => {
+                const tsA = a.data.lastMessageAt?.toMillis() || 0;
+                const tsB = b.data.lastMessageAt?.toMillis() || 0;
+                return tsB - tsA;
+            })
+            .slice(0, pageSize);
+
+        // 슬랙 스레드 배치 조회
+        const slackRefs = uniqueDocs.map(({ doc }) =>
+            db.collection("slack_threads").doc(`${tenant}_${doc.data().chat_id}`)
+        );
+        const slackDocs = slackRefs.length > 0 ? await db.getAll(...slackRefs) : [];
+        const slackMap = new Map(
+            slackDocs.map(sd => [sd.id.split('_').slice(1).join('_'), sd.exists ? sd.data() : null])
+        );
+
+        // 응답 변환
+        const conversations = uniqueDocs.map(({ doc, data: v }) => {
+            const msgs = Array.isArray(v.messages) ? v.messages : [];
+            const userCount = msgs.filter(m => m.sender === "user").length;
+            const aiCount = msgs.filter(m => m.sender === "ai").length;
+            const agentCount = msgs.filter(m => m.sender === "agent" || m.sender === "admin").length;
+            const lastMsg = msgs[msgs.length - 1];
+
+            const slack = slackMap.get(v.chat_id);
+
+            // ✅ 슬랙 카드 타입 분류
+            const cardInfo = slack ? classifyCardType(slack.card_type) : null;
+
+            // ✅ 사용자 이름에서 중간 글자 추출 (예: "화곡역 송아지" -> "송")
+            const extractMiddleChar = (name) => {
+                if (!name || name.length < 3) return name?.charAt(0) || '?';
+                const parts = name.trim().split(/\s+/);
+                if (parts.length > 1) {
+                    // 공백으로 구분된 경우 두번째 단어의 첫 글자
+                    return parts[1]?.charAt(0) || parts[0]?.charAt(1) || '?';
+                }
+                // 공백 없으면 중간 글자
+                const mid = Math.floor(name.length / 2);
+                return name.charAt(mid);
+            };
+
+            return {
+                id: doc.id,
+                chatId: v.chat_id,
+                userId: v.user_id,
+                userName: v.user_name || "익명",
+                userNameInitial: extractMiddleChar(v.user_name), // ✅ 중간 글자 추가
+                brandName: v.brand_name || v.brandName || null,
+                channel: v.channel || "unknown",
+                status: v.status || "waiting",
+                modeSnapshot: v.modeSnapshot || "AUTO",
+                lastMessageAt: v.lastMessageAt?.toDate?.()?.toISOString() || null,
+                lastMessageText: lastMsg?.text?.slice(0, 80) || (lastMsg?.pics?.length ? "(이미지)" : ""),
+                messageCount: {
+                    user: userCount,
+                    ai: aiCount,
+                    agent: agentCount, // ✅ Agent 카운트 추가
+                    total: msgs.length
+                },
+                // ✅ 카테고리 정보 추가
+                categories: Array.isArray(v.categories) ? v.categories : [],
+                // ✅ 슬랙 카드 정보 추가
+                hasSlackCard: !!slack,
+                isTask: cardInfo?.isTask || false,
+                taskType: cardInfo?.taskType || null, // 'work', 'shadow', 'other'
+                slackCardType: cardInfo?.cardType || null,
+            };
+        });
+
+        // 다음 페이지 커서
+        const last = uniqueDocs[uniqueDocs.length - 1];
+        const nextCursor = last
+            ? encodeCursor(
+                last.data.lastMessageAt?.toMillis() || 0,
+                last.data.chat_id
+            )
+            : null;
+
+        return res.json({
+            conversations,
+            nextCursor,
+            _meta: {
+                totalDocs: snap.size,
+                uniqueChats: chatMap.size,
+                returned: conversations.length,
+            }
+        });
+    } catch (error) {
+        console.error("[conversations/list] error:", error);
+        return res.status(500).json({ error: error.message || "internal_error" });
     }
 }
