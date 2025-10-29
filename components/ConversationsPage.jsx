@@ -464,8 +464,15 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
 // 메시지 버블 컴포넌트
 function MessageBubble({ message }) {
     const isUser = message.sender === 'user';
-    const isAI = message.sender === 'ai';
-    const isAgent = message.sender === 'admin' || message.sender === 'agent';
+
+    // ✅ 상담원 구분 로직 개선: modeSnapshot === 'AGENT'도 상담원으로 처리
+    const isAgent =
+        message.sender === 'admin' ||
+        message.sender === 'agent' ||
+        (message.sender === 'ai' && message.modeSnapshot === 'AGENT');
+
+    // ✅ AI는 상담원이 아닌 ai만
+    const isAI = message.sender === 'ai' && !isAgent;
 
     const senderConfig = {
         user: {
@@ -495,7 +502,7 @@ function MessageBubble({ message }) {
             iconBg: 'bg-purple-500',
             iconColor: 'text-white',
         },
-    }[isUser ? 'user' : isAI ? 'ai' : 'agent'];
+    }[isUser ? 'user' : isAgent ? 'agent' : 'ai'];
 
     const Icon = senderConfig.icon;
 
@@ -528,17 +535,12 @@ function MessageBubble({ message }) {
 
                 {/* 버블 */}
                 <div className={`rounded-2xl px-4 py-2.5 ${senderConfig.bubbleBg}`}>
-                    {/* 모드 스냅샷 */}
-                    {message.modeSnapshot && (
-                        <div className={`text-xs mb-1 ${isUser ? 'text-blue-200' : 'text-gray-500'}`}>
-                            [{message.modeSnapshot}]
-                        </div>
-                    )}
-
                     {/* 텍스트 */}
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                        {message.text || '(내용 없음)'}
-                    </p>
+                    {message.text && (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                            {message.text}
+                        </p>
+                    )}
 
                     {/* 이미지 */}
                     {message.pics && message.pics.length > 0 && (
