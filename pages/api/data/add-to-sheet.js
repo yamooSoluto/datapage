@@ -33,14 +33,14 @@ export default async function handler(req, res) {
       answer,
       guide,
       keyData,
-      needsHandoff,
+      staffHandoff,  // ✅ needsHandoff → staffHandoff (string)
       addedBy,
       source = 'slack'
     } = req.body;
 
     // ✅ 1. 필수 필드 검증
     if (!tenantId || !question || !answer) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing required fields',
         required: ['tenantId', 'question', 'answer']
       });
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
 
     // ✅ 3. 통합 마스터 시트 ID 사용
     const masterSheetId = process.env.GOOGLE_SHEET_ID;
-    
+
     if (!masterSheetId) {
       console.error('[add-to-sheet] GOOGLE_SHEET_ID not configured');
       return res.status(500).json({ error: 'Google Sheet not configured' });
@@ -70,20 +70,27 @@ export default async function handler(req, res) {
     // ✅ 4. 고유 Vector UUID 생성
     const vectorUuid = `vec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    const staffHandoff = needsHandoff ? '전달필요' : '필요없음';
+
+    // ✅ staffHandoff 값 검증 및 기본값 설정
+    const validHandoffValues = ['필요없음', '조건부 전달', '전달 필요'];
+    const staffHandoffValue = validHandoffValues.includes(staffHandoff)
+      ? staffHandoff
+      : '필요없음';
+
+    console.log(`[add-to-sheet] StaffHandoff: ${staffHandoffValue}`);
 
     // ✅ 5. FAQ_Master 시트 구조에 맞게 행 추가
     const newRow = [
-      tenantId,           // A: TenantID ⭐ 핵심 차이점
-      question,           // B: Question
-      answer,             // C: Answer
-      staffHandoff,       // D: StaffHandoff
-      guide || '',        // E: Guide
-      keyData || '',      // F: KeyData
-      '',                 // G: ExpiryDate (빈값)
-      timestamp,          // H: CreatedAt
-      timestamp,          // I: UpdatedAt
-      vectorUuid          // J: VectorUUID
+      tenantId,              // A: TenantID
+      question,              // B: Question
+      answer,                // C: Answer
+      staffHandoffValue,     // D: StaffHandoff ⭐ "필요없음" / "조건부 전달" / "전달 필요"
+      guide || '',           // E: Guide
+      keyData || '',         // F: KeyData
+      '',                    // G: ExpiryDate (빈값)
+      timestamp,             // H: CreatedAt
+      timestamp,             // I: UpdatedAt
+      vectorUuid             // J: VectorUUID
     ];
 
     console.log(`[add-to-sheet] Adding row to master sheet: ${masterSheetId}`);
@@ -91,7 +98,7 @@ export default async function handler(req, res) {
     // ✅ 6. Google Sheets에 행 추가
     await sheets.spreadsheets.values.append({
       spreadsheetId: masterSheetId,
-      range: 'FAQ_Master!A:J', // ⭐ FAQ_Master 시트 사용
+      range: 'FAQ_Master!A:J',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [newRow],
@@ -108,7 +115,7 @@ export default async function handler(req, res) {
       answer,
       guide,
       keyData,
-      needsHandoff,
+      staffHandoff: staffHandoffValue,  // ✅ staffHandoff로 저장
       addedBy,
       source,
       vectorUuid,
@@ -144,6 +151,7 @@ export default async function handler(req, res) {
       message: 'Data added to master sheet successfully',
       conversationId,
       vectorUuid,
+      staffHandoff: staffHandoffValue,  // ✅ 응답에 포함
     });
 
   } catch (error) {

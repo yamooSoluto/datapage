@@ -26,29 +26,29 @@ const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'
 
 export default function TenantPortal() {
   console.log('🔧 TenantPortal 컴포넌트 렌더링됨!');
-  
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentTenant, setCurrentTenant] = useState(null);
-  
+
   const [availableTenants, setAvailableTenants] = useState([]);
   const [showTenantSelector, setShowTenantSelector] = useState(false);
-  
+
   const [dateRange, setDateRange] = useState('7d');
   const [email, setEmail] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   // ✅ 온보딩 관련 (3단계 스와이프)
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [copiedWidget, setCopiedWidget] = useState(false);
   const [copiedNaver, setCopiedNaver] = useState(false);
   const [canDismissOnboarding, setCanDismissOnboarding] = useState(false); // ✅ FAQ 작성 후 닫기 가능
-  
+
   const [activeTab, setActiveTab] = useState('faq');
   const [faqData, setFaqData] = useState([]);
   const [statsData, setStatsData] = useState(null);
-  
+
   // ✅ 대화/업무 탭용 상태
   const [conversationsData, setConversationsData] = useState([]);
   const [conversationFilters, setConversationFilters] = useState({
@@ -105,7 +105,7 @@ export default function TenantPortal() {
     if (!currentTenant || !currentTenant.plan) {
       return PLAN_CONFIG.trial;
     }
-    
+
     const planKey = currentTenant.plan.toLowerCase();
     return PLAN_CONFIG[planKey] || PLAN_CONFIG.trial;
   }, [currentTenant]);
@@ -120,11 +120,11 @@ export default function TenantPortal() {
   const subscriptionInfo = useMemo(() => {
     if (!currentTenant) return null;
 
-    const startDate = currentTenant.subscriptionStartDate 
-      ? new Date(currentTenant.subscriptionStartDate) 
-      : currentTenant.createdAt 
-      ? new Date(currentTenant.createdAt) 
-      : new Date();
+    const startDate = currentTenant.subscriptionStartDate
+      ? new Date(currentTenant.subscriptionStartDate)
+      : currentTenant.createdAt
+        ? new Date(currentTenant.createdAt)
+        : new Date();
 
     const duration = currentPlanConfig.duration || 30;
     const endDate = new Date(startDate);
@@ -238,10 +238,10 @@ export default function TenantPortal() {
     localStorage.setItem('magicLogin', 'true');
 
     // ✅ Slack에서 온 경우 온보딩 무조건 스킵
-    const shouldShowOnboarding = fromSlack 
-      ? false 
+    const shouldShowOnboarding = fromSlack
+      ? false
       : !tenant.onboardingDismissed && (tenant.faqCount === 0 || tenant.showOnboarding);
-    
+
     setShowOnboarding(shouldShowOnboarding);
     setCanDismissOnboarding(true);
 
@@ -367,7 +367,7 @@ export default function TenantPortal() {
       if (conversationFilters.channel && conversationFilters.channel !== 'all') {
         params.set('channel', conversationFilters.channel);
       }
-      
+
       const res = await fetch(`/api/conversations/list?${params}`);
       const data = await res.json();
       if (data.error) {
@@ -427,10 +427,10 @@ export default function TenantPortal() {
     if (item) {
       setEditingItem(item);
       // ✅ faq.js는 question을 문자열로 저장 (줄바꿈으로 여러 질문 구분)
-      const questions = item.question 
+      const questions = item.question
         ? item.question.split('\n').filter(q => q.trim())
         : [''];
-      
+
       setFormData({
         questions: questions.length > 0 ? questions : [''],
         answer: item.answer || '',
@@ -496,7 +496,7 @@ export default function TenantPortal() {
       };
 
       const method = editingItem ? 'PUT' : 'POST';
-      
+
       // 수정일 경우 vectorUuid 추가
       if (editingItem && editingItem.vectorUuid) {
         payload.vectorUuid = editingItem.vectorUuid;
@@ -509,7 +509,7 @@ export default function TenantPortal() {
       });
 
       const data = await res.json();
-      
+
       if (data?.error) {
         if (data.error === 'PLAN_LIMIT_REACHED') {
           alert(`❌ 플랜 제한에 도달했습니다. 최대 ${currentPlanConfig.maxFAQs}개까지 등록 가능합니다.`);
@@ -539,13 +539,13 @@ export default function TenantPortal() {
     try {
       // ✅ 통합 마스터 시트 API (faq.js)
       const vectorUuid = item.vectorUuid || item.id;
-      
+
       const res = await fetch(`/api/faq?tenant=${currentTenant.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vectorUuid })
       });
-      
+
       const data = await res.json();
       if (data?.error) {
         alert('❌ 삭제 실패: ' + data.error);
@@ -567,8 +567,8 @@ export default function TenantPortal() {
     return faqData.filter(item => {
       // ✅ faq.js는 question을 문자열로 저장
       const questionText = item.question || '';
-      return questionText.toLowerCase().includes(term) || 
-             item.answer?.toLowerCase().includes(term);
+      return questionText.toLowerCase().includes(term) ||
+        item.answer?.toLowerCase().includes(term);
     });
   }, [faqData, searchTerm]);
 
@@ -685,20 +685,19 @@ export default function TenantPortal() {
                       {currentPlanConfig.name}
                     </span>
                     {subscriptionInfo && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                        subscriptionInfo.isExpired ? 'bg-red-100 text-red-700' :
-                        subscriptionInfo.isExpiringSoon ? 'bg-orange-100 text-orange-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {subscriptionInfo.isExpired 
-                          ? '만료됨' 
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${subscriptionInfo.isExpired ? 'bg-red-100 text-red-700' :
+                          subscriptionInfo.isExpiringSoon ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-600'
+                        }`}>
+                        {subscriptionInfo.isExpired
+                          ? '만료됨'
                           : `D-${subscriptionInfo.daysLeft}`}
                       </span>
                     )}
                   </div>
                 </div>
               </div>
-              
+
               {/* ✅ 설정 버튼 (로그아웃 숨김) */}
               <div className="relative flex-shrink-0">
                 <button
@@ -741,9 +740,8 @@ export default function TenantPortal() {
                   {[1, 2, 3].map(step => (
                     <div
                       key={step}
-                      className={`w-2 h-2 rounded-full transition-all ${
-                        step === onboardingStep ? 'bg-yellow-600 w-8' : 'bg-yellow-300'
-                      }`}
+                      className={`w-2 h-2 rounded-full transition-all ${step === onboardingStep ? 'bg-yellow-600 w-8' : 'bg-yellow-300'
+                        }`}
                     />
                   ))}
                 </div>
@@ -796,7 +794,7 @@ export default function TenantPortal() {
                     <p className="text-gray-600 text-sm">
                       고객에게 전달하거나 테스트할 수 있는 문의 창 링크입니다.
                     </p>
-                    
+
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
                       <div className="mb-3">
                         <div className="text-xs text-gray-600 mb-2 font-semibold">문의 위젯 링크</div>
@@ -804,7 +802,7 @@ export default function TenantPortal() {
                           {currentTenant?.WidgetLink || '링크가 설정되지 않았습니다'}
                         </div>
                       </div>
-                      
+
                       <button
                         onClick={() => {
                           if (currentTenant?.WidgetLink) {
@@ -859,7 +857,7 @@ export default function TenantPortal() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                       <div className="mb-3">
                         <div className="text-xs text-gray-600 mb-2 font-semibold">
@@ -879,7 +877,7 @@ export default function TenantPortal() {
                           {currentTenant?.NaverOutbound || '링크가 설정되지 않았습니다'}
                         </div>
                       </div>
-                      
+
                       <button
                         onClick={() => {
                           if (currentTenant?.NaverOutbound) {
@@ -961,20 +959,18 @@ export default function TenantPortal() {
         <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-6">
           {/* ✅ 구독 정보 카드 (모바일 최적화) */}
           {subscriptionInfo && (
-            <div className={`mb-4 p-3 sm:p-4 rounded-2xl border-2 ${
-              subscriptionInfo.isExpired 
-                ? 'bg-red-50 border-red-200' 
-                : subscriptionInfo.isExpiringSoon 
-                ? 'bg-orange-50 border-orange-200' 
-                : 'bg-blue-50 border-blue-200'
-            }`}>
+            <div className={`mb-4 p-3 sm:p-4 rounded-2xl border-2 ${subscriptionInfo.isExpired
+                ? 'bg-red-50 border-red-200'
+                : subscriptionInfo.isExpiringSoon
+                  ? 'bg-orange-50 border-orange-200'
+                  : 'bg-blue-50 border-blue-200'
+              }`}>
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
-                  <Clock className={`w-4 h-4 sm:w-5 sm:h-5 ${
-                    subscriptionInfo.isExpired ? 'text-red-600' :
-                    subscriptionInfo.isExpiringSoon ? 'text-orange-600' :
-                    'text-blue-600'
-                  }`} />
+                  <Clock className={`w-4 h-4 sm:w-5 sm:h-5 ${subscriptionInfo.isExpired ? 'text-red-600' :
+                      subscriptionInfo.isExpiringSoon ? 'text-orange-600' :
+                        'text-blue-600'
+                    }`} />
                   <div>
                     <div className="text-xs sm:text-sm font-bold text-gray-800">
                       {subscriptionInfo.isExpired ? '구독 만료' : '구독 중'}
@@ -998,11 +994,10 @@ export default function TenantPortal() {
             {/* FAQ */}
             <button
               onClick={() => setActiveTab('faq')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${
-                activeTab === 'faq'
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'faq'
                   ? 'bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 shadow-lg shadow-yellow-400/30'
                   : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
-              }`}
+                }`}
             >
               <Database className="inline w-4 h-4 mr-1 sm:mr-2" />
               FAQ 관리
@@ -1011,11 +1006,10 @@ export default function TenantPortal() {
             {/* ✅ 대화 관리 */}
             <button
               onClick={() => setActiveTab('conversations')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${
-                activeTab === 'conversations'
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'conversations'
                   ? 'bg-gradient-to-r from-blue-400 via-blue-300 to-cyan-400 text-gray-800 shadow-lg shadow-blue-400/30'
                   : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
-              }`}
+                }`}
             >
               <MessageSquare className="inline w-4 h-4 mr-1 sm:mr-2" />
               대화 관리
@@ -1024,11 +1018,10 @@ export default function TenantPortal() {
             {/* ✅ 업무카드 */}
             <button
               onClick={() => setActiveTab('tasks')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${
-                activeTab === 'tasks'
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'tasks'
                   ? 'bg-gradient-to-r from-red-400 via-red-300 to-orange-400 text-gray-800 shadow-lg shadow-red-400/30'
                   : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
-              }`}
+                }`}
             >
               <AlertCircle className="inline w-4 h-4 mr-1 sm:mr-2" />
               업무카드
@@ -1038,15 +1031,14 @@ export default function TenantPortal() {
                 </span>
               )}
             </button>
-            
+
             {/* 통계 */}
             <button
               onClick={() => setActiveTab('stats')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${
-                activeTab === 'stats'
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'stats'
                   ? 'bg-gradient-to-r from-purple-400 via-purple-300 to-pink-400 text-gray-800 shadow-lg shadow-purple-400/30'
                   : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
-              }`}
+                }`}
             >
               <BarChart3 className="inline w-4 h-4 mr-1 sm:mr-2" />
               통계
@@ -1069,11 +1061,10 @@ export default function TenantPortal() {
                   </div>
                   <div className="w-full h-3 sm:h-4 bg-gray-200/70 rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all rounded-full ${
-                        faqStats.total >= currentPlanConfig.maxFAQs
+                      className={`h-full transition-all rounded-full ${faqStats.total >= currentPlanConfig.maxFAQs
                           ? 'bg-gradient-to-r from-red-500 to-red-600'
                           : 'bg-gradient-to-r from-yellow-400 to-amber-400'
-                      }`}
+                        }`}
                       style={{ width: `${(faqStats.total / currentPlanConfig.maxFAQs) * 100}%` }}
                     />
                   </div>
@@ -1106,7 +1097,7 @@ export default function TenantPortal() {
                 <div className="space-y-3 sm:space-y-4">
                   {filteredFAQData.map(item => {
                     // ✅ faq.js는 question을 문자열로 저장 (줄바꿈으로 여러 질문 구분)
-                    const questions = item.question 
+                    const questions = item.question
                       ? item.question.split('\n').filter(q => q.trim())
                       : [item.question || '질문 없음'];
                     const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date();
@@ -1114,9 +1105,8 @@ export default function TenantPortal() {
                     return (
                       <div
                         key={item.id}
-                        className={`bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6 hover:shadow-xl transition-all ${
-                          isExpired ? 'opacity-50 border-2 border-red-200' : ''
-                        }`}
+                        className={`bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6 hover:shadow-xl transition-all ${isExpired ? 'opacity-50 border-2 border-red-200' : ''
+                          }`}
                       >
                         <div className="space-y-3">
                           <div>
@@ -1153,11 +1143,10 @@ export default function TenantPortal() {
                               </span>
                             )}
                             {item.expiryDate && (
-                              <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg font-semibold ${
-                                isExpired
+                              <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg font-semibold ${isExpired
                                   ? 'bg-red-100 text-red-700'
                                   : 'bg-green-100 text-green-700'
-                              }`}>
+                                }`}>
                                 {isExpired ? '만료됨' : new Date(item.expiryDate).toLocaleDateString('ko-KR')}
                               </span>
                             )}
@@ -1358,10 +1347,10 @@ export default function TenantPortal() {
                           <div className="space-y-2">
                             {statsData.conversations.slice(0, 10).map((conv) => {
                               const dt = conv.firstOpenedAt ? new Date(conv.firstOpenedAt) : null;
-                              const mediumLabel = conv.mediumName === "appKakao" ? "카카오" : 
-                                                 conv.mediumName === "appNaverTalk" ? "네이버" : 
-                                                 conv.mediumName === "widget" ? "위젯" : 
-                                                 conv.mediumName || "기타";
+                              const mediumLabel = conv.mediumName === "appKakao" ? "카카오" :
+                                conv.mediumName === "appNaverTalk" ? "네이버" :
+                                  conv.mediumName === "widget" ? "위젯" :
+                                    conv.mediumName || "기타";
                               return (
                                 <div key={conv.id} className="flex justify-between items-center p-3 sm:p-4 border-b border-white/30 hover:bg-white/40 rounded-xl transition-all">
                                   <div className="flex-1 min-w-0">
@@ -1445,20 +1434,20 @@ export default function TenantPortal() {
 
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">답변 <span className="text-red-500">*</span></label>
-                    <textarea 
-                      value={formData.answer} 
-                      onChange={(e) => setFormData({...formData, answer: e.target.value})} 
-                      rows="4" 
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none resize-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400" 
-                      placeholder="AI가 고객에게 제공할 답변을 입력하세요" 
+                    <textarea
+                      value={formData.answer}
+                      onChange={(e) => setFormData({ ...formData, answer: e.target.value })}
+                      rows="4"
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none resize-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                      placeholder="AI가 고객에게 제공할 답변을 입력하세요"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">담당자 전달</label>
-                    <select 
-                      value={formData.staffHandoff} 
-                      onChange={(e) => setFormData({...formData, staffHandoff: e.target.value})} 
+                    <select
+                      value={formData.staffHandoff}
+                      onChange={(e) => setFormData({ ...formData, staffHandoff: e.target.value })}
                       className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base"
                     >
                       <option value="필요없음">필요없음</option>
@@ -1469,23 +1458,23 @@ export default function TenantPortal() {
 
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">가이드 (선택)</label>
-                    <input 
-                      type="text" 
-                      value={formData.guide} 
-                      onChange={(e) => setFormData({...formData, guide: e.target.value})} 
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400" 
-                      placeholder="답변 생성 시 추가 주의사항" 
+                    <input
+                      type="text"
+                      value={formData.guide}
+                      onChange={(e) => setFormData({ ...formData, guide: e.target.value })}
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                      placeholder="답변 생성 시 추가 주의사항"
                     />
                   </div>
 
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">핵심 데이터 (선택)</label>
-                    <input 
-                      type="text" 
-                      value={formData.keyData} 
-                      onChange={(e) => setFormData({...formData, keyData: e.target.value})} 
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400" 
-                      placeholder="전화번호, 링크 등 변형되어선 안되는 고정값" 
+                    <input
+                      type="text"
+                      value={formData.keyData}
+                      onChange={(e) => setFormData({ ...formData, keyData: e.target.value })}
+                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                      placeholder="전화번호, 링크 등 변형되어선 안되는 고정값"
                     />
                   </div>
 
@@ -1498,11 +1487,11 @@ export default function TenantPortal() {
                         </span>
                       </label>
                       <div className="relative">
-                        <input 
-                          type="date" 
-                          value={formData.expiryDate} 
-                          onChange={(e) => setFormData({...formData, expiryDate: e.target.value})} 
-                          className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800" 
+                        <input
+                          type="date"
+                          value={formData.expiryDate}
+                          onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                          className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800"
                         />
                         <Calendar className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
                       </div>
@@ -1511,15 +1500,15 @@ export default function TenantPortal() {
                   )}
 
                   <div className="flex space-x-3 pt-4">
-                    <button 
-                      onClick={closeModal} 
+                    <button
+                      onClick={closeModal}
                       className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 bg-gray-100/70 backdrop-blur-sm text-gray-700 rounded-xl sm:rounded-2xl hover:bg-gray-200/70 transition-all font-bold text-sm sm:text-base"
                     >
                       취소
                     </button>
-                    <button 
-                      onClick={handleSubmit} 
-                      disabled={isLoading} 
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isLoading}
                       className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-xl sm:rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold disabled:opacity-50 shadow-lg shadow-yellow-400/30 text-sm sm:text-base"
                     >
                       {editingItem ? '수정 완료 ✓' : '추가 ✨'}
@@ -1601,61 +1590,60 @@ function ConversationCard({ conversation, onDetail, onClose, selectedConversatio
       {/* 상세(펼침) */}
       {expanded && selectedConversation && (
         (selectedConversation.conversation?.chatId === conversation.chatId ||
-         selectedConversation.conversation?.id === conversation.id) && (
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="font-bold text-lg">대화 내용</h3>
-            <button
-              onClick={(e) => { e.stopPropagation(); setExpanded(false); onClose(); }}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
-            {selectedConversation.messages?.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`p-3 rounded-xl ${
-                  msg.sender === 'user' ? 'bg-gray-100'
-                  : msg.sender === 'ai' ? 'bg-blue-50'
-                  : 'bg-green-50'
-                }`}
+          selectedConversation.conversation?.id === conversation.id) && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-lg">대화 내용</h3>
+              <button
+                onClick={(e) => { e.stopPropagation(); setExpanded(false); onClose(); }}
+                className="text-gray-400 hover:text-gray-600"
               >
-                <div className="text-xs text-gray-500 mb-1 font-semibold">
-                  {msg.sender === 'user' ? '👤 사용자'
-                    : msg.sender === 'ai' ? '🤖 AI' : '👨‍💼 상담원'} |{' '}
-                  {msg.timestamp ? new Date(msg.timestamp).toLocaleString('ko-KR') : '-'}
-                </div>
-                <div className="text-sm">{msg.text || '(이미지/파일)'}</div>
-              </div>
-            ))}
-          </div>
-
-          {selectedConversation.stats && (
-            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 mb-4">
-              <h4 className="font-bold text-sm mb-2">대화 통계</h4>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div><div className="text-gray-500">사용자 메시지</div><div className="font-bold">{selectedConversation.stats.userChats}개</div></div>
-                <div><div className="text-gray-500">AI 처리</div><div className="font-bold">{selectedConversation.stats.aiChats}개</div></div>
-                <div><div className="text-gray-500">상담원 개입</div><div className="font-bold">{selectedConversation.stats.agentChats}개</div></div>
-              </div>
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          )}
 
-          {selectedConversation.slack?.slackUrl && (
-            <a
-              href={selectedConversation.slack.slackUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-semibold"
-            >
-              슬랙에서 보기
-            </a>
-          )}
-        </div>
-      ))}
+            <div className="space-y-2 max-h-96 overflow-y-auto mb-4">
+              {selectedConversation.messages?.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-xl ${msg.sender === 'user' ? 'bg-gray-100'
+                      : msg.sender === 'ai' ? 'bg-blue-50'
+                        : 'bg-green-50'
+                    }`}
+                >
+                  <div className="text-xs text-gray-500 mb-1 font-semibold">
+                    {msg.sender === 'user' ? '👤 사용자'
+                      : msg.sender === 'ai' ? '🤖 AI' : '👨‍💼 상담원'} |{' '}
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleString('ko-KR') : '-'}
+                  </div>
+                  <div className="text-sm">{msg.text || '(이미지/파일)'}</div>
+                </div>
+              ))}
+            </div>
+
+            {selectedConversation.stats && (
+              <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 mb-4">
+                <h4 className="font-bold text-sm mb-2">대화 통계</h4>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div><div className="text-gray-500">사용자 메시지</div><div className="font-bold">{selectedConversation.stats.userChats}개</div></div>
+                  <div><div className="text-gray-500">AI 처리</div><div className="font-bold">{selectedConversation.stats.aiChats}개</div></div>
+                  <div><div className="text-gray-500">상담원 개입</div><div className="font-bold">{selectedConversation.stats.agentChats}개</div></div>
+                </div>
+              </div>
+            )}
+
+            {selectedConversation.slack?.slackUrl && (
+              <a
+                href={selectedConversation.slack.slackUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all font-semibold"
+              >
+                슬랙에서 보기
+              </a>
+            )}
+          </div>
+        ))}
     </div>
   );
 }
