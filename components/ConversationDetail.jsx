@@ -147,16 +147,11 @@ export default function ConversationDetail({ conversation, onClose }) {
 
                         {/* 메타 정보 */}
                         {detail?.conversation && (
-                            <div className="space-y-3 mb-4">
-                                {/* Summary */}
+                            <div className="space-y-2 mb-4">
+                                {/* 대화 요약 - 텍스트만 깔끔하게 */}
                                 {detail.conversation.summary && (
-                                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                        <div className="text-xs font-semibold text-blue-700 mb-1">
-                                            대화 요약
-                                        </div>
-                                        <div className="text-sm text-blue-900">
-                                            {detail.conversation.summary}
-                                        </div>
+                                    <div className="text-xs text-gray-600">
+                                        대화 요약: <span className="font-medium text-gray-900">{detail.conversation.summary}</span>
                                     </div>
                                 )}
 
