@@ -360,8 +360,8 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
                     )}
                 </div>
 
-                {/* 하단 정보 */}
-                <div className="px-6 py-4 bg-white border-t border-gray-200">
+                {/* 하단 정보 - 배경 투명 */}
+                <div className="px-6 py-4">
                     {/* 통계 */}
                     {detailData.stats && (
                         <div className="grid grid-cols-3 gap-4 mb-4">
@@ -397,7 +397,7 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
 
                     {/* 메타 정보 */}
                     {detailData.conversation && (
-                        <div className="space-y-2 mb-4">
+                        <div className="space-y-2">
                             {/* 대화 요약 - 텍스트만 깔끔하게 */}
                             {detailData.conversation.summary && (
                                 <div className="text-xs text-gray-600">
@@ -411,20 +411,22 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
                                     채널: <span className="font-medium text-gray-900">{detailData.conversation.channel}</span>
                                 </div>
                             )}
-                        </div>
-                    )}
 
-                    {/* 슬랙 링크 */}
-                    {detailData.slack?.slackUrl && (
-                        <a
-                            href={detailData.slack.slackUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-gray-900 text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-colors"
-                        >
-                            <ExternalLink className="w-4 h-4" />
-                            슬랙에서 보기
-                        </a>
+                            {/* 날짜 정보 */}
+                            {detailData.conversation.lastMessageAt && (
+                                <div className="text-xs text-gray-600">
+                                    마지막 메시지: <span className="font-medium text-gray-900">
+                                        {new Date(detailData.conversation.lastMessageAt).toLocaleString('ko-KR', {
+                                            year: 'numeric',
+                                            month: 'long',
+                                            day: 'numeric',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
