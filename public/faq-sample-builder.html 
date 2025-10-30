@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ 샘플 만들기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800&display=swap');
+    
+    * {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    }
+
+    .tag-button {
+      transition: all 0.2s ease;
+    }
+
+    .tag-button:hover {
+      transform: translateY(-2px);
+    }
+
+    .tag-button.selected {
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+      color: #1f2937;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+    }
+
+    .category-card {
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .category-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+    }
+
+    .category-card.active {
+      border-color: #fbbf24;
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+    }
+
+    .step-indicator {
+      transition: all 0.3s ease;
+    }
+
+    .step-indicator.active {
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+      color: white;
+      transform: scale(1.1);
+    }
+
+    .step-indicator.completed {
+      background: #10b981;
+      color: white;
+    }
+
+    .fade-in {
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .bounce {
+      animation: bounce 0.5s ease infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 via-yellow-50/30 to-gray-50 min-h-screen">
+  <div class="max-w-2xl mx-auto px-4 py-8">
+    <!-- 헤더 -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center gap-2 px-4 py-2 bg-yellow-100 rounded-full mb-4">
+        <span class="text-2xl">✨</span>
+        <span class="text-sm font-bold text-gray-800">쉽고 재미있게 FAQ 만들기</span>
+      </div>
+      <h1 class="text-2xl font-bold text-gray-900 mb-2">
+        클릭만으로 FAQ 완성!
+      </h1>
+      <p class="text-sm text-gray-600">
+        카테고리와 키워드를 선택하면 자동으로 질문-답변이 만들어져요
+      </p>
+    </div>
+
+    <!-- 진행 단계 표시 -->
+    <div class="flex items-center justify-center gap-3 mb-8">
+      <div id="step1" class="step-indicator active flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 font-bold text-sm">
+        1
+      </div>
+      <div class="h-1 w-12 bg-gray-200 rounded"></div>
+      <div id="step2" class="step-indicator flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 font-bold text-sm">
+        2
+      </div>
+      <div class="h-1 w-12 bg-gray-200 rounded"></div>
+      <div id="step3" class="step-indicator flex items-center justify-center w-10 h-10 rounded-full bg-gray-200 font-bold text-sm">
+        3
+      </div>
+    </div>
+
+    <!-- Step 1: 카테고리 선택 -->
+    <div id="categoryStep" class="fade-in">
+      <div class="bg-white rounded-2xl shadow-lg p-6 mb-6">
+        <h2 class="text-lg font-bold text-gray-900 mb-4">
+          <span class="text-yellow-500">1단계.</span> 어떤 분야의 FAQ인가요?
+        </h2>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="category-card border-2 border-gray-200 rounded-xl p-4 text-center" onclick="selectCategory('시설')">
+            <div class="text-3xl mb-2">🏢</div>
+            <div class="font-bold text-sm">시설 안내</div>
+            <div class="text-xs text-gray-500 mt-1">영업시간, 위치, 주차</div>
+          </div>
+          <div class="category-card border-2 border-gray-200 rounded-xl p-4 text-center" onclick="selectCategory('상품')">
+            <div class="text-3xl mb-2">📦</div>
+            <div class="font-bold text-sm">상품/서비스</div>
+            <div class="text-xs text-gray-500 mt-1">가격, 옵션, 배송</div>
+          </div>
+          <div class="category-card border-2 border-gray-200 rounded-xl p-4 text-center" onclick="selectCategory('예약')">
+            <div class="text-3xl mb-2">📅</div>
+            <div class="font-bold text-sm">예약/방문</div>
+            <div class="text-xs text-gray-500 mt-1">예약방법, 취소규정</div>
+          </div>
+          <div class="category-card border-2 border-gray-200 rounded-xl p-4 text-center" onclick="selectCategory('정책')">
+            <div class="text-3xl mb-2">📋</div>
+            <div class="font-bold text-sm">정책/규정</div>
+            <div class="text-xs text-gray-500 mt-1">환불, 교환, 이용규칙</div>
+          </div>
+          <div class="category-card border-2 border-gray-200 rounded-xl p-4 text-center" onclick="selectCategory('멤버십')">
+            <div class="text-3xl mb-2">💳</div>
+            <div class="font-bold text-sm">멤버십/혜택</div>
+            <div class="text-xs text-gray-500 mt-1">등급, 포인트, 할인</div>
+          </div>
+          <div class="category-card border-2 border-gray-200 rounded-xl p-4 text-center" onclick="selectCategory('기타')">
+            <div class="text-3xl mb-2">💬</div>
+            <div class="font-bold text-sm">기타</div>
+            <div class="text-xs text-gray-500 mt-1">직접 만들기</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: 질문 템플릿 선택 -->
+    <div id="templateStep" class="hidden">
+      <div class="bg-white rounded-2xl shadow-lg p-6 mb-6 fade-in">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-bold text-gray-900">
+            <span class="text-yellow-500">2단계.</span> 질문 만들기
+          </h2>
+          <button onclick="backToCategory()" class="text-xs text-gray-500 hover:text-gray-700">
+            ← 카테고리 변경
+          </button>
+        </div>
+
+        <!-- 자주 묻는 질문 템플릿 -->
+        <div id="templateList" class="space-y-2 mb-6">
+          <!-- 동적으로 생성됨 -->
+        </div>
+
+        <!-- 또는 키워드로 직접 만들기 -->
+        <div class="border-t-2 border-dashed border-gray-200 pt-6">
+          <h3 class="text-sm font-bold text-gray-800 mb-3">
+            🎨 또는 키워드를 조합해서 직접 만들어보세요
+          </h3>
+          
+          <!-- 질문 주제 -->
+          <div class="mb-4">
+            <label class="text-xs font-semibold text-gray-700 mb-2 block">질문 주제</label>
+            <div id="subjectTags" class="flex flex-wrap gap-2">
+              <!-- 동적으로 생성됨 -->
+            </div>
+          </div>
+
+          <!-- 질문 키워드 -->
+          <div class="mb-4">
+            <label class="text-xs font-semibold text-gray-700 mb-2 block">궁금한 내용</label>
+            <div id="keywordTags" class="flex flex-wrap gap-2">
+              <!-- 동적으로 생성됨 -->
+            </div>
+          </div>
+
+          <!-- 생성된 질문 미리보기 -->
+          <div id="previewQuestion" class="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 min-h-[60px] hidden">
+            <div class="text-xs text-gray-600 mb-1">생성된 질문:</div>
+            <div class="text-sm font-bold text-gray-900" id="generatedQuestion"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: 답변 만들기 -->
+    <div id="answerStep" class="hidden">
+      <div class="bg-white rounded-2xl shadow-lg p-6 mb-6 fade-in">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-bold text-gray-900">
+            <span class="text-yellow-500">3단계.</span> 답변 만들기
+          </h2>
+          <button onclick="backToTemplate()" class="text-xs text-gray-500 hover:text-gray-700">
+            ← 질문 변경
+          </button>
+        </div>
+
+        <!-- 선택한 질문 표시 -->
+        <div class="bg-gray-50 rounded-lg p-4 mb-6">
+          <div class="text-xs text-gray-600 mb-1">질문</div>
+          <div class="text-sm font-bold text-gray-900" id="finalQuestion"></div>
+        </div>
+
+        <!-- 답변 구성 요소 선택 -->
+        <div class="space-y-4 mb-6">
+          <!-- 답변 유형 -->
+          <div>
+            <label class="text-xs font-semibold text-gray-700 mb-2 block">답변 유형</label>
+            <div id="answerTypeTags" class="flex flex-wrap gap-2">
+              <!-- 동적으로 생성됨 -->
+            </div>
+          </div>
+
+          <!-- 세부 정보 -->
+          <div>
+            <label class="text-xs font-semibold text-gray-700 mb-2 block">세부 정보 (복수 선택 가능)</label>
+            <div id="detailTags" class="flex flex-wrap gap-2">
+              <!-- 동적으로 생성됨 -->
+            </div>
+          </div>
+
+          <!-- 추가 내용 입력 -->
+          <div>
+            <label class="text-xs font-semibold text-gray-700 mb-2 block">추가로 설명할 내용이 있나요?</label>
+            <textarea
+              id="additionalText"
+              rows="3"
+              class="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none resize-none transition-all text-gray-900 placeholder:text-gray-400"
+              placeholder="예: 월요일은 휴무입니다"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- 생성된 답변 미리보기 -->
+        <div class="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200 rounded-xl p-5 mb-6">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-lg">✨</span>
+            <div class="text-xs font-bold text-gray-700">생성된 답변</div>
+          </div>
+          <div class="text-sm text-gray-900 whitespace-pre-wrap min-h-[80px]" id="generatedAnswer">
+            답변 요소를 선택해주세요
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 하단 버튼 -->
+    <div class="flex gap-3">
+      <button
+        id="backBtn"
+        onclick="handleBack()"
+        class="px-6 py-3 bg-white border-2 border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold text-sm hidden"
+      >
+        이전
+      </button>
+      <button
+        id="nextBtn"
+        onclick="handleNext()"
+        class="flex-1 px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-xl hover:shadow-lg hover:-translate-y-1 transition-all font-bold text-sm disabled:opacity-50 disabled:cursor-not-allowed hidden"
+        disabled
+      >
+        다음 단계로
+      </button>
+      <button
+        id="completeBtn"
+        onclick="handleComplete()"
+        class="flex-1 px-6 py-3 bg-gradient-to-r from-green-400 to-emerald-400 text-white rounded-xl hover:shadow-lg hover:-translate-y-1 transition-all font-bold text-sm hidden bounce"
+      >
+        완성! 🎉
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // 상태 관리
+    let currentStep = 1;
+    let selectedCategory = '';
+    let selectedQuestion = '';
+    let selectedSubjects = [];
+    let selectedKeywords = [];
+    let selectedAnswerType = '';
+    let selectedDetails = [];
+
+    // 카테고리별 데이터
+    const categoryData = {
+      '시설': {
+        templates: [
+          '영업시간이 어떻게 되나요?',
+          '주차는 어디에 하나요?',
+          '위치가 어디인가요?',
+          '찾아가는 방법을 알려주세요',
+          '주말에도 운영하나요?',
+          '공휴일에도 영업하나요?',
+          '와이파이가 있나요?',
+          '몇 시에 문 닫나요?',
+          '대중교통으로 어떻게 가나요?'
+        ],
+        subjects: ['영업시간', '위치', '주차', '교통', '시설', '편의시설', '휴무일', '공휴일'],
+        keywords: ['언제', '어디', '몇시', '몇시까지', '가는 방법', '운영', '이용', '있나요', '되나요']
+      },
+      '상품': {
+        templates: [
+          '가격이 얼마인가요?',
+          '배송은 얼마나 걸리나요?',
+          '어떤 옵션이 있나요?',
+          '재고가 있나요?',
+          '할인 받을 수 있나요?',
+          '배송비는 얼마인가요?',
+          '반품 가능한가요?',
+          '사이즈가 어떻게 되나요?',
+          '품절되면 언제 들어오나요?'
+        ],
+        subjects: ['가격', '배송', '옵션', '재고', '할인', '결제', '반품', '교환', '사이즈'],
+        keywords: ['얼마', '언제', '어떤', '있나요', '방법', '가능', '되나요', '기간', '조건']
+      },
+      '예약': {
+        templates: [
+          '예약은 어떻게 하나요?',
+          '예약 취소는 어떻게 하나요?',
+          '당일 예약 가능한가요?',
+          '예약 변경할 수 있나요?',
+          '노쇼 정책이 어떻게 되나요?',
+          '예약금이 필요한가요?',
+          '몇 명까지 예약 가능한가요?',
+          '예약 확인은 어떻게 하나요?',
+          '대기 예약도 받나요?'
+        ],
+        subjects: ['예약', '취소', '변경', '당일예약', '대기', '확인', '예약금', '인원'],
+        keywords: ['방법', '가능', '규정', '언제까지', '어떻게', '조건', '되나요', '있나요']
+      },
+      '정책': {
+        templates: [
+          '환불 정책이 어떻게 되나요?',
+          '교환 가능한가요?',
+          '이용 규칙이 있나요?',
+          '위약금이 있나요?',
+          '회원 가입 필수인가요?',
+          '개인정보는 어떻게 관리되나요?',
+          '환불은 언제 되나요?',
+          '약관은 어디서 볼 수 있나요?'
+        ],
+        subjects: ['환불', '교환', '규칙', '위약금', '가입', '약관', '개인정보', '이용조건'],
+        keywords: ['정책', '규정', '조건', '가능', '필요', '기간', '방법', '어떻게']
+      },
+      '멤버십': {
+        templates: [
+          '멤버십 혜택이 뭐가 있나요?',
+          '등급은 어떻게 올라가나요?',
+          '포인트는 어떻게 쌓이나요?',
+          '포인트 유효기간이 있나요?',
+          '가족 회원 등록 되나요?',
+          '등급 유지 조건이 어떻게 되나요?',
+          '포인트로 뭘 살 수 있나요?',
+          '쿠폰은 어떻게 받나요?'
+        ],
+        subjects: ['멤버십', '등급', '포인트', '혜택', '할인', '가족회원', '쿠폰', '적립'],
+        keywords: ['혜택', '조건', '방법', '기간', '적립', '사용', '어떻게', '뭐가']
+      },
+      '기타': {
+        templates: [
+          '문의는 어디로 하나요?',
+          '고객센터 운영시간은?',
+          '이메일로 문의 가능한가요?',
+          '전화번호 알려주세요'
+        ],
+        subjects: ['문의', '상담', '고객센터', '연락처', '이메일', '채팅', '전화'],
+        keywords: ['방법', '시간', '연락', '어디', '가능', '문의', '알려주세요']
+      }
+    };
+
+    // 답변 구성 요소
+    const answerComponents = {
+      types: [
+        '시간 안내', 
+        '장소 안내', 
+        '방법 안내', 
+        '가격 안내', 
+        '조건 안내', 
+        '연락처 안내',
+        '절차 안내',
+        '링크 제공'
+      ],
+      details: [
+        '평일 시간',
+        '주말 시간',
+        '공휴일',
+        '점심시간',
+        '가격/요금',
+        '할인 정보',
+        '위치/주소',
+        '전화번호',
+        '이메일',
+        '카카오톡',
+        '예약링크',
+        '홈페이지',
+        '주의사항',
+        '준비물',
+        '소요시간',
+        '인원제한',
+        '연령제한',
+        '주차 정보',
+        '교통편',
+        '결제 방법',
+        '환불 규정',
+        '변경 규정'
+      ]
+    };
+
+    // 카테고리 선택
+    function selectCategory(category) {
+      selectedCategory = category;
+      
+      // 카테고리 카드 활성화 표시
+      document.querySelectorAll('.category-card').forEach(card => {
+        card.classList.remove('active');
+      });
+      event.currentTarget.classList.add('active');
+
+      // 다음 단계로
+      setTimeout(() => {
+        currentStep = 2;
+        updateStepUI();
+        showTemplateStep();
+      }, 300);
+    }
+
+    // 템플릿 단계 표시
+    function showTemplateStep() {
+      document.getElementById('categoryStep').classList.add('hidden');
+      document.getElementById('templateStep').classList.remove('hidden');
+
+      const data = categoryData[selectedCategory];
+      
+      // 템플릿 목록 생성
+      const templateList = document.getElementById('templateList');
+      templateList.innerHTML = `
+        <div class="text-xs font-semibold text-gray-700 mb-3">
+          💡 자주 묻는 질문을 선택하거나, 아래에서 직접 만들어보세요
+        </div>
+        ${data.templates.map(template => `
+          <button
+            onclick="selectTemplate('${template}')"
+            class="w-full text-left px-4 py-3 bg-gray-50 hover:bg-yellow-50 border border-gray-200 hover:border-yellow-300 rounded-lg transition-all text-sm"
+          >
+            ${template}
+          </button>
+        `).join('')}
+      `;
+
+      // 주제 태그 생성
+      const subjectTags = document.getElementById('subjectTags');
+      subjectTags.innerHTML = data.subjects.map(subject => `
+        <button
+          onclick="toggleSubject('${subject}')"
+          class="tag-button px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-xs font-medium hover:bg-gray-200"
+        >
+          ${subject}
+        </button>
+      `).join('');
+
+      // 키워드 태그 생성
+      const keywordTags = document.getElementById('keywordTags');
+      keywordTags.innerHTML = data.keywords.map(keyword => `
+        <button
+          onclick="toggleKeyword('${keyword}')"
+          class="tag-button px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-xs font-medium hover:bg-gray-200"
+        >
+          ${keyword}
+        </button>
+      `).join('');
+
+      updateNextButton();
+    }
+
+    // 템플릿 선택
+    function selectTemplate(template) {
+      selectedQuestion = template;
+      event.currentTarget.classList.add('bg-yellow-100', 'border-yellow-400', 'font-bold');
+      
+      setTimeout(() => {
+        currentStep = 3;
+        updateStepUI();
+        showAnswerStep();
+      }, 300);
+    }
+
+    // 주제 토글
+    function toggleSubject(subject) {
+      const btn = event.currentTarget;
+      const index = selectedSubjects.indexOf(subject);
+      
+      if (index > -1) {
+        selectedSubjects.splice(index, 1);
+        btn.classList.remove('selected');
+      } else {
+        selectedSubjects = [subject]; // 단일 선택
+        document.querySelectorAll('#subjectTags .tag-button').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      }
+      
+      updateGeneratedQuestion();
+    }
+
+    // 키워드 토글
+    function toggleKeyword(keyword) {
+      const btn = event.currentTarget;
+      const index = selectedKeywords.indexOf(keyword);
+      
+      if (index > -1) {
+        selectedKeywords.splice(index, 1);
+        btn.classList.remove('selected');
+      } else {
+        selectedKeywords = [keyword]; // 단일 선택
+        document.querySelectorAll('#keywordTags .tag-button').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      }
+      
+      updateGeneratedQuestion();
+    }
+
+    // 질문 생성
+    function updateGeneratedQuestion() {
+      if (selectedSubjects.length > 0 && selectedKeywords.length > 0) {
+        const question = `${selectedSubjects[0]} ${selectedKeywords[0]}?`;
+        document.getElementById('generatedQuestion').textContent = question;
+        document.getElementById('previewQuestion').classList.remove('hidden');
+        selectedQuestion = question;
+        updateNextButton();
+      } else {
+        document.getElementById('previewQuestion').classList.add('hidden');
+        selectedQuestion = '';
+        updateNextButton();
+      }
+    }
+
+    // 답변 단계 표시
+    function showAnswerStep() {
+      document.getElementById('templateStep').classList.add('hidden');
+      document.getElementById('answerStep').classList.remove('hidden');
+      
+      document.getElementById('finalQuestion').textContent = selectedQuestion;
+
+      // 답변 유형 태그
+      const answerTypeTags = document.getElementById('answerTypeTags');
+      answerTypeTags.innerHTML = answerComponents.types.map(type => `
+        <button
+          onclick="toggleAnswerType('${type}')"
+          class="tag-button px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-200"
+        >
+          ${type}
+        </button>
+      `).join('');
+
+      // 세부 정보 태그
+      const detailTags = document.getElementById('detailTags');
+      detailTags.innerHTML = answerComponents.details.map(detail => `
+        <button
+          onclick="toggleDetail('${detail}')"
+          class="tag-button px-2.5 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200"
+        >
+          ${detail}
+        </button>
+      `).join('');
+
+      // 추가 텍스트 입력 이벤트
+      document.getElementById('additionalText').addEventListener('input', updateGeneratedAnswer);
+
+      updateNextButton();
+    }
+
+    // 답변 유형 토글
+    function toggleAnswerType(type) {
+      const btn = event.currentTarget;
+      
+      selectedAnswerType = type;
+      document.querySelectorAll('#answerTypeTags .tag-button').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      
+      updateGeneratedAnswer();
+    }
+
+    // 세부 정보 토글 (복수 선택)
+    function toggleDetail(detail) {
+      const btn = event.currentTarget;
+      const index = selectedDetails.indexOf(detail);
+      
+      if (index > -1) {
+        selectedDetails.splice(index, 1);
+        btn.classList.remove('selected');
+      } else {
+        selectedDetails.push(detail);
+        btn.classList.add('selected');
+      }
+      
+      updateGeneratedAnswer();
+    }
+
+    // 답변 생성
+    function updateGeneratedAnswer() {
+      let answer = '';
+      
+      if (selectedAnswerType) {
+        answer += `[${selectedAnswerType}]\n`;
+      }
+      
+      if (selectedDetails.length > 0) {
+        answer += selectedDetails.map(detail => `• ${detail}: [여기에 정보 입력]`).join('\n');
+        answer += '\n\n';
+      }
+      
+      const additionalText = document.getElementById('additionalText').value;
+      if (additionalText) {
+        answer += additionalText;
+      }
+      
+      if (!answer) {
+        answer = '답변 요소를 선택해주세요';
+      }
+      
+      document.getElementById('generatedAnswer').textContent = answer;
+      updateCompleteButton();
+    }
+
+    // UI 업데이트
+    function updateStepUI() {
+      // 단계 인디케이터
+      for (let i = 1; i <= 3; i++) {
+        const step = document.getElementById(`step${i}`);
+        if (i < currentStep) {
+          step.classList.add('completed');
+          step.classList.remove('active');
+        } else if (i === currentStep) {
+          step.classList.add('active');
+          step.classList.remove('completed');
+        } else {
+          step.classList.remove('active', 'completed');
+        }
+      }
+
+      // 버튼 표시
+      document.getElementById('backBtn').classList.toggle('hidden', currentStep === 1);
+      document.getElementById('nextBtn').classList.toggle('hidden', currentStep === 3);
+      document.getElementById('completeBtn').classList.toggle('hidden', currentStep !== 3);
+    }
+
+    function updateNextButton() {
+      const nextBtn = document.getElementById('nextBtn');
+      if (currentStep === 2) {
+        nextBtn.disabled = !selectedQuestion;
+      }
+    }
+
+    function updateCompleteButton() {
+      const completeBtn = document.getElementById('completeBtn');
+      completeBtn.disabled = !selectedAnswerType && selectedDetails.length === 0;
+    }
+
+    // 네비게이션
+    function backToCategory() {
+      currentStep = 1;
+      selectedQuestion = '';
+      selectedSubjects = [];
+      selectedKeywords = [];
+      updateStepUI();
+      document.getElementById('templateStep').classList.add('hidden');
+      document.getElementById('categoryStep').classList.remove('hidden');
+    }
+
+    function backToTemplate() {
+      currentStep = 2;
+      selectedAnswerType = '';
+      selectedDetails = [];
+      updateStepUI();
+      document.getElementById('answerStep').classList.add('hidden');
+      document.getElementById('templateStep').classList.remove('hidden');
+    }
+
+    function handleBack() {
+      if (currentStep === 2) {
+        backToCategory();
+      } else if (currentStep === 3) {
+        backToTemplate();
+      }
+    }
+
+    function handleNext() {
+      if (currentStep === 2 && selectedQuestion) {
+        currentStep = 3;
+        updateStepUI();
+        showAnswerStep();
+      }
+    }
+
+    function handleComplete() {
+      const result = {
+        category: selectedCategory,
+        question: selectedQuestion,
+        answerType: selectedAnswerType,
+        details: selectedDetails,
+        additionalText: document.getElementById('additionalText').value,
+        fullAnswer: document.getElementById('generatedAnswer').textContent
+      };
+
+      // 부모 창으로 데이터 전달 (모달에서 열었을 경우)
+      if (window.opener) {
+        window.opener.postMessage({
+          type: 'FAQ_SAMPLE_COMPLETE',
+          data: result
+        }, '*');
+        window.close();
+      } else {
+        // 단독 페이지로 열었을 경우 - 콘솔에 출력 및 알림
+        console.log('생성된 FAQ:', result);
+        alert('FAQ가 생성되었습니다!\n\n' + 
+              '질문: ' + result.question + '\n\n' +
+              '답변:\n' + result.fullAnswer);
+        
+        // 초기화
+        location.reload();
+      }
+    }
+
+    // 초기화
+    updateStepUI();
+  </script>
+</body>
+</html>

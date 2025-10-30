@@ -56,6 +56,7 @@ export default function TenantPortal() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showSampleBuilder, setShowSampleBuilder] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
 
   // ✅ 설정 메뉴
@@ -300,6 +301,35 @@ export default function TenantPortal() {
     // 대화 탭은 ConversationsPage 컴포넌트가 자체적으로 로드
   }, [activeTab, currentTenant, isLoggedIn]);
 
+
+  // 📍  메시지 리스너 
+  useEffect(() => {
+    const handleSampleMessage = (event) => {
+      if (event.data.type === 'FAQ_SAMPLE_COMPLETE') {
+        const sampleData = event.data.data;
+        console.log('✅ 샘플 데이터 받음:', sampleData);
+
+        setFormData({
+          questions: [sampleData.question],
+          answer: sampleData.fullAnswer,
+          staffHandoff: '필요없음',
+          guide: sampleData.details.length > 0
+            ? `답변 유형: ${sampleData.answerType || '미지정'}\n포함 정보: ${sampleData.details.join(', ')}`
+            : '',
+          keyData: sampleData.additionalText || '',
+          expiryDate: ''
+        });
+
+        setShowSampleBuilder(false);
+        alert('✨ 샘플 FAQ가 입력되었습니다!');
+      }
+    };
+
+    window.addEventListener('message', handleSampleMessage);
+    return () => window.removeEventListener('message', handleSampleMessage);
+  }, []);
+
+
   async function fetchFAQData() {
     if (!currentTenant) return;
     setIsLoading(true);
@@ -470,6 +500,10 @@ export default function TenantPortal() {
       setIsLoading(false);
     }
   }
+
+  const openSampleBuilder = () => setShowSampleBuilder(true);
+  const closeSampleBuilder = () => setShowSampleBuilder(false);
+
 
   async function handleDelete(item) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
@@ -1354,9 +1388,22 @@ export default function TenantPortal() {
                   <div className="space-y-5">
                     {/* 질문 */}
                     <div>
-                      <label className="block text-xs font-semibold text-gray-900 mb-2">
-                        질문 <span className="text-red-500">*</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-semibold text-gray-900">
+                          질문 <span className="text-red-500">*</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={openSampleBuilder}
+                          className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-lg hover:shadow-md transition-all text-xs font-bold"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          샘플로 쉽게 만들기
+                        </button>
+                      </div>
 
                       <div className="space-y-2">
                         {formData.questions.map((question, index) => (
@@ -1405,7 +1452,7 @@ export default function TenantPortal() {
                       />
                     </div>
 
-                    {/* 담당자 전달 - 작은 버튼 스타일 */}
+                    {/* 담당자 전달 - 노랑 통일 */}
                     <div>
                       <label className="block text-xs font-semibold text-gray-900 mb-2">
                         담당자 전달이 필요한가요?
@@ -1415,7 +1462,7 @@ export default function TenantPortal() {
                           type="button"
                           onClick={() => setFormData({ ...formData, staffHandoff: '필요없음' })}
                           className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${formData.staffHandoff === '필요없음'
-                            ? 'bg-blue-500 text-white'
+                            ? 'bg-yellow-400 text-gray-900'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                         >
@@ -1426,7 +1473,7 @@ export default function TenantPortal() {
                           type="button"
                           onClick={() => setFormData({ ...formData, staffHandoff: '전달 필요' })}
                           className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${formData.staffHandoff === '전달 필요'
-                            ? 'bg-red-500 text-white'
+                            ? 'bg-yellow-400 text-gray-900'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                         >
@@ -1435,9 +1482,16 @@ export default function TenantPortal() {
 
                         <button
                           type="button"
-                          onClick={() => setFormData({ ...formData, staffHandoff: '조건부 전달' })}
+                          onClick={() => {
+                            setFormData({ ...formData, staffHandoff: '조건부 전달' });
+                            // 조건부 선택 시 details 자동 펼침
+                            const details = document.querySelector('details');
+                            if (details && !details.open) {
+                              details.open = true;
+                            }
+                          }}
                           className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${formData.staffHandoff === '조건부 전달'
-                            ? 'bg-amber-500 text-white'
+                            ? 'bg-yellow-400 text-gray-900'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                             }`}
                         >
@@ -1450,15 +1504,15 @@ export default function TenantPortal() {
                     <details className="group border-b border-gray-200">
                       <summary className="flex items-center justify-between py-2.5 cursor-pointer list-none">
                         <span className="text-xs font-medium text-gray-600">
-                          추가 옵션 (선택사항)
+                          답변 시 주의사항이 있다면?
                         </span>
                         <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" />
                       </summary>
 
-                      <div className="pb-4 space-y-4">
+                      <div className="pt-4 pb-5 space-y-5">
                         {/* 주의사항 */}
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                          <label className="block text-xs font-bold text-gray-900 mb-1.5">
                             주의사항
                           </label>
                           <textarea
@@ -1468,14 +1522,14 @@ export default function TenantPortal() {
                             className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none resize-none transition-all text-gray-900 placeholder:text-gray-400"
                             placeholder="예: 월요일은 휴무입니다"
                           />
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1.5 text-xs text-gray-500">
                             답변 시 주의할 점, 예외상황, 전달 조건 등
                           </p>
                         </div>
 
                         {/* 기준정보 */}
                         <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                          <label className="block text-xs font-bold text-gray-900 mb-1.5">
                             기준정보
                           </label>
                           <textarea
@@ -1485,7 +1539,7 @@ export default function TenantPortal() {
                             className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none resize-none transition-all text-gray-900 placeholder:text-gray-400"
                             placeholder="예: 전화번호 02-1234-5678"
                           />
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1.5 text-xs text-gray-500">
                             링크, 규정 등 고정값 혹은 답변 생성 시 참고 정보
                           </p>
                         </div>
@@ -1493,19 +1547,23 @@ export default function TenantPortal() {
                         {/* 만료일 */}
                         {currentPlanConfig?.hasExpiryDate && (
                           <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                            <label className="block text-xs font-bold text-gray-900 mb-1.5">
                               <span>만료일</span>
-                              <span className="ml-1.5 text-xs text-purple-600">
+                              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 text-xs rounded-full font-medium border border-purple-200/50">
+                                <Crown className="w-3 h-3" />
                                 {currentPlanConfig.name} 전용
                               </span>
                             </label>
-                            <input
-                              type="date"
-                              value={formData.expiryDate}
-                              onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                              className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none transition-all text-gray-900"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
+                            <div className="relative">
+                              <input
+                                type="date"
+                                value={formData.expiryDate}
+                                onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+                                className="w-full px-3 py-2.5 pr-10 text-sm bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none transition-all text-gray-900 cursor-pointer"
+                              />
+                              <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                            </div>
+                            <p className="mt-1.5 text-xs text-gray-500">
                               기간 한정 이벤트, 휴가 일정 등에 활용
                             </p>
                           </div>
@@ -1586,6 +1644,37 @@ function TaskCard({ task }) {
           </a>
         )}
       </div>
+      {/* ✅ 샘플 빌더 모달 */}
+      {showSampleBuilder && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-yellow-50 to-amber-50">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  ✨ 샘플로 쉽게 FAQ 만들기
+                </h2>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  클릭만으로 질문-답변을 완성하세요
+                </p>
+              </div>
+              <button
+                onClick={closeSampleBuilder}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src="/faq-sample-builder.html"
+                className="w-full h-full border-0"
+                title="FAQ 샘플 빌더"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
