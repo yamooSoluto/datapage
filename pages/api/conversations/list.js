@@ -144,10 +144,7 @@ export default async function handler(req, res) {
         // 필터 적용
         if (channel !== "all") q = q.where("channel", "==", normalizeChannel(channel));
 
-        // ✅ 카테고리 필터 추가 (array-contains)
-        if (category !== "all") {
-            q = q.where("categories", "array-contains", category);
-        }
+        // 카테고리 필터는 클라이언트에서 처리 (문자열 기반)
 
         // 커서 적용 (타임스탬프 기반)
         const cur = decodeCursor(cursor);
@@ -280,8 +277,9 @@ export default async function handler(req, res) {
                     agent: agentCount, // ✅ Agent 카운트 추가
                     total: msgs.length
                 },
-                // ✅ 카테고리 정보 추가
-                categories: Array.isArray(v.categories) ? v.categories : [],
+                // ✅ 카테고리 정보 추가 (문자열 또는 배열 모두 지원)
+                category: v.category || null, // 문자열 (예: "결제/환불|예약/변경")
+                categories: v.category ? v.category.split('|').map(c => c.trim()) : [], // 배열로 변환
                 // ✅ 슬랙 카드 정보 추가
                 hasSlackCard: !!slack,
                 isTask: cardInfo?.isTask || false,

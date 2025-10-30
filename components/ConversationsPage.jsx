@@ -23,12 +23,13 @@ export default function ConversationsPage({ tenantId }) {
     const [itemsPerPage, setItemsPerPage] = useState(20);
 
     const availableCategories = [
-        '불편사항',
-        '오류',
-        '결제',
-        '건의',
-        '문의',
-        '칭찬',
+        '결제/환불',
+        '예약/변경',
+        '이용/시설',
+        '상품/서비스',
+        '시스템/오류',
+        '건의/요청',
+        '이벤트/쿠폰',
         '기타'
     ];
 
@@ -542,21 +543,42 @@ function MessageBubble({ message }) {
                         </p>
                     )}
 
-                    {/* 이미지 */}
+                    {/* 이미지 - 버블 내부에 맞게 최적화 */}
                     {message.pics && message.pics.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            {message.pics.map((pic, idx) => (
-                                <img
-                                    key={idx}
-                                    src={pic.url || pic}
-                                    alt={`첨부 ${idx + 1}`}
-                                    className="max-w-xs rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                    onClick={() => window.open(pic.url || pic, '_blank')}
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                    }}
-                                />
-                            ))}
+                        <div className={`${message.text ? 'mt-2' : ''}`}>
+                            {message.pics.length === 1 ? (
+                                /* 단일 이미지 */
+                                <div className="relative overflow-hidden rounded-lg">
+                                    <img
+                                        src={message.pics[0].url || message.pics[0]}
+                                        alt="첨부 이미지"
+                                        className="w-full h-auto max-h-80 object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                        onClick={() => window.open(message.pics[0].url || message.pics[0], '_blank')}
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            e.target.parentElement.innerHTML = '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
+                                        }}
+                                    />
+                                </div>
+                            ) : (
+                                /* 다중 이미지 - 2열 그리드 */
+                                <div className="grid grid-cols-2 gap-2">
+                                    {message.pics.map((pic, idx) => (
+                                        <div key={idx} className="aspect-square overflow-hidden rounded-lg">
+                                            <img
+                                                src={pic.url || pic}
+                                                alt={`첨부 ${idx + 1}`}
+                                                className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                                onClick={() => window.open(pic.url || pic, '_blank')}
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                    e.target.parentElement.innerHTML = '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

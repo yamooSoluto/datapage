@@ -101,7 +101,8 @@ export default async function handler(req, res) {
                 lastMessageAt: safeIso(d.lastMessageAt),
                 cwConversationId: d.cw_conversation_id || null,
                 summary: d.summary || null,
-                categories: Array.isArray(d.categories) ? d.categories : [],
+                category: d.category || null, // 문자열 (예: "결제/환불|예약/변경")
+                categories: d.category ? d.category.split('|').map(c => c.trim()) : [], // 배열로 변환
             },
             messages,
             slack: slackData

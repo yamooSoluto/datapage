@@ -23,15 +23,16 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
         return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
     };
 
-    // ✅ 카테고리 색상 매핑
+    // ✅ 카테고리 색상 매핑 (실제 카테고리 목록 반영)
     const getCategoryColor = (category) => {
         const colors = {
-            '불편사항': 'bg-orange-50 text-orange-600 border-orange-200',
-            '오류': 'bg-red-50 text-red-600 border-red-200',
-            '결제': 'bg-blue-50 text-blue-600 border-blue-200',
-            '건의': 'bg-purple-50 text-purple-600 border-purple-200',
-            '문의': 'bg-gray-50 text-gray-600 border-gray-200',
-            '칭찬': 'bg-green-50 text-green-600 border-green-200',
+            '결제/환불': 'bg-blue-50 text-blue-600 border-blue-200',
+            '예약/변경': 'bg-purple-50 text-purple-600 border-purple-200',
+            '이용/시설': 'bg-green-50 text-green-600 border-green-200',
+            '상품/서비스': 'bg-orange-50 text-orange-600 border-orange-200',
+            '시스템/오류': 'bg-red-50 text-red-600 border-red-200',
+            '건의/요청': 'bg-yellow-50 text-yellow-600 border-yellow-200',
+            '이벤트/쿠폰': 'bg-pink-50 text-pink-600 border-pink-200',
             '기타': 'bg-gray-50 text-gray-500 border-gray-200',
         };
         return colors[category] || 'bg-gray-50 text-gray-500 border-gray-200';

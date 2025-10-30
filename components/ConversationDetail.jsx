@@ -317,8 +317,7 @@ function MessageBubble({ message, onImageClick }) {
                                     <img
                                         src={message.pics[0].url || message.pics[0]}
                                         alt="첨부 이미지"
-                                        className="w-full h-auto max-h-96 object-cover"
-                                        style={{ maxWidth: '100%' }}
+                                        className="w-full h-auto max-h-80 object-contain rounded-lg"
                                         onError={(e) => {
                                             e.target.parentElement.innerHTML = `
                                                 <div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">
