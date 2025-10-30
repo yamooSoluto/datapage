@@ -1612,7 +1612,7 @@ export default function TenantPortal() {
                 <div className="flex-1 overflow-y-auto px-5 py-4">
                   <ModularFAQBuilderV2
                     onCancel={() => setShowBuilder(false)}
-                    onComplete={({ question, answer, questionModules, answerModules, category }) => {
+                    onComplete={({ question, answer, questionModules, answerModules, category, staffHandoff, guide, keyData, tags }) => {
                       // ✅ 빌더에서 만든 내용을 기존 formData 형식에 주입
                       setFormData(prev => ({
                         ...prev,
@@ -1620,18 +1620,20 @@ export default function TenantPortal() {
                         questions: [question || ''],
                         answer: answer || '',
                         // 카테고리/모듈 정보는 안전하게 문자열화하여 keyData로 보관 (백엔드 영향 없음)
+                        staffHandoff: staffHandoff || prev.staffHandoff || '필요없음',
+                        guide: guide || prev.guide || '',
                         keyData: (() => {
-                          try {
-                            const meta = { category, qMods: questionModules, aMods: answerModules };
-                            const packed = JSON.stringify(meta);
-                            // 기존 keyData가 있으면 합쳐 저장
-                            return prev.keyData
-                              ? `${prev.keyData}\n\n[BUNDLE]\n${packed}`
-                              : packed;
-                          } catch { return prev.keyData || ''; }
+                          const bundle = (() => {
+                            try {
+                              return JSON.stringify({ category, qMods: questionModules, aMods: answerModules });
+                            } catch { return ''; }
+                          })();
+                          // 1) 사용자가 입력한 keyData
+                          // 2) 태그가 있으면 마지막 줄에 tags: a,b,c 형태로 추가 (컬럼 분리 전 임시)
+                          const userKeyData = keyData || '';
+                          const withBundle = bundle ? `${userKeyData}${userKeyData ? '\n\n' : ''}[BUNDLE]\n${bundle}` : userKeyData;
+                          return withBundle.trim();
                         })(),
-                        // 가이드에 카테고리 한 줄 메모(선택)
-                        guide: prev.guide || (category ? `카테고리: ${category}` : '')
                       }));
 
                       // 빌더 닫기
