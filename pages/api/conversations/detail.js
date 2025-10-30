@@ -13,6 +13,39 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+// ============================================
+// 📊 플랜별 조회 제한 설정 (여기서 수정)
+// ============================================
+const PLAN_LIMITS = {
+    trial: {
+        days: 30,        // 조회 가능 기간 (일)
+        maxDocs: null,   // 최대 문서 수 (null = 무제한)
+    },
+    starter: {
+        days: 30,
+        maxDocs: null,
+    },
+    pro: {
+        days: 90,
+        maxDocs: null,
+    },
+    business: {
+        days: null,      // null = 무제한
+        maxDocs: null,
+    },
+    enterprise: {
+        days: null,      // null = 무제한
+        maxDocs: null,
+    },
+};
+
+// 기본값 (플랜 정보 없을 때)
+const DEFAULT_LIMIT = {
+    days: 30,
+    maxDocs: null,
+};
+// ============================================
+
 // helpers
 const safeIso = (t) =>
     (t?.toDate?.()?.toISOString?.() ? t.toDate().toISOString() : null);
@@ -24,25 +57,100 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "tenant and chatId are required" });
         }
 
+        // ✅ 플랜 정보 가져오기 (tenants 컬렉션에서)
+        let userPlan = 'trial'; // 기본값
+        try {
+            const tenantDoc = await db.collection("tenants").doc(tenant).get();
+            if (tenantDoc.exists) {
+                const tenantData = tenantDoc.data();
+                userPlan = tenantData.plan || tenantData.subscription?.plan || 'trial';
+            }
+        } catch (e) {
+            console.warn('[detail] Failed to get plan, using default:', e);
+        }
+
+        // ✅ 플랜별 제한 가져오기
+        const limits = PLAN_LIMITS[userPlan] || DEFAULT_LIMIT;
+        console.log(`[detail] Plan: ${userPlan}, Limits:`, limits);
+
         // 1) 우선 안정 키(tenant_chatId)로 조회
         const stableId = `${tenant}_${chatId}`;
         let convDoc = await db.collection("FAQ_realtime_cw").doc(stableId).get();
 
-        // 2) 레거시( chatId_timestamp ) 호환: chat_id == chatId 중 최신 1건
-        if (!convDoc.exists) {
-            const legacySnap = await db
-                .collection("FAQ_realtime_cw")
-                .where("tenant_id", "==", tenant)
-                .where("chat_id", "==", chatId)
-                .orderBy("lastMessageAt", "desc")
-                .limit(1)
-                .get();
-            if (!legacySnap.empty) convDoc = legacySnap.docs[0];
+        // 2) 레거시( chatId_timestamp ) 호환: chat_id == chatId의 모든 문서 가져오기
+        let allDocs = [];
+        let query = db
+            .collection("FAQ_realtime_cw")
+            .where("tenant_id", "==", tenant)
+            .where("chat_id", "==", chatId);
+
+        // ✅ 기간 제한 적용 (days가 있으면)
+        if (limits.days) {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - limits.days);
+            const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoffDate);
+
+            query = query.where("lastMessageAt", ">=", cutoffTimestamp);
+            console.log(`[detail] Applying ${limits.days} days filter (after ${cutoffDate.toISOString()})`);
         }
+
+        query = query.orderBy("lastMessageAt", "desc");
+
+        // ✅ 문서 개수 제한 적용 (maxDocs가 있으면)
+        if (limits.maxDocs) {
+            query = query.limit(limits.maxDocs);
+            console.log(`[detail] Applying maxDocs limit: ${limits.maxDocs}`);
+        }
+
+        if (!convDoc.exists) {
+            const legacySnap = await query.get();
+
+            if (!legacySnap.empty) {
+                allDocs = legacySnap.docs;
+                convDoc = legacySnap.docs[0]; // 최신 문서를 대표로 사용
+            }
+        } else {
+            // 안정 키로 찾았어도, 같은 chat_id의 다른 문서들이 있을 수 있음
+            const additionalSnap = await query.get();
+
+            if (!additionalSnap.empty) {
+                allDocs = additionalSnap.docs;
+            } else {
+                allDocs = [convDoc];
+            }
+        }
+
         if (!convDoc.exists) return res.status(404).json({ error: "conversation_not_found" });
 
         const d = convDoc.data();
-        const messages = (Array.isArray(d.messages) ? d.messages : []).map((m) => ({
+
+        // ✅ 모든 문서의 메시지를 합치기
+        const allMessages = [];
+        allDocs.forEach(doc => {
+            const docData = doc.data();
+            const docMessages = Array.isArray(docData.messages) ? docData.messages : [];
+            allMessages.push(...docMessages);
+        });
+
+        // ✅ 시간순 정렬 (오래된 순)
+        allMessages.sort((a, b) => {
+            const tsA = a.timestamp?.toMillis?.() || 0;
+            const tsB = b.timestamp?.toMillis?.() || 0;
+            return tsA - tsB;
+        });
+
+        // ✅ 중복 제거 (msgId 기준)
+        const uniqueMessages = [];
+        const seenMsgIds = new Set();
+        allMessages.forEach(msg => {
+            const msgId = msg.msgId || `${msg.sender}_${msg.timestamp?.toMillis?.()}_${msg.text?.slice(0, 20)}`;
+            if (!seenMsgIds.has(msgId)) {
+                seenMsgIds.add(msgId);
+                uniqueMessages.push(msg);
+            }
+        });
+
+        const messages = uniqueMessages.map((m) => ({
             sender: m.sender,
             text: m.text || "",
             pics: Array.isArray(m.pics) ? m.pics : [],

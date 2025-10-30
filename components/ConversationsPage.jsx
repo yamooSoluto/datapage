@@ -331,8 +331,8 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
                             <h2 className="text-lg font-semibold text-gray-900">
                                 {conversation.userName || '익명'}
                             </h2>
-                            <p className="text-xs text-gray-500 font-mono">
-                                {conversation.chatId}
+                            <p className="text-xs text-gray-500">
+                                {conversation.channel || 'unknown'} • {conversation.chatId}
                             </p>
                         </div>
                     </div>
@@ -348,6 +348,20 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
                 <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
                     {detailData.messages && detailData.messages.length > 0 ? (
                         <div className="space-y-3">
+                            {/* 시작 날짜 표시 */}
+                            {detailData.messages[0]?.timestamp && (
+                                <div className="flex items-center justify-center my-4">
+                                    <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
+                                        {new Date(detailData.messages[0].timestamp).toLocaleDateString('ko-KR', {
+                                            year: 'numeric',
+                                            month: 'long',
+                                            day: 'numeric',
+                                            weekday: 'long'
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {detailData.messages.map((msg, idx) => (
                                 <MessageBubble key={idx} message={msg} />
                             ))}
@@ -397,33 +411,11 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
 
                     {/* 메타 정보 */}
                     {detailData.conversation && (
-                        <div className="space-y-2">
-                            {/* 대화 요약 - 텍스트만 깔끔하게 */}
+                        <div className="space-y-3">
+                            {/* 요약 - 깔끔하게 */}
                             {detailData.conversation.summary && (
-                                <div className="text-xs text-gray-600">
-                                    대화 요약: <span className="font-medium text-gray-900">{detailData.conversation.summary}</span>
-                                </div>
-                            )}
-
-                            {/* 채널 정보 (unknown이 아닐 때만) */}
-                            {detailData.conversation.channel && detailData.conversation.channel !== 'unknown' && (
-                                <div className="text-xs text-gray-600">
-                                    채널: <span className="font-medium text-gray-900">{detailData.conversation.channel}</span>
-                                </div>
-                            )}
-
-                            {/* 날짜 정보 */}
-                            {detailData.conversation.lastMessageAt && (
-                                <div className="text-xs text-gray-600">
-                                    마지막 메시지: <span className="font-medium text-gray-900">
-                                        {new Date(detailData.conversation.lastMessageAt).toLocaleString('ko-KR', {
-                                            year: 'numeric',
-                                            month: 'long',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                        })}
-                                    </span>
+                                <div className="text-sm text-gray-700">
+                                    <span className="font-semibold">요약</span> {detailData.conversation.summary}
                                 </div>
                             )}
                         </div>
