@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Clock, Calendar, Sparkles, Zap, X, GripVertical, Check, ChevronDown, Hash, Plus, Scissors, ChevronUp, Settings } from 'lucide-react';
+import { Clock, Calendar, Sparkles, Zap, X, GripVertical, Check, ChevronDown, Hash, Plus, Scissors, ChevronUp, Settings, ArrowUpDown } from 'lucide-react';
 
-// ✅ 기존 유틸/상수는 그대로 유지
+// ✅ 모듈 타입 (그대로 유지)
 const MODULE_TYPES = {
     WEEKDAY: 'WEEKDAY',
     TIME: 'TIME',
@@ -13,6 +13,9 @@ const MODULE_TYPES = {
     TAG: 'TAG',
 };
 
+// ─────────────────────────────────────────────────────────────
+// 공통 유틸 (그대로)
+// ─────────────────────────────────────────────────────────────
 function pad2(n) {
     return String(n).padStart(2, '0');
 }
@@ -72,6 +75,57 @@ function normalizeRange(raw) {
     if (!A || !B) return null;
     return `${A}~${B}`;
 }
+
+// ─────────────────────────────────────────────────────────────
+// TagsInput: 콤마/Enter로 토큰 추가
+// ─────────────────────────────────────────────────────────────
+const TagsInput = ({ value = [], onChange }) => {
+    const [draft, setDraft] = useState('');
+
+    const commit = () => {
+        const tokens = draft
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean);
+        if (!tokens.length) return;
+        const next = Array.from(new Set([...(value || []), ...tokens]));
+        onChange(next);
+        setDraft('');
+    };
+
+    return (
+        <div className="rounded-xl border border-gray-200 p-2 bg-white">
+            <div className="flex flex-wrap gap-1 mb-2">
+                {(value || []).map((t) => (
+                    <span key={t} className="inline-flex items-center gap-1 px-2 h-6 bg-gray-100 text-gray-700 text-xs rounded-lg">
+                        {t}
+                        <button
+                            onClick={() => onChange((value || []).filter((x) => x !== t))}
+                            className="text-gray-400 hover:text-red-500"
+                        >
+                            <X className="w-3 h-3" />
+                        </button>
+                    </span>
+                ))}
+            </div>
+            <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault();
+                        commit();
+                    }
+                    if (e.key === 'Backspace' && !draft && (value || []).length) {
+                        onChange((value || []).slice(0, -1));
+                    }
+                }}
+                placeholder="태그 입력 후 Enter"
+                className="w-full px-2 h-8 text-sm bg-gray-50 rounded-lg border border-gray-200 focus:outline-none"
+            />
+        </div>
+    );
+};
 
 const ENDING_GROUPS = [
     ['입니다', '이에요', '에요'],
@@ -166,120 +220,28 @@ const MAIN_CATEGORIES = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 🎯 모바일 최적화: 플로팅 툴바 (하단 고정)
+// 🎯 슬라이드 모달
 // ─────────────────────────────────────────────────────────────
-const FloatingToolbar = ({ onAddModule, onShowPresets, onShowMeta, currentMode }) => {
-    const [expanded, setExpanded] = useState(false);
-
-    const quickModules = [
-        { type: MODULE_TYPES.TEXT, icon: '📝', label: '텍스트' },
-        { type: MODULE_TYPES.TIME, icon: '⏰', label: '시간' },
-        { type: MODULE_TYPES.WEEKDAY, icon: '📅', label: '요일' },
-        { type: MODULE_TYPES.NUMBER, icon: '#️⃣', label: '숫자' },
-    ];
-
-    const moreModules = [
-        { type: MODULE_TYPES.DATE, icon: '🗓', label: '날짜' },
-        { type: MODULE_TYPES.TAG, icon: '🏷️', label: '태그' },
-    ];
-
-    return (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-50">
-            {/* 더보기 패널 */}
-            {expanded && (
-                <div className="p-3 border-t border-gray-100 bg-gray-50">
-                    <div className="grid grid-cols-4 gap-2 mb-2">
-                        {moreModules.map((mod) => (
-                            <button
-                                key={mod.type}
-                                onClick={() => {
-                                    onAddModule(mod.type);
-                                    setExpanded(false);
-                                }}
-                                className="flex flex-col items-center justify-center h-16 bg-white rounded-xl shadow-sm active:scale-95 transition-all"
-                            >
-                                <span className="text-xl mb-1">{mod.icon}</span>
-                                <span className="text-[10px] text-gray-600">{mod.label}</span>
-                            </button>
-                        ))}
-                        <button
-                            onClick={() => {
-                                onShowPresets();
-                                setExpanded(false);
-                            }}
-                            className="flex flex-col items-center justify-center h-16 bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl shadow-sm active:scale-95 transition-all"
-                        >
-                            <Sparkles className="w-5 h-5 text-purple-600 mb-1" />
-                            <span className="text-[10px] text-purple-600 font-semibold">프리셋</span>
-                        </button>
-                    </div>
-
-                    {/* 특수문자 */}
-                    <div className="flex flex-wrap gap-1.5">
-                        {SYMBOLS.map((symbol) => (
-                            <button
-                                key={symbol}
-                                onClick={() => {
-                                    onAddModule(MODULE_TYPES.SYMBOL, { text: symbol });
-                                }}
-                                className="w-8 h-8 bg-white rounded-lg text-sm font-bold text-gray-700 active:bg-gray-100"
-                            >
-                                {symbol}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* 메인 툴바 */}
-            <div className="p-2 flex items-center gap-2">
-                {quickModules.map((mod) => (
-                    <button
-                        key={mod.type}
-                        onClick={() => onAddModule(mod.type)}
-                        className="flex-1 flex flex-col items-center justify-center h-12 bg-gray-50 rounded-xl active:scale-95 transition-all"
-                    >
-                        <span className="text-base">{mod.icon}</span>
-                        <span className="text-[9px] text-gray-600 mt-0.5">{mod.label}</span>
-                    </button>
-                ))}
-
-                <button
-                    onClick={() => setExpanded(!expanded)}
-                    className="flex-1 flex flex-col items-center justify-center h-12 bg-blue-50 rounded-xl active:scale-95 transition-all"
-                >
-                    {expanded ? <ChevronDown className="w-5 h-5 text-blue-600" /> : <ChevronUp className="w-5 h-5 text-blue-600" />}
-                    <span className="text-[9px] text-blue-600 font-semibold mt-0.5">더보기</span>
-                </button>
-
-                <button
-                    onClick={onShowMeta}
-                    className="w-12 h-12 flex items-center justify-center bg-gray-50 rounded-xl active:scale-95 transition-all"
-                >
-                    <Settings className="w-5 h-5 text-gray-600" />
-                </button>
-            </div>
-        </div>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────
-// 🎯 모바일 최적화: 슬라이드 모달
-// ─────────────────────────────────────────────────────────────
-const SlideModal = ({ isOpen, onClose, title, children }) => {
+const SlideModal = ({ isOpen, onClose, title, children, size = 'normal' }) => {
     if (!isOpen) return null;
 
+    const heights = {
+        small: 'max-h-[50vh]',
+        normal: 'max-h-[75vh]',
+        large: 'max-h-[90vh]'
+    };
+
     return (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50">
             <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-            <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl max-h-[85vh] overflow-auto animate-slide-up">
-                <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+            <div className={`absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl ${heights[size]} overflow-hidden flex flex-col animate-slide-up`}>
+                <div className="flex-shrink-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
                     <h3 className="font-bold text-base">{title}</h3>
                     <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 active:scale-95">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
-                <div className="p-4 pb-6">
+                <div className="flex-1 overflow-auto p-4 pb-6">
                     {children}
                 </div>
             </div>
@@ -288,10 +250,217 @@ const SlideModal = ({ isOpen, onClose, title, children }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// 🎯 간소화된 모듈 컴포넌트들
+// 🎯 TIME 모듈 (완전 기능)
+// ─────────────────────────────────────────────────────────────
+const TimeModule = ({ data, onChange, onRemove, isEditing }) => {
+    const [showModal, setShowModal] = useState(false);
+    const [inputValue, setInputValue] = useState('');
+    const [draftStart, setDraftStart] = useState(null);
+    const times = data.times || [];
+
+    const addToken = (raw) => {
+        const rawTokens = String(raw).split(',').map((t) => t.trim()).filter(Boolean);
+        let next = [...times];
+        for (const token of rawTokens) {
+            const norm = normalizeRange(token);
+            if (norm && !next.includes(norm)) next.push(norm);
+        }
+        onChange({ times: next });
+    };
+
+    const addTimeFromInput = () => {
+        if (!inputValue.trim()) return;
+        addToken(inputValue.trim());
+        setInputValue('');
+    };
+
+    const removeTime = (time) => onChange({ times: times.filter((t) => t !== time) });
+
+    const allSlots = Array.from({ length: 24 * 2 }, (_, i) => {
+        const h = Math.floor(i / 2);
+        const m = i % 2 === 0 ? '00' : '30';
+        return `${pad2(h)}:${m}`;
+    });
+
+    const onQuickSlotClick = (slot) => {
+        if (!draftStart) {
+            setDraftStart(slot);
+        } else {
+            const A = draftStart;
+            const B = slot;
+            const idxA = allSlots.indexOf(A);
+            const idxB = allSlots.indexOf(B);
+            if (idxA <= idxB) addToken(`${A}~${B}`);
+            else addToken(`${B}~${A}`);
+            setDraftStart(null);
+        }
+    };
+
+    return (
+        <>
+            <div
+                onClick={() => isEditing && setShowModal(true)}
+                className="inline-flex items-center gap-1 px-2.5 h-7 bg-blue-50 rounded-lg text-xs font-medium active:scale-95"
+            >
+                <Clock className="w-3 h-3 text-blue-600" />
+                <span className="text-blue-900">{times.length > 0 ? times.slice(0, 2).join(', ') + (times.length > 2 ? '...' : '') : '시간'}</span>
+                {isEditing && (
+                    <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="ml-0.5">
+                        <X className="w-3 h-3 text-blue-400" />
+                    </button>
+                )}
+            </div>
+
+            <SlideModal isOpen={showModal} onClose={() => setShowModal(false)} title="시간 설정" size="large">
+                <div className="space-y-4">
+                    {/* 자유 입력 */}
+                    <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-2 block">시간 입력</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && addTimeFromInput()}
+                                placeholder="09:00, 13:30, 09~18"
+                                className="flex-1 px-3 h-10 text-sm bg-gray-50 rounded-xl border border-gray-200"
+                            />
+                            <button onClick={addTimeFromInput} className="px-4 h-10 bg-blue-500 text-white text-sm font-semibold rounded-xl active:scale-95">
+                                추가
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* 빠른 범위 빌더 */}
+                    <div>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-semibold text-gray-700">빠른 범위 선택</label>
+                            <span className="text-[10px] text-gray-500">{draftStart ? `시작: ${draftStart}` : '시작을 선택하세요'}</span>
+                        </div>
+                        <div className="grid grid-cols-6 gap-1.5 max-h-[200px] overflow-auto">
+                            {allSlots.map((slot) => (
+                                <button
+                                    key={slot}
+                                    onClick={() => onQuickSlotClick(slot)}
+                                    className={`h-9 text-xs rounded-lg border font-medium ${draftStart === slot
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700'
+                                        }`}
+                                >
+                                    {slot}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 선택된 시간 */}
+                    {times.length > 0 && (
+                        <div>
+                            <label className="text-xs font-semibold text-gray-700 mb-2 block">선택된 시간</label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {times.map((t) => (
+                                    <div key={t} className="inline-flex items-center gap-1 px-2.5 h-8 bg-blue-100 text-blue-900 text-xs font-medium rounded-lg">
+                                        {t}
+                                        <button onClick={() => removeTime(t)} className="hover:text-red-600">
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </SlideModal>
+        </>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// 🎯 DATE 모듈 (커스텀 날짜 포함)
+// ─────────────────────────────────────────────────────────────
+const DateModule = ({ data, onChange, onRemove, isEditing }) => {
+    const [showModal, setShowModal] = useState(false);
+    const presets = ['공휴일', '명절', '설날', '추석', '연말연시', '성수기', '비수기', '봄', '여름', '가을', '겨울'];
+    const dates = data.dates || [];
+
+    const toggleDate = (date) => {
+        const newDates = dates.includes(date) ? dates.filter((d) => d !== date) : [...dates, date];
+        onChange({ dates: newDates });
+    };
+
+    const addCustomDate = (e) => {
+        const date = e.target.value;
+        if (date && !dates.includes(date)) onChange({ dates: [...dates, date] });
+    };
+
+    return (
+        <>
+            <div
+                onClick={() => isEditing && setShowModal(true)}
+                className="inline-flex items-center gap-1 px-2.5 h-7 bg-purple-50 rounded-lg text-xs font-medium active:scale-95"
+            >
+                <Calendar className="w-3 h-3 text-purple-600" />
+                <span className="text-purple-900">{dates.length > 0 ? dates.slice(0, 2).join(', ') + (dates.length > 2 ? '...' : '') : '날짜'}</span>
+                {isEditing && (
+                    <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="ml-0.5">
+                        <X className="w-3 h-3 text-purple-400" />
+                    </button>
+                )}
+            </div>
+
+            <SlideModal isOpen={showModal} onClose={() => setShowModal(false)} title="날짜 설정">
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-2 block">특정 날짜</label>
+                        <input
+                            type="date"
+                            onChange={addCustomDate}
+                            className="w-full px-3 h-10 text-sm bg-gray-50 rounded-xl border border-gray-200"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-2 block">프리셋</label>
+                        <div className="flex flex-wrap gap-1.5">
+                            {presets.map((preset) => (
+                                <button
+                                    key={preset}
+                                    onClick={() => toggleDate(preset)}
+                                    className={`px-3 h-8 text-xs font-medium rounded-lg ${dates.includes(preset) ? 'bg-purple-500 text-white' : 'bg-gray-100 text-gray-700'
+                                        }`}
+                                >
+                                    {preset}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {dates.length > 0 && (
+                        <div>
+                            <label className="text-xs font-semibold text-gray-700 mb-2 block">선택된 날짜</label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {dates.map((date) => (
+                                    <div key={date} className="inline-flex items-center gap-1 px-2.5 h-8 bg-purple-100 text-purple-900 text-xs font-medium rounded-lg">
+                                        {date}
+                                        <button onClick={() => toggleDate(date)} className="hover:text-red-600">
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </SlideModal>
+        </>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// 🎯 나머지 간단한 모듈들
 // ─────────────────────────────────────────────────────────────
 const WeekdayModule = ({ data, onChange, onRemove, isEditing }) => {
-    const [expanded, setExpanded] = useState(false);
+    const [showModal, setShowModal] = useState(false);
     const weekdays = ['월', '화', '수', '목', '금', '토', '일', '평일', '주말', '매일'];
     const selected = data.days || [];
 
@@ -301,9 +470,9 @@ const WeekdayModule = ({ data, onChange, onRemove, isEditing }) => {
     };
 
     return (
-        <div className="relative inline-block">
+        <>
             <div
-                onClick={() => isEditing && setExpanded(!expanded)}
+                onClick={() => isEditing && setShowModal(true)}
                 className="inline-flex items-center gap-1 px-2.5 h-7 bg-indigo-50 rounded-lg text-xs font-medium active:scale-95"
             >
                 <Calendar className="w-3 h-3 text-indigo-600" />
@@ -315,96 +484,32 @@ const WeekdayModule = ({ data, onChange, onRemove, isEditing }) => {
                 )}
             </div>
 
-            {expanded && isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl p-2 z-50 min-w-[200px]">
-                    <div className="flex flex-wrap gap-1">
-                        {weekdays.map((day) => (
-                            <button
-                                key={day}
-                                onClick={() => toggleDay(day)}
-                                className={`px-2 h-6 text-xs rounded-md ${selected.includes(day) ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-700'
-                                    }`}
-                            >
-                                {day}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const TimeModule = ({ data, onChange, onRemove, isEditing }) => {
-    const [expanded, setExpanded] = useState(false);
-    const [inputValue, setInputValue] = useState('');
-    const times = data.times || [];
-
-    const addTimeFromInput = () => {
-        if (!inputValue.trim()) return;
-        const norm = normalizeRange(inputValue.trim());
-        if (norm && !times.includes(norm)) {
-            onChange({ times: [...times, norm] });
-        }
-        setInputValue('');
-    };
-
-    return (
-        <div className="relative inline-block">
-            <div
-                onClick={() => isEditing && setExpanded(!expanded)}
-                className="inline-flex items-center gap-1 px-2.5 h-7 bg-blue-50 rounded-lg text-xs font-medium active:scale-95"
-            >
-                <Clock className="w-3 h-3 text-blue-600" />
-                <span className="text-blue-900">{times.length > 0 ? times.join(', ') : '시간'}</span>
-                {isEditing && (
-                    <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="ml-0.5">
-                        <X className="w-3 h-3 text-blue-400" />
-                    </button>
-                )}
-            </div>
-
-            {expanded && isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl p-3 z-50 min-w-[280px]">
-                    <div className="flex gap-1.5 mb-2">
-                        <input
-                            type="text"
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && addTimeFromInput()}
-                            placeholder="09:00, 09~18"
-                            className="flex-1 px-2 h-8 text-xs rounded-lg border border-gray-200"
-                        />
-                        <button onClick={addTimeFromInput} className="px-3 h-8 bg-blue-500 text-white text-xs rounded-lg">
-                            추가
+            <SlideModal isOpen={showModal} onClose={() => setShowModal(false)} title="요일 선택" size="small">
+                <div className="flex flex-wrap gap-2">
+                    {weekdays.map((day) => (
+                        <button
+                            key={day}
+                            onClick={() => toggleDay(day)}
+                            className={`px-4 h-10 text-sm font-medium rounded-xl ${selected.includes(day) ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-700'
+                                }`}
+                        >
+                            {day}
                         </button>
-                    </div>
-                    {times.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                            {times.map((t) => (
-                                <div key={t} className="inline-flex items-center gap-1 px-2 h-6 bg-blue-100 rounded-md text-xs">
-                                    {t}
-                                    <button onClick={() => onChange({ times: times.filter((x) => x !== t) })}>
-                                        <X className="w-3 h-3" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    ))}
                 </div>
-            )}
-        </div>
+            </SlideModal>
+        </>
     );
 };
 
 const NumberModule = ({ data, onChange, onRemove, isEditing }) => {
-    const [expanded, setExpanded] = useState(false);
+    const [showModal, setShowModal] = useState(false);
     const units = ['원', '개', '명', '시간', '분', '일', '회', '%'];
 
     return (
-        <div className="relative inline-block">
+        <>
             <div
-                onClick={() => isEditing && setExpanded(!expanded)}
+                onClick={() => isEditing && setShowModal(true)}
                 className="inline-flex items-center gap-1 px-2.5 h-7 bg-green-50 rounded-lg text-xs font-medium active:scale-95"
             >
                 <Hash className="w-3 h-3 text-green-600" />
@@ -416,80 +521,40 @@ const NumberModule = ({ data, onChange, onRemove, isEditing }) => {
                 )}
             </div>
 
-            {expanded && isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl p-2 z-50 min-w-[160px]">
-                    <input
-                        type="number"
-                        value={data.value || ''}
-                        onChange={(e) => onChange({ ...data, value: e.target.value })}
-                        className="w-full px-2 h-8 text-xs rounded-lg border border-gray-200 mb-2"
-                        placeholder="숫자"
-                    />
-                    <div className="flex flex-wrap gap-1">
-                        {units.map((unit) => (
-                            <button
-                                key={unit}
-                                onClick={() => onChange({ ...data, unit })}
-                                className={`px-2 h-6 text-xs rounded-md ${data.unit === unit ? 'bg-green-500 text-white' : 'bg-gray-100'
-                                    }`}
-                            >
-                                {unit}
-                            </button>
-                        ))}
+            <SlideModal isOpen={showModal} onClose={() => setShowModal(false)} title="숫자 설정" size="small">
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-2 block">숫자</label>
+                        <input
+                            type="number"
+                            value={data.value || ''}
+                            onChange={(e) => onChange({ ...data, value: e.target.value })}
+                            className="w-full px-3 h-10 text-sm bg-gray-50 rounded-xl border border-gray-200"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-2 block">단위</label>
+                        <div className="flex flex-wrap gap-2">
+                            {units.map((unit) => (
+                                <button
+                                    key={unit}
+                                    onClick={() => onChange({ ...data, unit })}
+                                    className={`px-4 h-9 text-sm font-medium rounded-lg ${data.unit === unit ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-700'
+                                        }`}
+                                >
+                                    {unit}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
-            )}
-        </div>
-    );
-};
-
-const DateModule = ({ data, onChange, onRemove, isEditing }) => {
-    const [expanded, setExpanded] = useState(false);
-    const presets = ['공휴일', '명절', '설날', '추석', '연말연시'];
-    const dates = data.dates || [];
-
-    const toggleDate = (date) => {
-        const newDates = dates.includes(date) ? dates.filter((d) => d !== date) : [...dates, date];
-        onChange({ dates: newDates });
-    };
-
-    return (
-        <div className="relative inline-block">
-            <div
-                onClick={() => isEditing && setExpanded(!expanded)}
-                className="inline-flex items-center gap-1 px-2.5 h-7 bg-purple-50 rounded-lg text-xs font-medium active:scale-95"
-            >
-                <Calendar className="w-3 h-3 text-purple-600" />
-                <span className="text-purple-900">{dates.length > 0 ? dates.join(', ') : '날짜'}</span>
-                {isEditing && (
-                    <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="ml-0.5">
-                        <X className="w-3 h-3 text-purple-400" />
-                    </button>
-                )}
-            </div>
-
-            {expanded && isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl p-2 z-50 min-w-[200px]">
-                    <div className="flex flex-wrap gap-1">
-                        {presets.map((preset) => (
-                            <button
-                                key={preset}
-                                onClick={() => toggleDate(preset)}
-                                className={`px-2 h-6 text-xs rounded-md ${dates.includes(preset) ? 'bg-purple-500 text-white' : 'bg-gray-100'
-                                    }`}
-                            >
-                                {preset}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
+            </SlideModal>
+        </>
     );
 };
 
 const TagModule = ({ data, onChange, onRemove, isEditing }) => {
-    const [expanded, setExpanded] = useState(false);
+    const [showModal, setShowModal] = useState(false);
     const selected = data.tags || [];
 
     const toggle = (tag) => {
@@ -498,12 +563,12 @@ const TagModule = ({ data, onChange, onRemove, isEditing }) => {
     };
 
     return (
-        <div className="relative inline-block">
+        <>
             <div
-                onClick={() => isEditing && setExpanded(!expanded)}
+                onClick={() => isEditing && setShowModal(true)}
                 className="inline-flex items-center gap-1 px-2.5 h-7 bg-pink-50 rounded-lg text-xs font-medium active:scale-95"
             >
-                <span className="text-pink-900">{selected.length > 0 ? selected.join(', ') : '태그'}</span>
+                <span className="text-pink-900">{selected.length > 0 ? selected.slice(0, 2).join(', ') + (selected.length > 2 ? '...' : '') : '태그'}</span>
                 {isEditing && (
                     <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="ml-0.5">
                         <X className="w-3 h-3 text-pink-400" />
@@ -511,34 +576,32 @@ const TagModule = ({ data, onChange, onRemove, isEditing }) => {
                 )}
             </div>
 
-            {expanded && isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl p-2 z-50 min-w-[200px] max-w-[280px]">
-                    <div className="flex flex-wrap gap-1">
-                        {TAG_LIBRARY.map((tag) => (
-                            <button
-                                key={tag}
-                                onClick={() => toggle(tag)}
-                                className={`px-2 h-6 text-xs rounded-md ${selected.includes(tag) ? 'bg-pink-500 text-white' : 'bg-gray-100'
-                                    }`}
-                            >
-                                {tag}
-                            </button>
-                        ))}
-                    </div>
+            <SlideModal isOpen={showModal} onClose={() => setShowModal(false)} title="태그 선택">
+                <div className="flex flex-wrap gap-2">
+                    {TAG_LIBRARY.map((tag) => (
+                        <button
+                            key={tag}
+                            onClick={() => toggle(tag)}
+                            className={`px-3 h-9 text-sm font-medium rounded-lg ${selected.includes(tag) ? 'bg-pink-500 text-white' : 'bg-gray-100 text-gray-700'
+                                }`}
+                        >
+                            {tag}
+                        </button>
+                    ))}
                 </div>
-            )}
-        </div>
+            </SlideModal>
+        </>
     );
 };
 
 const EndingModule = ({ data, onChange, onRemove, isEditing }) => {
-    const [expanded, setExpanded] = useState(false);
+    const [showModal, setShowModal] = useState(false);
     const selected = data.selected || data.options?.[0] || '';
 
     return (
-        <div className="relative inline-block">
+        <>
             <div
-                onClick={() => isEditing && setExpanded(!expanded)}
+                onClick={() => isEditing && setShowModal(true)}
                 className="inline-flex items-center gap-1 px-2.5 h-7 bg-amber-50 rounded-lg text-xs font-medium active:scale-95"
             >
                 <span className="text-amber-900">{selected}</span>
@@ -549,36 +612,41 @@ const EndingModule = ({ data, onChange, onRemove, isEditing }) => {
                 )}
             </div>
 
-            {expanded && isEditing && (
-                <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-2xl p-1 z-50 min-w-[120px]">
+            <SlideModal isOpen={showModal} onClose={() => setShowModal(false)} title="어미 선택" size="small">
+                <div className="space-y-1">
                     {data.options.map((option) => (
                         <button
                             key={option}
                             onClick={() => {
                                 onChange({ ...data, selected: option });
-                                setExpanded(false);
+                                setShowModal(false);
                             }}
-                            className={`w-full text-left px-2 h-7 text-xs rounded-lg ${selected === option ? 'bg-amber-100 font-semibold' : 'hover:bg-gray-50'
+                            className={`w-full text-left px-4 h-11 text-sm rounded-xl ${selected === option ? 'bg-amber-100 font-semibold' : 'hover:bg-gray-50'
                                 }`}
                         >
                             {option}
                         </button>
                     ))}
                 </div>
-            )}
-        </div>
+            </SlideModal>
+        </>
     );
 };
 
-const TextChip = ({ data, onRemove, isEditing, onEdit }) => {
+const TextChip = ({ data, onRemove, isEditing, onEdit, onSplitAtCaret }) => {
     const [isEditMode, setIsEditMode] = useState(false);
     const [editValue, setEditValue] = useState(data.text || '');
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (isEditMode && inputRef.current) inputRef.current.focus();
+    }, [isEditMode]);
 
     if (isEditMode && isEditing) {
         return (
-            <div className="inline-flex items-center gap-1 bg-white rounded-lg px-2 h-7 border border-blue-400">
+            <div className="inline-flex items-center gap-1 bg-white rounded-lg px-2 h-7 border-2 border-blue-400">
                 <input
-                    autoFocus
+                    ref={inputRef}
                     type="text"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
@@ -591,9 +659,24 @@ const TextChip = ({ data, onRemove, isEditing, onEdit }) => {
                             onEdit(editValue);
                             setIsEditMode(false);
                         }
+                        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+                            const caret = e.currentTarget.selectionStart || 0;
+                            onSplitAtCaret(caret);
+                        }
                     }}
-                    className="bg-transparent text-xs w-24 focus:outline-none"
+                    className="bg-transparent text-xs w-32 focus:outline-none"
                 />
+                <button
+                    title="커서 위치에 삽입 (⌘+I)"
+                    onMouseDown={(e) => {
+                        e.preventDefault();
+                        const caret = inputRef.current?.selectionStart || 0;
+                        onSplitAtCaret(caret);
+                    }}
+                    className="text-blue-500 p-0.5"
+                >
+                    <Scissors className="w-3 h-3" />
+                </button>
             </div>
         );
     }
@@ -613,7 +696,7 @@ const TextChip = ({ data, onRemove, isEditing, onEdit }) => {
     );
 };
 
-const DraggableModule = ({ module, index, isEditing, onUpdate, onRemove }) => {
+const DraggableModule = ({ module, index, isEditing, onUpdate, onRemove, onRequestSplitInsert, draggedIndex, onDragStart, onDragOver, onDragEnd }) => {
     const ModuleComponent = {
         [MODULE_TYPES.WEEKDAY]: WeekdayModule,
         [MODULE_TYPES.TIME]: TimeModule,
@@ -626,13 +709,23 @@ const DraggableModule = ({ module, index, isEditing, onUpdate, onRemove }) => {
     }[module.type];
 
     return (
-        <ModuleComponent
-            data={module.data}
-            onChange={(newData) => onUpdate(index, newData)}
-            onRemove={() => onRemove(index)}
-            onEdit={(text) => onUpdate(index, { text })}
-            isEditing={isEditing}
-        />
+        <div
+            draggable={isEditing}
+            onDragStart={() => onDragStart(index)}
+            onDragOver={(e) => onDragOver(e, index)}
+            onDragEnd={onDragEnd}
+            className={`inline-flex items-center gap-1 ${draggedIndex === index ? 'opacity-50' : ''}`}
+        >
+            {isEditing && <GripVertical className="w-3.5 h-3.5 text-gray-400 cursor-move flex-shrink-0" />}
+            <ModuleComponent
+                data={module.data}
+                onChange={(newData) => onUpdate(index, newData)}
+                onRemove={() => onRemove(index)}
+                onEdit={(text) => onUpdate(index, { text })}
+                onSplitAtCaret={(caret) => onRequestSplitInsert(index, caret)}
+                isEditing={isEditing}
+            />
+        </div>
     );
 };
 
@@ -652,8 +745,122 @@ const moduleToText = (module) => {
 
 const modulesToPlain = (mods) => mods.map(moduleToText).join(' ');
 
+const InsertPoint = ({ onClick }) => (
+    <button
+        onClick={onClick}
+        className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-white border border-dashed border-gray-300 text-gray-400 hover:text-blue-600 hover:border-blue-300 active:scale-95"
+    >
+        <Plus className="w-3 h-3" />
+    </button>
+);
+
 // ─────────────────────────────────────────────────────────────
-// 🎯 메인 컴포넌트 (모바일 최적화)
+// 🎯 플로팅 툴바
+// ─────────────────────────────────────────────────────────────
+const FloatingToolbar = ({ onAddModule, onShowPresets, onShowMeta, onShowReorder }) => {
+    const [expanded, setExpanded] = useState(false);
+
+    const quickModules = [
+        { type: MODULE_TYPES.TEXT, icon: '📝', label: '텍스트' },
+        { type: MODULE_TYPES.TIME, icon: '⏰', label: '시간' },
+        { type: MODULE_TYPES.WEEKDAY, icon: '📅', label: '요일' },
+        { type: MODULE_TYPES.NUMBER, icon: '#️⃣', label: '숫자' },
+    ];
+
+    const moreModules = [
+        { type: MODULE_TYPES.DATE, icon: '🗓', label: '날짜' },
+        { type: MODULE_TYPES.TAG, icon: '🏷️', label: '태그' },
+    ];
+
+    return (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-50">
+            {expanded && (
+                <div className="p-3 border-t border-gray-100 bg-gray-50">
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                        {moreModules.map((mod) => (
+                            <button
+                                key={mod.type}
+                                onClick={() => {
+                                    onAddModule(mod.type);
+                                    setExpanded(false);
+                                }}
+                                className="flex flex-col items-center justify-center h-16 bg-white rounded-xl shadow-sm active:scale-95"
+                            >
+                                <span className="text-xl mb-1">{mod.icon}</span>
+                                <span className="text-[10px] text-gray-600">{mod.label}</span>
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => {
+                                onShowPresets();
+                                setExpanded(false);
+                            }}
+                            className="flex flex-col items-center justify-center h-16 bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl shadow-sm active:scale-95"
+                        >
+                            <Sparkles className="w-5 h-5 text-purple-600 mb-1" />
+                            <span className="text-[10px] text-purple-600 font-semibold">프리셋</span>
+                        </button>
+                        <button
+                            onClick={() => {
+                                onShowReorder();
+                                setExpanded(false);
+                            }}
+                            className="flex flex-col items-center justify-center h-16 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl shadow-sm active:scale-95"
+                        >
+                            <ArrowUpDown className="w-5 h-5 text-blue-600 mb-1" />
+                            <span className="text-[10px] text-blue-600 font-semibold">순서변경</span>
+                        </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                        {SYMBOLS.map((symbol) => (
+                            <button
+                                key={symbol}
+                                onClick={() => {
+                                    onAddModule(MODULE_TYPES.SYMBOL, { text: symbol });
+                                }}
+                                className="w-9 h-9 bg-white rounded-lg text-sm font-bold text-gray-700 active:bg-gray-100"
+                            >
+                                {symbol}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div className="p-2 flex items-center gap-2">
+                {quickModules.map((mod) => (
+                    <button
+                        key={mod.type}
+                        onClick={() => onAddModule(mod.type)}
+                        className="flex-1 flex flex-col items-center justify-center h-12 bg-gray-50 rounded-xl active:scale-95"
+                    >
+                        <span className="text-base">{mod.icon}</span>
+                        <span className="text-[9px] text-gray-600 mt-0.5">{mod.label}</span>
+                    </button>
+                ))}
+
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="flex-1 flex flex-col items-center justify-center h-12 bg-blue-50 rounded-xl active:scale-95"
+                >
+                    {expanded ? <ChevronDown className="w-5 h-5 text-blue-600" /> : <ChevronUp className="w-5 h-5 text-blue-600" />}
+                    <span className="text-[9px] text-blue-600 font-semibold mt-0.5">더보기</span>
+                </button>
+
+                <button
+                    onClick={onShowMeta}
+                    className="w-12 h-12 flex items-center justify-center bg-gray-50 rounded-xl active:scale-95"
+                >
+                    <Settings className="w-5 h-5 text-gray-600" />
+                </button>
+            </div>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// 🎯 메인 컴포넌트
 // ─────────────────────────────────────────────────────────────
 export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
     const [mainCategory, setMainCategory] = useState('facility');
@@ -662,6 +869,10 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
     const [currentMode, setCurrentMode] = useState('question');
     const [showPresetModal, setShowPresetModal] = useState(false);
     const [showMetaModal, setShowMetaModal] = useState(false);
+    const [showReorderModal, setShowReorderModal] = useState(false);
+    const [insertIndex, setInsertIndex] = useState(null);
+    const [draggedIndex, setDraggedIndex] = useState(null);
+    const [keydataPresets, setKeydataPresets] = useState([]);
 
     const [meta, setMeta] = useState({
         staffHandoff: '필요없음',
@@ -669,6 +880,21 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
         keyData: '',
         tags: [],
     });
+
+    // KeyData 프리셋 로딩
+    useEffect(() => {
+        const u = new URLSearchParams(window.location.search);
+        const tenant = u.get('tenant');
+        if (!tenant) return;
+        (async () => {
+            try {
+                const r = await fetch(`/api/keydata?tenant=${tenant}`);
+                if (!r.ok) return;
+                const list = await r.json();
+                setKeydataPresets(Array.isArray(list) ? list : []);
+            } catch (_) { }
+        })();
+    }, []);
 
     const currentCategoryData = MAIN_CATEGORIES[mainCategory];
     const getMods = () => (currentMode === 'question' ? questionModules : answerModules);
@@ -691,7 +917,15 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
             data: { ...defaults[type], ...data }
         };
 
-        setMods([...getMods(), module]);
+        const mods = getMods();
+        let next = [];
+        if (insertIndex === null || insertIndex === undefined) {
+            next = [...mods, module];
+        } else {
+            next = [...mods.slice(0, insertIndex), module, ...mods.slice(insertIndex)];
+            setInsertIndex(insertIndex + 1);
+        }
+        setMods(next);
     };
 
     const updateModule = (index, newData) => {
@@ -702,6 +936,38 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
 
     const removeModule = (index) => {
         setMods(getMods().filter((_, i) => i !== index));
+    };
+
+    const handleDragStart = (index) => setDraggedIndex(index);
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        if (draggedIndex === null || draggedIndex === index) return;
+        const mods = [...getMods()];
+        const dragged = mods[draggedIndex];
+        mods.splice(draggedIndex, 1);
+        mods.splice(index, 0, dragged);
+        setMods(mods);
+        setDraggedIndex(index);
+    };
+    const handleDragEnd = () => setDraggedIndex(null);
+
+    const textify = () => {
+        const mods = getMods();
+        const plain = modulesToPlain(mods);
+        setMods([{ id: Date.now(), type: MODULE_TYPES.TEXT, data: { text: plain } }]);
+    };
+
+    const onRequestSplitInsert = (index, caret) => {
+        const mods = [...getMods()];
+        const node = mods[index];
+        const text = String(node?.data?.text || '');
+        const left = text.slice(0, caret);
+        const right = text.slice(caret);
+        const leftNode = { ...node, id: Date.now() + Math.random(), data: { text: left } };
+        const rightNode = { ...node, id: Date.now() + Math.random(), data: { text: right } };
+        const next = [...mods.slice(0, index), leftNode, rightNode, ...mods.slice(index + 1)];
+        setMods(next);
+        setInsertIndex(index + 1);
     };
 
     const handleComplete = () => {
@@ -729,8 +995,13 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
     };
 
     const applyPreset = (preset) => {
-        setQuestionModules([...questionModules, { id: Date.now(), type: MODULE_TYPES.TEXT, data: { text: preset.q } }]);
-        setAnswerModules([...answerModules, { id: Date.now() + 1, type: MODULE_TYPES.TEXT, data: { text: preset.a } }]);
+        if (preset.qMods || preset.aMods) {
+            if (preset.qMods) setQuestionModules([...questionModules, ...preset.qMods.map((m) => ({ id: Date.now() + Math.random(), ...m }))]);
+            if (preset.aMods) setAnswerModules([...answerModules, ...preset.aMods.map((m) => ({ id: Date.now() + Math.random(), ...m }))]);
+        } else {
+            setQuestionModules([...questionModules, { id: Date.now(), type: MODULE_TYPES.TEXT, data: { text: preset.q } }]);
+            setAnswerModules([...answerModules, { id: Date.now() + 1, type: MODULE_TYPES.TEXT, data: { text: preset.a } }]);
+        }
         setShowPresetModal(false);
     };
 
@@ -745,16 +1016,14 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
 
             {/* 스크롤 영역 */}
             <div className="flex-1 overflow-auto pb-24">
-                {/* 카테고리 선택 */}
+                {/* 카테고리 */}
                 <div className="bg-white p-3 border-b border-gray-100 sticky top-0 z-30">
                     <div className="flex gap-2 overflow-x-auto scrollbar-hide">
                         {Object.entries(MAIN_CATEGORIES).map(([key, data]) => (
                             <button
                                 key={key}
                                 onClick={() => setMainCategory(key)}
-                                className={`flex-shrink-0 px-3 h-8 text-xs font-semibold rounded-full transition-all whitespace-nowrap ${mainCategory === key
-                                    ? 'bg-blue-500 text-white shadow-md'
-                                    : 'bg-gray-100 text-gray-700 active:scale-95'
+                                className={`flex-shrink-0 px-3 h-8 text-xs font-semibold rounded-full whitespace-nowrap ${mainCategory === key ? 'bg-blue-500 text-white shadow-md' : 'bg-gray-100 text-gray-700'
                                     }`}
                             >
                                 {data.label}
@@ -763,25 +1032,27 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                     </div>
                 </div>
 
-                {/* 질문/답변 탭 */}
+                {/* 탭 */}
                 <div className="bg-white border-b border-gray-100 px-4 py-2 flex gap-2 sticky top-[52px] z-30">
                     <button
                         onClick={() => setCurrentMode('question')}
-                        className={`flex-1 h-9 rounded-xl text-sm font-semibold transition-all ${currentMode === 'question'
-                            ? 'bg-orange-500 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700'
+                        className={`flex-1 h-9 rounded-xl text-sm font-semibold ${currentMode === 'question' ? 'bg-orange-500 text-white shadow-md' : 'bg-gray-100 text-gray-700'
                             }`}
                     >
                         질문 {questionModules.length > 0 && `(${questionModules.length})`}
                     </button>
                     <button
                         onClick={() => setCurrentMode('answer')}
-                        className={`flex-1 h-9 rounded-xl text-sm font-semibold transition-all ${currentMode === 'answer'
-                            ? 'bg-green-500 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700'
+                        className={`flex-1 h-9 rounded-xl text-sm font-semibold ${currentMode === 'answer' ? 'bg-green-500 text-white shadow-md' : 'bg-gray-100 text-gray-700'
                             }`}
                     >
                         답변 {answerModules.length > 0 && `(${answerModules.length})`}
+                    </button>
+                    <button
+                        onClick={textify}
+                        className="px-3 h-9 rounded-xl text-xs font-semibold bg-gray-100 text-gray-700 whitespace-nowrap"
+                    >
+                        텍스트로
                     </button>
                 </div>
 
@@ -789,16 +1060,24 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                 <div className="p-4">
                     <div className="bg-white rounded-2xl p-4 shadow-sm min-h-[200px]">
                         <div className="flex flex-wrap gap-2">
+                            <InsertPoint onClick={() => setInsertIndex(0)} />
                             {getMods().length > 0 ? (
                                 getMods().map((module, index) => (
-                                    <DraggableModule
-                                        key={module.id}
-                                        module={module}
-                                        index={index}
-                                        isEditing={true}
-                                        onUpdate={updateModule}
-                                        onRemove={removeModule}
-                                    />
+                                    <React.Fragment key={module.id}>
+                                        <DraggableModule
+                                            module={module}
+                                            index={index}
+                                            isEditing={true}
+                                            onUpdate={updateModule}
+                                            onRemove={removeModule}
+                                            onRequestSplitInsert={onRequestSplitInsert}
+                                            draggedIndex={draggedIndex}
+                                            onDragStart={handleDragStart}
+                                            onDragOver={handleDragOver}
+                                            onDragEnd={handleDragEnd}
+                                        />
+                                        <InsertPoint onClick={() => setInsertIndex(index + 1)} />
+                                    </React.Fragment>
                                 ))
                             ) : (
                                 <div className="w-full text-center py-12">
@@ -811,7 +1090,7 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                         </div>
                     </div>
 
-                    {/* 키워드 빠른 추가 */}
+                    {/* 키워드 */}
                     <div className="mt-4">
                         <div className="text-xs font-semibold text-gray-600 mb-2 px-1">키워드 빠른 추가</div>
                         <div className="flex flex-wrap gap-1.5">
@@ -827,7 +1106,7 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                         </div>
                     </div>
 
-                    {/* 어미 빠른 추가 */}
+                    {/* 어미 */}
                     <div className="mt-4">
                         <div className="text-xs font-semibold text-gray-600 mb-2 px-1">어미</div>
                         <div className="flex flex-wrap gap-1.5">
@@ -850,15 +1129,11 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                 onAddModule={addModule}
                 onShowPresets={() => setShowPresetModal(true)}
                 onShowMeta={() => setShowMetaModal(true)}
-                currentMode={currentMode}
+                onShowReorder={() => setShowReorderModal(true)}
             />
 
             {/* 프리셋 모달 */}
-            <SlideModal
-                isOpen={showPresetModal}
-                onClose={() => setShowPresetModal(false)}
-                title="프리셋"
-            >
+            <SlideModal isOpen={showPresetModal} onClose={() => setShowPresetModal(false)} title="프리셋">
                 <div className="space-y-2">
                     {currentCategoryData.presets.map((preset, idx) => (
                         <button
@@ -874,11 +1149,7 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
             </SlideModal>
 
             {/* 메타 모달 */}
-            <SlideModal
-                isOpen={showMetaModal}
-                onClose={() => setShowMetaModal(false)}
-                title="추가 설정"
-            >
+            <SlideModal isOpen={showMetaModal} onClose={() => setShowMetaModal(false)} title="추가 설정">
                 <div className="space-y-4">
                     <div>
                         <label className="text-xs font-semibold text-gray-700 mb-2 block">담당자 전달</label>
@@ -887,9 +1158,7 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                                 <button
                                     key={op}
                                     onClick={() => setMeta((m) => ({ ...m, staffHandoff: op }))}
-                                    className={`flex-1 h-10 rounded-xl text-sm font-semibold ${meta.staffHandoff === op
-                                        ? 'bg-blue-500 text-white'
-                                        : 'bg-gray-100 text-gray-700'
+                                    className={`flex-1 h-10 rounded-xl text-sm font-semibold ${meta.staffHandoff === op ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'
                                         }`}
                                 >
                                     {op}
@@ -903,31 +1172,72 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                         <textarea
                             value={meta.guide}
                             onChange={(e) => setMeta((m) => ({ ...m, guide: e.target.value }))}
-                            placeholder="답변시 참고사항을 입력하세요"
+                            placeholder="답변시 참고사항"
                             className="w-full min-h-[80px] px-3 py-2 text-sm bg-gray-50 rounded-xl border border-gray-200 resize-none"
                         />
                     </div>
 
                     <div>
                         <label className="text-xs font-semibold text-gray-700 mb-2 block">키데이터</label>
+                        {keydataPresets.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-2">
+                                {keydataPresets.slice(0, 20).map((p) => (
+                                    <button
+                                        key={`${p.key}:${p.value}`}
+                                        onClick={() =>
+                                            setMeta((m) => ({
+                                                ...m,
+                                                keyData: (m.keyData ? m.keyData + '\n' : '') + `${p.key}: ${p.value}`,
+                                            }))
+                                        }
+                                        className="px-2.5 h-7 text-xs rounded-lg bg-gray-100 active:bg-gray-200"
+                                    >
+                                        {p.key}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         <textarea
                             value={meta.keyData}
                             onChange={(e) => setMeta((m) => ({ ...m, keyData: e.target.value }))}
-                            placeholder="영업비밀이나 내부 기준을 입력하세요"
+                            placeholder="영업비밀이나 내부 기준"
                             className="w-full min-h-[80px] px-3 py-2 text-sm bg-gray-50 rounded-xl border border-gray-200 resize-none"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-semibold text-gray-700 mb-2 block">태그</label>
+                        <TagsInput
+                            value={meta.tags}
+                            onChange={(tags) => setMeta((m) => ({ ...m, tags }))}
                         />
                     </div>
                 </div>
             </SlideModal>
 
+            {/* 순서변경 모달 */}
+            <SlideModal isOpen={showReorderModal} onClose={() => setShowReorderModal(false)} title="순서 변경">
+                <div className="space-y-2">
+                    {getMods().map((module, index) => (
+                        <div
+                            key={module.id}
+                            draggable
+                            onDragStart={() => handleDragStart(index)}
+                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragEnd={handleDragEnd}
+                            className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl active:bg-gray-100"
+                        >
+                            <GripVertical className="w-5 h-5 text-gray-400" />
+                            <span className="text-sm">{moduleToText(module)}</span>
+                        </div>
+                    ))}
+                </div>
+            </SlideModal>
+
             <style jsx>{`
                 @keyframes slide-up {
-                    from {
-                        transform: translateY(100%);
-                    }
-                    to {
-                        transform: translateY(0);
-                    }
+                    from { transform: translateY(100%); }
+                    to { transform: translateY(0); }
                 }
                 .animate-slide-up {
                     animation: slide-up 0.3s ease-out;
