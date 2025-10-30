@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, AlertCircle, Crown, Calendar, BarChart3, Users, MessageSquare, Zap, Building2, ChevronDown, X, Copy, Check, ChevronLeft, ChevronRight, Settings, ExternalLink, BookOpen } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import ModularFAQBuilderV2 from '../components/ModularFAQBuilderV2';
 import ConversationsPage from '../components/ConversationsPage';
+
 
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
 
@@ -45,6 +47,8 @@ export default function TenantPortal() {
   const [copiedWidget, setCopiedWidget] = useState(false);
   const [copiedNaver, setCopiedNaver] = useState(false);
   const [canDismissOnboarding, setCanDismissOnboarding] = useState(false); // ✅ FAQ 작성 후 닫기 가능
+
+  const [showBuilder, setShowBuilder] = useState(false);
 
   const [activeTab, setActiveTab] = useState('faq');
   const [faqData, setFaqData] = useState([]);
@@ -500,10 +504,6 @@ export default function TenantPortal() {
       setIsLoading(false);
     }
   }
-
-  const openSampleBuilder = () => setShowSampleBuilder(true);
-  const closeSampleBuilder = () => setShowSampleBuilder(false);
-
 
   async function handleDelete(item) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
@@ -1395,7 +1395,7 @@ export default function TenantPortal() {
 
                         <button
                           type="button"
-                          onClick={openSampleBuilder}
+                          onClick={() => setShowBuilder(true)}
                           className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-lg hover:shadow-md transition-all text-xs font-bold"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1588,6 +1588,63 @@ export default function TenantPortal() {
                   >
                     {isLoading ? '처리 중...' : editingItem ? '수정' : '추가'}
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showBuilder && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                {/* 헤더 */}
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+                  <h2 className="text-base font-bold text-gray-900">FAQ 모듈 빌더</h2>
+                  <button
+                    onClick={() => setShowBuilder(false)}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    aria-label="close"
+                  >
+                    <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M6.4 4.9L4.9 6.4 10.5 12l-5.6 5.6 1.5 1.5L12 13.5l5.6 5.6 1.5-1.5L13.5 12l5.6-5.6-1.5-1.5L12 10.5z" /></svg>
+                  </button>
+                </div>
+
+                {/* 본문 */}
+                <div className="flex-1 overflow-y-auto px-5 py-4">
+                  <ModularFAQBuilderV2
+                    onCancel={() => setShowBuilder(false)}
+                    onComplete={({ question, answer, questionModules, answerModules, category }) => {
+                      // ✅ 빌더에서 만든 내용을 기존 formData 형식에 주입
+                      setFormData(prev => ({
+                        ...prev,
+                        // 질문은 다중 입력을 지원하므로 배열 1칸에 넣어줍니다.
+                        questions: [question || ''],
+                        answer: answer || '',
+                        // 카테고리/모듈 정보는 안전하게 문자열화하여 keyData로 보관 (백엔드 영향 없음)
+                        keyData: (() => {
+                          try {
+                            const meta = { category, qMods: questionModules, aMods: answerModules };
+                            const packed = JSON.stringify(meta);
+                            // 기존 keyData가 있으면 합쳐 저장
+                            return prev.keyData
+                              ? `${prev.keyData}\n\n[BUNDLE]\n${packed}`
+                              : packed;
+                          } catch { return prev.keyData || ''; }
+                        })(),
+                        // 가이드에 카테고리 한 줄 메모(선택)
+                        guide: prev.guide || (category ? `카테고리: ${category}` : '')
+                      }));
+
+                      // 빌더 닫기
+                      setShowBuilder(false);
+                    }}
+                  />
+                </div>
+
+                {/* 푸터 - 힌트 */}
+                <div className="px-5 py-3 bg-gray-50 border-t">
+                  <p className="text-xs text-gray-500">
+                    완료를 누르면 질문/답변이 모달 폼에 채워집니다. 모달에서 저장하면 기존 흐름(/api/faq) 그대로 동작합니다.
+                  </p>
                 </div>
               </div>
             </div>
