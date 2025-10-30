@@ -983,59 +983,87 @@ export default function TenantPortal() {
               통계
             </button>
           </div>
-
           {/* FAQ 탭 */}
           {activeTab === 'faq' && (
-            <div className="space-y-4">
-              {/* ✅ FAQ 제한 게이지 (trial도 표시) */}
+            <div className="space-y-6">
+              {/* FAQ 사용량 게이지 - 세련된 디자인 */}
               {currentPlanConfig.maxFAQs !== Infinity && (
-                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm sm:text-base font-bold text-gray-700">
-                      FAQ 사용량
-                    </span>
-                    <span className="text-xs sm:text-sm text-gray-600 font-semibold">
-                      {faqStats.total} / {currentPlanConfig.maxFAQs}
-                    </span>
-                  </div>
-                  <div className="w-full h-3 sm:h-4 bg-gray-200/70 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all rounded-full ${faqStats.total >= currentPlanConfig.maxFAQs
-                        ? 'bg-gradient-to-r from-red-500 to-red-600'
-                        : 'bg-gradient-to-r from-yellow-400 to-amber-400'
-                        }`}
-                      style={{ width: `${(faqStats.total / currentPlanConfig.maxFAQs) * 100}%` }}
-                    />
+                <div className="relative overflow-hidden bg-gradient-to-br from-white to-gray-50 rounded-2xl border border-gray-100 p-6">
+                  {/* 배경 장식 */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-100/30 rounded-full blur-3xl -z-0"></div>
+
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                        <span className="text-sm font-semibold text-gray-700">
+                          FAQ 사용량
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-gray-900">
+                          {faqStats.total}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          / {currentPlanConfig.maxFAQs}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 프로그레스 바 */}
+                    <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-500 ease-out ${faqStats.total >= currentPlanConfig.maxFAQs
+                          ? 'bg-gradient-to-r from-red-400 to-red-500'
+                          : 'bg-gradient-to-r from-yellow-400 to-amber-400'
+                          }`}
+                        style={{
+                          width: `${Math.min((faqStats.total / currentPlanConfig.maxFAQs) * 100, 100)}%`
+                        }}
+                      />
+                    </div>
+
+                    {/* 경고 메시지 */}
+                    {faqStats.total >= currentPlanConfig.maxFAQs * 0.9 && (
+                      <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
+                        <span className="w-1 h-1 rounded-full bg-amber-500"></span>
+                        {faqStats.total >= currentPlanConfig.maxFAQs
+                          ? 'FAQ 한도에 도달했습니다'
+                          : '곧 FAQ 한도에 도달합니다'}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* 검색 & 추가 */}
-              <div className="flex gap-2 sm:gap-4">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+              {/* 검색 & 추가 버튼 */}
+              <div className="flex gap-3">
+                {/* 검색 */}
+                <div className="flex-1 relative group">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-yellow-500 transition-colors" />
                   <input
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 sm:pl-12 pr-4 py-2.5 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
+                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none transition-all text-gray-800 placeholder:text-gray-400"
                     placeholder="FAQ 검색..."
                   />
                 </div>
+
+                {/* 추가 버튼 */}
                 <button
                   onClick={() => openModal()}
-                  className="px-4 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-xl sm:rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold shadow-lg shadow-yellow-400/30 text-sm sm:text-base whitespace-nowrap"
+                  className="px-6 py-3.5 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-xl hover:shadow-lg hover:shadow-yellow-400/30 hover:-translate-y-0.5 transition-all font-semibold flex items-center gap-2 whitespace-nowrap"
                 >
-                  <Plus className="inline w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-                  추가
+                  <Plus className="w-5 h-5" />
+                  <span className="hidden sm:inline">추가</span>
                 </button>
               </div>
 
-              {/* FAQ 리스트 (모바일 최적화) */}
+              {/* FAQ 리스트 */}
               {filteredFAQData.length > 0 ? (
-                <div className="space-y-3 sm:space-y-4">
+                <div className="space-y-3">
                   {filteredFAQData.map(item => {
-                    // ✅ faq.js는 question을 문자열로 저장 (줄바꿈으로 여러 질문 구분)
                     const questions = item.question
                       ? item.question.split('\n').filter(q => q.trim())
                       : [item.question || '질문 없음'];
@@ -1044,49 +1072,78 @@ export default function TenantPortal() {
                     return (
                       <div
                         key={item.id}
-                        className={`bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-4 sm:p-6 hover:shadow-xl transition-all ${isExpired ? 'opacity-50 border-2 border-red-200' : ''
+                        className={`group relative bg-white border rounded-xl overflow-hidden transition-all hover:shadow-md ${isExpired
+                          ? 'border-red-200 bg-red-50/30'
+                          : 'border-gray-200 hover:border-yellow-300'
                           }`}
                       >
-                        <div className="space-y-3">
-                          <div>
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                              <div className="flex-1 space-y-1">
-                                {questions.map((q, idx) => (
-                                  <div key={idx} className="text-sm sm:text-base font-bold text-gray-800">
-                                    {idx > 0 && '➕ '}{q}
-                                  </div>
-                                ))}
-                              </div>
-                              <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-                                <button
-                                  onClick={() => openModal(item)}
-                                  className="p-1.5 sm:p-2 bg-yellow-100 text-yellow-600 rounded-lg hover:bg-yellow-200 transition-all"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(item)}
-                                  className="p-1.5 sm:p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
+                        {/* 왼쪽 accent 라인 */}
+                        <div className={`absolute left-0 top-0 bottom-0 w-1 ${isExpired ? 'bg-red-400' : 'bg-yellow-400 opacity-0 group-hover:opacity-100'
+                          } transition-opacity`}></div>
+
+                        <div className="p-4 sm:p-5">
+                          {/* 헤더: 질문 & 액션 버튼 */}
+                          <div className="flex items-start gap-3 mb-3">
+                            {/* 질문들 */}
+                            <div className="flex-1 space-y-2">
+                              {questions.map((q, idx) => (
+                                <div key={idx} className="flex items-start gap-2">
+                                  {idx > 0 && (
+                                    <span className="text-yellow-500 text-xs mt-0.5 flex-shrink-0">➕</span>
+                                  )}
+                                  <p className="text-gray-900 font-medium leading-relaxed">
+                                    {q}
+                                  </p>
+                                </div>
+                              ))}
                             </div>
-                            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">{item.answer}</p>
+
+                            {/* 액션 버튼 */}
+                            <div className="flex gap-1.5 flex-shrink-0">
+                              <button
+                                onClick={() => openModal(item)}
+                                className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-yellow-50 hover:text-yellow-600 transition-all"
+                                title="수정"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(item)}
+                                className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-red-50 hover:text-red-600 transition-all"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-1.5 sm:gap-2 text-xs">
+                          {/* 답변 */}
+                          <p className="text-sm text-gray-600 leading-relaxed line-clamp-2 mb-3 pl-0">
+                            {item.answer}
+                          </p>
+
+                          {/* 태그들 */}
+                          <div className="flex flex-wrap gap-2">
                             {item.staffHandoff && item.staffHandoff !== '필요없음' && (
-                              <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-blue-100 text-blue-700 rounded-lg font-semibold">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                                 {item.staffHandoff}
                               </span>
                             )}
                             {item.expiryDate && (
-                              <span className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg font-semibold ${isExpired
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-green-100 text-green-700'
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${isExpired
+                                ? 'bg-red-50 text-red-700'
+                                : 'bg-green-50 text-green-700'
                                 }`}>
-                                {isExpired ? '만료됨' : new Date(item.expiryDate).toLocaleDateString('ko-KR')}
+                                <span className={`w-1.5 h-1.5 rounded-full ${isExpired ? 'bg-red-500' : 'bg-green-500'
+                                  }`}></span>
+                                {isExpired
+                                  ? '만료됨'
+                                  : new Date(item.expiryDate).toLocaleDateString('ko-KR', {
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })
+                                }
                               </span>
                             )}
                           </div>
@@ -1096,10 +1153,16 @@ export default function TenantPortal() {
                   })}
                 </div>
               ) : (
-                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-8 sm:p-16 text-center">
-                  <Database className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-base sm:text-lg font-semibold">
-                    {searchTerm ? 'FAQ를 찾을 수 없습니다' : 'FAQ를 추가해주세요'}
+                // 빈 상태
+                <div className="flex flex-col items-center justify-center py-20 px-4">
+                  <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                    <Database className="w-10 h-10 text-gray-400" />
+                  </div>
+                  <p className="text-gray-900 font-semibold mb-1">
+                    {searchTerm ? 'FAQ를 찾을 수 없습니다' : 'FAQ가 없습니다'}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {searchTerm ? '다른 검색어를 입력해보세요' : '첫 FAQ를 추가해보세요'}
                   </p>
                 </div>
               )}
@@ -1269,111 +1332,151 @@ export default function TenantPortal() {
             </div>
           )}
 
-          {/* FAQ 모달 (모바일 최적화) */}
+          {/* FAQ 모달 - 세련된 디자인 */}
           {isModalOpen && (
-            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-              <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl shadow-yellow-200/30 max-w-2xl w-full max-h-[90vh] overflow-hidden">
-                <div className="sticky top-0 bg-gradient-to-r from-yellow-100/80 to-amber-100/80 backdrop-blur-xl px-4 py-4 sm:px-6 sm:py-5 rounded-t-3xl">
-                  <h2 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-yellow-700 to-amber-700 bg-clip-text text-transparent">
-                    {editingItem ? 'FAQ 수정 ✏️' : '새 FAQ 추가 ✨'}
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+                {/* 헤더 */}
+                <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    {editingItem ? 'FAQ 수정' : '새 FAQ 추가'}
                   </h2>
+                  <button
+                    onClick={closeModal}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto max-h-[calc(90vh-160px)]">
+
+                {/* 내용 */}
+                <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+                  {/* 질문 */}
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">
-                      질문 또는 기본 정보 <span className="text-red-500">*</span>
+                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                      질문 <span className="text-red-500">*</span>
                     </label>
 
-                    {formData.questions.map((question, index) => (
-                      <div key={index} className="flex items-start space-x-2 mb-2">
-                        <div className="flex-1">
+                    <div className="space-y-2">
+                      {formData.questions.map((question, index) => (
+                        <div key={index} className="flex items-start gap-2">
                           <input
                             type="text"
                             value={question}
                             onChange={(e) => updateQuestion(index, e.target.value)}
-                            className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
-                            placeholder={`질문 ${index + 1}`}
+                            className="flex-1 px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none transition-all text-gray-900 placeholder:text-gray-400"
+                            placeholder={index === 0 ? "예: 영업시간이 어떻게 되나요?" : "추가 질문 (선택)"}
                           />
+                          {formData.questions.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeQuestion(index)}
+                              className="p-3 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                              title="삭제"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          )}
                         </div>
-                        {formData.questions.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeQuestion(index)}
-                            className="p-2 text-red-600 hover:bg-red-50/70 rounded-xl transition-all"
-                            title="이 질문 삭제"
-                          >
-                            <X className="w-4 h-4 sm:w-5 sm:h-5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
 
                     <button
                       type="button"
                       onClick={addQuestion}
-                      className="mt-2 flex items-center space-x-2 px-3 py-1.5 sm:px-4 sm:py-2 text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors text-xs sm:text-sm font-bold"
+                      className="mt-3 flex items-center gap-2 px-4 py-2 text-sm font-medium text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"
                     >
                       <Plus className="w-4 h-4" />
-                      <span>질문 추가</span>
+                      질문 추가
                     </button>
 
-                    <p className="text-xs text-gray-500 mt-2">
-                      💡 같은 답변에 여러 질문을 등록할 수 있습니다
+                    <p className="mt-3 text-xs text-gray-500 flex items-start gap-2">
+                      <span className="text-yellow-500 flex-shrink-0">💡</span>
+                      <span>같은 답변에 여러 질문을 등록하면 고객의 다양한 표현에 대응할 수 있습니다</span>
                     </p>
                   </div>
 
+                  {/* 답변 */}
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">답변 <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                      답변 <span className="text-red-500">*</span>
+                    </label>
                     <textarea
                       value={formData.answer}
                       onChange={(e) => setFormData({ ...formData, answer: e.target.value })}
                       rows="4"
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none resize-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
-                      placeholder="AI가 고객에게 제공할 답변을 입력하세요"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none resize-none transition-all text-gray-900 placeholder:text-gray-400"
+                      placeholder="AI가 고객에게 전달할 답변을 입력하세요&#10;예: 평일 오전 9시부터 오후 6시까지 운영하고 있습니다"
                     />
+                    <p className="mt-2 text-xs text-gray-500">
+                      AI가 이 내용을 바탕으로 자연스럽게 답변을 생성합니다
+                    </p>
                   </div>
 
+                  {/* 구분선 */}
+                  <div className="border-t border-gray-100"></div>
+
+                  {/* 담당자 전달 */}
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">담당자 전달</label>
+                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                      담당자 전달
+                    </label>
                     <select
                       value={formData.staffHandoff}
                       onChange={(e) => setFormData({ ...formData, staffHandoff: e.target.value })}
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none transition-all text-gray-900"
                     >
                       <option value="필요없음">필요없음</option>
-                      <option value="전달필요">전달필요</option>
-                      <option value="조건부전달">조건부전달</option>
+                      <option value="조건부 전달">조건부 전달</option>
+                      <option value="전달 필요">전달 필요</option>
                     </select>
+                    <p className="mt-2 text-xs text-gray-500">
+                      AI가 이 질문에 답변할 때 담당자 개입이 필요한지 선택하세요
+                    </p>
                   </div>
 
+                  {/* 주의사항 */}
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">가이드 (선택)</label>
-                    <input
-                      type="text"
+                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                      주의사항 <span className="text-gray-400 text-xs font-normal">(선택)</span>
+                    </label>
+                    <textarea
                       value={formData.guide}
                       onChange={(e) => setFormData({ ...formData, guide: e.target.value })}
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
-                      placeholder="답변 생성 시 추가 주의사항"
+                      rows="3"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none resize-none transition-all text-gray-900 placeholder:text-gray-400"
+                      placeholder="예: 월요일은 정기 휴무입니다&#10;날짜 변경은 3일 전까지 가능합니다"
                     />
+                    <p className="mt-2 text-xs text-gray-500">
+                      답변 시 주의할 점, 예외상황, 전달 조건 등이 있다면 작성해주세요
+                    </p>
                   </div>
 
+                  {/* 기준정보 */}
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">핵심 데이터 (선택)</label>
-                    <input
-                      type="text"
+                    <label className="block text-sm font-semibold text-gray-900 mb-3">
+                      기준정보 <span className="text-gray-400 text-xs font-normal">(선택)</span>
+                    </label>
+                    <textarea
                       value={formData.keyData}
                       onChange={(e) => setFormData({ ...formData, keyData: e.target.value })}
-                      className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800 placeholder:text-gray-400"
-                      placeholder="전화번호, 링크 등 변형되어선 안되는 고정값"
+                      rows="3"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none resize-none transition-all text-gray-900 placeholder:text-gray-400"
+                      placeholder="예: 전화번호: 02-1234-5678&#10;예약 링크: https://booking.example.com"
                     />
+                    <p className="mt-2 text-xs text-gray-500">
+                      링크, 규정 등 고정값 혹은 답변 생성 시 참고되는 기준 정보
+                    </p>
                   </div>
 
+                  {/* 만료일 (플랜 제한) */}
                   {currentPlanConfig?.hasExpiryDate && (
                     <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-2">
-                        만료일 (선택)
-                        <span className="ml-2 text-xs bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 px-2 py-1 rounded-full font-bold">
-                          <Crown className="inline w-3 h-3 mr-1" />{currentPlanConfig.name} 전용
+                      <label className="block text-sm font-semibold text-gray-900 mb-3">
+                        <span>만료일</span>
+                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 text-xs rounded-full font-medium border border-purple-200/50">
+                          <Crown className="w-3 h-3" />
+                          {currentPlanConfig.name} 전용
                         </span>
                       </label>
                       <div className="relative">
@@ -1381,29 +1484,40 @@ export default function TenantPortal() {
                           type="date"
                           value={formData.expiryDate}
                           onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                          className="w-full px-3 py-2 sm:px-4 sm:py-3 bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl focus:ring-2 focus:ring-yellow-400 focus:outline-none shadow-sm transition-all text-sm sm:text-base text-gray-800"
+                          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 focus:outline-none transition-all text-gray-900"
                         />
-                        <Calendar className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
+                        <Calendar className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
                       </div>
-                      <p className="text-xs text-gray-600 mt-2 font-semibold">휴가 일정 등 기간 한정 정보에 활용하세요</p>
+                      <p className="mt-2 text-xs text-gray-500">
+                        기간 한정 이벤트, 휴가 일정 등 일시적인 정보에 활용하세요
+                      </p>
                     </div>
                   )}
 
-                  <div className="flex space-x-3 pt-4">
-                    <button
-                      onClick={closeModal}
-                      className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 bg-gray-100/70 backdrop-blur-sm text-gray-700 rounded-xl sm:rounded-2xl hover:bg-gray-200/70 transition-all font-bold text-sm sm:text-base"
-                    >
-                      취소
-                    </button>
-                    <button
-                      onClick={handleSubmit}
-                      disabled={isLoading}
-                      className="flex-1 px-4 py-2.5 sm:px-6 sm:py-3 bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 rounded-xl sm:rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold disabled:opacity-50 shadow-lg shadow-yellow-400/30 text-sm sm:text-base"
-                    >
-                      {editingItem ? '수정 완료 ✓' : '추가 ✨'}
-                    </button>
+                  {/* 안내 메시지 */}
+                  <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                    <p className="text-xs text-gray-600 flex items-start gap-2">
+                      <span className="text-gray-400">🛠️</span>
+                      <span>등록된 내용은 데이터 관리 페이지에서 언제든 확인 및 수정 가능합니다</span>
+                    </p>
                   </div>
+                </div>
+
+                {/* 하단 버튼 */}
+                <div className="flex gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
+                  <button
+                    onClick={closeModal}
+                    className="flex-1 px-6 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-semibold"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isLoading}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? '처리 중...' : editingItem ? '수정 완료' : '추가하기'}
+                  </button>
                 </div>
               </div>
             </div>
