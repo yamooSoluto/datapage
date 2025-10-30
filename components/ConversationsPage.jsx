@@ -410,37 +410,12 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
                                 </div>
                             )}
 
-                            {/* Categories */}
-                            {detailData.conversation.categories && detailData.conversation.categories.length > 0 && (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs font-semibold text-gray-600">카테고리:</span>
-                                    {detailData.conversation.categories.map((cat, idx) => (
-                                        <span
-                                            key={idx}
-                                            className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-md font-medium"
-                                        >
-                                            {cat}
-                                        </span>
-                                    ))}
+                            {/* 채널 정보 (unknown이 아닐 때만) */}
+                            {detailData.conversation.channel && detailData.conversation.channel !== 'unknown' && (
+                                <div className="text-xs text-gray-600">
+                                    채널: <span className="font-medium text-gray-900">{detailData.conversation.channel}</span>
                                 </div>
                             )}
-
-                            {/* 기존 메타 정보 */}
-                            <div className="flex items-center justify-between text-xs text-gray-500">
-                                <div className="flex items-center gap-3">
-                                    <span>
-                                        상태: <span className="font-medium text-gray-700">{detailData.conversation.status}</span>
-                                    </span>
-                                    <span>•</span>
-                                    <span>
-                                        채널: <span className="font-medium text-gray-700">{detailData.conversation.channel}</span>
-                                    </span>
-                                    <span>•</span>
-                                    <span>
-                                        모드: <span className="font-medium text-gray-700">{detailData.conversation.modeSnapshot || 'AUTO'}</span>
-                                    </span>
-                                </div>
-                            </div>
                         </div>
                     )}
 
@@ -526,7 +501,7 @@ function MessageBubble({ message }) {
             )}
 
             {/* 메시지 버블 */}
-            <div className={`max-w-[70%] ${senderConfig.bubbleAlign}`}>
+            <div className={`max-w-[80%] ${senderConfig.bubbleAlign}`}>
                 {/* 발신자 이름 (사용자 제외) */}
                 {!isUser && (
                     <div className="text-xs text-gray-500 mb-1 px-1">

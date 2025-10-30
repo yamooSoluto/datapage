@@ -160,21 +160,6 @@ export default function ConversationDetail({ conversation, onClose }) {
                                     </div>
                                 )}
 
-                                {/* Categories */}
-                                {detail.conversation.categories && detail.conversation.categories.length > 0 && (
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-xs font-semibold text-gray-600">카테고리:</span>
-                                        {detail.conversation.categories.map((cat, idx) => (
-                                            <span
-                                                key={idx}
-                                                className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-md font-medium"
-                                            >
-                                                {cat}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-
                                 {/* 채널 정보 (unknown이 아닐 때만) */}
                                 {detail.conversation.channel && detail.conversation.channel !== 'unknown' && (
                                     <div className="text-xs text-gray-600">
@@ -288,7 +273,7 @@ function MessageBubble({ message, onImageClick }) {
             )}
 
             {/* 메시지 버블 */}
-            <div className={`max-w-[70%] ${senderConfig.bubbleAlign}`}>
+            <div className={`max-w-[80%] ${senderConfig.bubbleAlign}`}>
                 {/* 발신자 이름 (사용자 제외) */}
                 {!isUser && (
                     <div className="text-xs text-gray-500 mb-1 px-1">

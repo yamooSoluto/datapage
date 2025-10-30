@@ -23,19 +23,19 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
         return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
     };
 
-    // ✅ 카테고리 색상 매핑 (실제 카테고리 목록 반영)
+    // ✅ 카테고리 색상 매핑 (테두리 제거, 배경만)
     const getCategoryColor = (category) => {
         const colors = {
-            '결제/환불': 'bg-blue-50 text-blue-600 border-blue-200',
-            '예약/변경': 'bg-purple-50 text-purple-600 border-purple-200',
-            '이용/시설': 'bg-green-50 text-green-600 border-green-200',
-            '상품/서비스': 'bg-orange-50 text-orange-600 border-orange-200',
-            '시스템/오류': 'bg-red-50 text-red-600 border-red-200',
-            '건의/요청': 'bg-yellow-50 text-yellow-600 border-yellow-200',
-            '이벤트/쿠폰': 'bg-pink-50 text-pink-600 border-pink-200',
-            '기타': 'bg-gray-50 text-gray-500 border-gray-200',
+            '결제/환불': 'bg-blue-100/60 text-blue-700',
+            '예약/변경': 'bg-purple-100/60 text-purple-700',
+            '이용/시설': 'bg-green-100/60 text-green-700',
+            '상품/서비스': 'bg-orange-100/60 text-orange-700',
+            '시스템/오류': 'bg-red-100/60 text-red-700',
+            '건의/요청': 'bg-yellow-100/60 text-yellow-700',
+            '이벤트/쿠폰': 'bg-pink-100/60 text-pink-700',
+            '기타': 'bg-gray-100/60 text-gray-600',
         };
-        return colors[category] || 'bg-gray-50 text-gray-500 border-gray-200';
+        return colors[category] || 'bg-gray-100/60 text-gray-600';
     };
 
     // ✅ 업무 타입별 썸네일 스타일
@@ -114,14 +114,34 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
 
                 {/* 메인 정보 */}
                 <div className="flex-1 min-w-0">
-                    {/* 상단: 이름 + 시간 */}
+                    {/* 상단: 이름 + 카테고리 + 시간 */}
                     <div className="flex items-center justify-between gap-2 mb-1">
                         <h3 className="text-sm font-semibold text-gray-900 truncate">
                             {conversation.userName || '익명'}
                         </h3>
-                        <span className="text-xs text-gray-400 flex-shrink-0">
-                            {relativeTime}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {/* ✅ 카테고리 - 오른쪽 상단, 더 작게 */}
+                            {conversation.categories && conversation.categories.length > 0 && (
+                                <>
+                                    {conversation.categories.slice(0, 2).map((cat, idx) => (
+                                        <span
+                                            key={idx}
+                                            className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getCategoryColor(cat)}`}
+                                        >
+                                            {cat}
+                                        </span>
+                                    ))}
+                                    {conversation.categories.length > 2 && (
+                                        <span className="text-[10px] text-gray-400">
+                                            +{conversation.categories.length - 2}
+                                        </span>
+                                    )}
+                                </>
+                            )}
+                            <span className="text-xs text-gray-400">
+                                {relativeTime}
+                            </span>
+                        </div>
                     </div>
 
                     {/* 메시지 미리보기 - summary 우선 */}
@@ -152,25 +172,6 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
                             )}
                         </p>
                     </div>
-
-                    {/* ✅ 카테고리 태그 */}
-                    {conversation.categories && conversation.categories.length > 0 && (
-                        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                            {conversation.categories.slice(0, 3).map((cat, idx) => (
-                                <span
-                                    key={idx}
-                                    className={`text-xs px-2 py-0.5 rounded-full font-medium border ${getCategoryColor(cat)}`}
-                                >
-                                    {cat}
-                                </span>
-                            ))}
-                            {conversation.categories.length > 3 && (
-                                <span className="text-xs text-gray-400">
-                                    +{conversation.categories.length - 3}
-                                </span>
-                            )}
-                        </div>
-                    )}
 
                     {/* 하단: 통계 */}
                     <div className="flex items-center justify-between">
