@@ -1,6 +1,6 @@
-// pages/api/conversations/detail.js
-import admin from "firebase-admin";
+export const config = { regions: ['icn1'] };
 
+import admin from "firebase-admin";
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert({
@@ -10,45 +10,19 @@ if (!admin.apps.length) {
         }),
     });
 }
-
 const db = admin.firestore();
 
-// ============================================
-// 📊 플랜별 조회 제한 설정 (여기서 수정)
-// ============================================
 const PLAN_LIMITS = {
-    trial: {
-        days: 30,        // 조회 가능 기간 (일)
-        maxDocs: null,   // 최대 문서 수 (null = 무제한)
-    },
-    starter: {
-        days: 30,
-        maxDocs: null,
-    },
-    pro: {
-        days: 90,
-        maxDocs: null,
-    },
-    business: {
-        days: null,      // null = 무제한
-        maxDocs: null,
-    },
-    enterprise: {
-        days: null,      // null = 무제한
-        maxDocs: null,
-    },
+    trial: { days: 30, maxDocs: null },
+    starter: { days: 30, maxDocs: null },
+    pro: { days: 90, maxDocs: null },
+    business: { days: null, maxDocs: null },
+    enterprise: { days: null, maxDocs: null },
 };
+const DEFAULT_LIMIT = { days: 30, maxDocs: null };
 
-// 기본값 (플랜 정보 없을 때)
-const DEFAULT_LIMIT = {
-    days: 30,
-    maxDocs: null,
-};
-// ============================================
-
-// helpers
-const safeIso = (t) =>
-    (t?.toDate?.()?.toISOString?.() ? t.toDate().toISOString() : null);
+const safeIso = (t) => (t?.toDate?.()?.toISOString?.() ? t.toDate().toISOString() : null);
+const millis = (v) => (typeof v?.toMillis === 'function' ? v.toMillis() : (Number(v) || new Date(v).getTime() || 0));
 
 export default async function handler(req, res) {
     try {
@@ -57,144 +31,102 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "tenant and chatId are required" });
         }
 
-        // ✅ 플랜 정보 가져오기 (tenants 컬렉션에서)
-        let userPlan = 'trial'; // 기본값
+        // 플랜
+        let plan = 'trial';
         try {
-            const tenantDoc = await db.collection("tenants").doc(tenant).get();
-            if (tenantDoc.exists) {
-                const tenantData = tenantDoc.data();
-                userPlan = tenantData.plan || tenantData.subscription?.plan || 'trial';
-            }
-        } catch (e) {
-            console.warn('[detail] Failed to get plan, using default:', e);
-        }
+            const t = await db.collection("tenants").doc(tenant).get();
+            if (t.exists) plan = t.data()?.plan || t.data()?.subscription?.plan || 'trial';
+        } catch { }
 
-        // ✅ 플랜별 제한 가져오기
-        const limits = PLAN_LIMITS[userPlan] || DEFAULT_LIMIT;
-        console.log(`[detail] Plan: ${userPlan}, Limits:`, limits);
+        const limits = PLAN_LIMITS[plan] || DEFAULT_LIMIT;
 
-        // 1) 우선 안정 키(tenant_chatId)로 조회
+        // 안정키 우선
         const stableId = `${tenant}_${chatId}`;
         let convDoc = await db.collection("FAQ_realtime_cw").doc(stableId).get();
 
-        // 2) 레거시( chatId_timestamp ) 호환: chat_id == chatId의 모든 문서 가져오기
-        let allDocs = [];
-        let query = db
-            .collection("FAQ_realtime_cw")
+        // 같은 chat_id 전체(레거시 포함)
+        let q = db.collection("FAQ_realtime_cw")
             .where("tenant_id", "==", tenant)
-            .where("chat_id", "==", chatId);
+            .where("chat_id", "==", chatId)
+            .orderBy("lastMessageAt", "desc");
 
-        // ✅ 기간 제한 적용 (days가 있으면)
         if (limits.days) {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - limits.days);
-            const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoffDate);
-
-            query = query.where("lastMessageAt", ">=", cutoffTimestamp);
-            console.log(`[detail] Applying ${limits.days} days filter (after ${cutoffDate.toISOString()})`);
+            q = q.where("lastMessageAt", ">=", admin.firestore.Timestamp.fromDate(cutoffDate));
         }
+        if (limits.maxDocs) q = q.limit(limits.maxDocs);
 
-        query = query.orderBy("lastMessageAt", "desc");
-
-        // ✅ 문서 개수 제한 적용 (maxDocs가 있으면)
-        if (limits.maxDocs) {
-            query = query.limit(limits.maxDocs);
-            console.log(`[detail] Applying maxDocs limit: ${limits.maxDocs}`);
-        }
-
+        let allDocs = [];
         if (!convDoc.exists) {
-            const legacySnap = await query.get();
-
-            if (!legacySnap.empty) {
-                allDocs = legacySnap.docs;
-                convDoc = legacySnap.docs[0]; // 최신 문서를 대표로 사용
+            const snap = await q.get();
+            if (!snap.empty) {
+                allDocs = snap.docs;
+                convDoc = snap.docs[0];
             }
         } else {
-            // 안정 키로 찾았어도, 같은 chat_id의 다른 문서들이 있을 수 있음
-            const additionalSnap = await query.get();
-
-            if (!additionalSnap.empty) {
-                allDocs = additionalSnap.docs;
-            } else {
-                allDocs = [convDoc];
-            }
+            const snap = await q.get();
+            allDocs = snap.empty ? [convDoc] : snap.docs;
         }
 
         if (!convDoc.exists) return res.status(404).json({ error: "conversation_not_found" });
-
         const d = convDoc.data();
 
-        // ✅ 모든 문서의 메시지를 합치기
+        // 메시지 병합 + 정렬 + 중복제거
         const allMessages = [];
         allDocs.forEach(doc => {
-            const docData = doc.data();
-            const docMessages = Array.isArray(docData.messages) ? docData.messages : [];
-            allMessages.push(...docMessages);
+            const arr = Array.isArray(doc.data()?.messages) ? doc.data().messages : [];
+            allMessages.push(...arr);
         });
+        allMessages.sort((a, b) => (a.timestamp?.toMillis?.() || 0) - (b.timestamp?.toMillis?.() || 0));
 
-        // ✅ 시간순 정렬 (오래된 순)
-        allMessages.sort((a, b) => {
-            const tsA = a.timestamp?.toMillis?.() || 0;
-            const tsB = b.timestamp?.toMillis?.() || 0;
-            return tsA - tsB;
-        });
-
-        // ✅ 중복 제거 (msgId 기준)
-        const uniqueMessages = [];
-        const seenMsgIds = new Set();
-        allMessages.forEach(msg => {
-            const msgId = msg.msgId || `${msg.sender}_${msg.timestamp?.toMillis?.()}_${msg.text?.slice(0, 20)}`;
-            if (!seenMsgIds.has(msgId)) {
-                seenMsgIds.add(msgId);
-                uniqueMessages.push(msg);
+        const seen = new Set();
+        const messages = [];
+        allMessages.forEach(m => {
+            const id = m.msgId || `${m.sender}_${m.timestamp?.toMillis?.()}_${m.text?.slice(0, 20)}`;
+            if (!seen.has(id)) {
+                seen.add(id); messages.push({
+                    sender: m.sender,
+                    text: m.text || "",
+                    pics: Array.isArray(m.pics) ? m.pics : [],
+                    timestamp: safeIso(m.timestamp),
+                    msgId: m.msgId || null,
+                    modeSnapshot: m.modeSnapshot || null,
+                });
             }
         });
 
-        const messages = uniqueMessages.map((m) => ({
-            sender: m.sender,
-            text: m.text || "",
-            pics: Array.isArray(m.pics) ? m.pics : [],
-            timestamp: safeIso(m.timestamp),
-            msgId: m.msgId || null,
-            modeSnapshot: m.modeSnapshot || null, // ✅ 상담원 구분용 (UI에는 표시 안 함)
-        }));
+        // ✅ 전체 히스토리 중 한 번이라도 업무 라우트가 있었는지
+        const re = /(update|create|upgrade)/i;
+        const isTaskEver =
+            allDocs.some(dd => {
+                const x = dd.data() || {};
+                return x.route_update || x.route_create || x.route_upgrade_task || re.test(String(x.slack_route || ''));
+            });
 
-        // ✅ channel 보정: unknown이면 integrations에서 inboxId로 매핑
+        // channel 보정
         let channel = d.channel || "unknown";
         if (channel === "unknown" && d.cw_inbox_id) {
             try {
-                const integrationDoc = await db
-                    .collection("integrations")
-                    .doc(tenant)
-                    .get();
-
-                if (integrationDoc.exists) {
-                    const integrationData = integrationDoc.data();
-                    const cwConfig = integrationData?.cw;
-
-                    if (cwConfig && Array.isArray(cwConfig.inboxes)) {
-                        const inbox = cwConfig.inboxes.find(
-                            (ib) => ib.inboxId === d.cw_inbox_id
-                        );
-                        if (inbox?.channel) {
-                            channel = inbox.channel;
-                            console.log(`[detail] Channel resolved: ${channel} (from inbox ${d.cw_inbox_id})`);
-                        }
-                    }
+                const integ = await db.collection("integrations").doc(tenant).get();
+                const cw = integ.exists ? integ.data()?.cw : null;
+                if (cw && Array.isArray(cw.inboxes)) {
+                    const ib = cw.inboxes.find(t => t.inboxId === d.cw_inbox_id);
+                    if (ib?.channel) channel = ib.channel;
                 }
-            } catch (e) {
-                console.error("[detail] Failed to resolve channel:", e);
-            }
+            } catch { }
         }
 
-        // 2) 슬랙/통계 배치 조회
+        // 슬랙/통계
         const [slackDoc, statsDoc] = await Promise.all([
             db.collection("slack_threads").doc(convDoc.id).get(),
             db.collection("stats_conversations").doc(convDoc.id).get(),
         ]);
-
         const slackData = slackDoc.exists ? slackDoc.data() : null;
         const stats = statsDoc.exists ? statsDoc.data() : null;
+
+        // summary 우선
+        const summary = typeof d.summary === 'string' && d.summary.trim() ? d.summary.trim() : "";
 
         return res.json({
             conversation: {
@@ -203,35 +135,32 @@ export default async function handler(req, res) {
                 userId: d.user_id,
                 userName: d.user_name || "익명",
                 brandName: d.brandName || null,
-                channel: channel, // ✅ 보정된 channel 사용
+                channel,
                 status: d.status || "waiting",
                 modeSnapshot: d.modeSnapshot || "AUTO",
                 lastMessageAt: safeIso(d.lastMessageAt),
                 cwConversationId: d.cw_conversation_id || null,
-                summary: d.summary || null,
-                category: d.category || null, // 문자열 (예: "결제/환불|예약/변경")
-                categories: d.category ? d.category.split('|').map(c => c.trim()) : [], // 배열로 변환
+                summary: summary || null,
+                category: d.category || null,
+                categories: d.category ? d.category.split('|').map(c => c.trim()) : [],
+                isTaskEver,                // ← 추가: 히스토리 업무 여부
             },
             messages,
-            slack: slackData
-                ? {
-                    channelId: slackData.channel_id,
-                    threadTs: slackData.thread_ts,
-                    cardType: slackData.card_type,
-                    isTask: !!slackData.is_task,
-                    slackUrl: `https://slack.com/app_redirect?channel=${slackData.channel_id}&message_ts=${slackData.thread_ts}`,
-                }
-                : null,
-            stats: stats
-                ? {
-                    userChats: stats.user_chats || 0,
-                    aiChats: stats.ai_allchats || 0,
-                    agentChats: stats.agent_chats || 0,
-                    aiAuto: stats.ai_auto || 0,
-                    aiConfirmApproved: stats.ai_confirm_approved || 0,
-                    aiConfirmEdited: stats.ai_confirm_edited || 0,
-                }
-                : null,
+            slack: slackData ? {
+                channelId: slackData.channel_id,
+                threadTs: slackData.thread_ts,
+                cardType: slackData.card_type,
+                isTask: !!slackData.is_task || isTaskEver,   // ← Ever를 반영
+                slackUrl: `https://slack.com/app_redirect?channel=${slackData.channel_id}&message_ts=${slackData.thread_ts}`,
+            } : null,
+            stats: stats ? {
+                userChats: stats.user_chats || 0,
+                aiChats: stats.ai_allchats || 0,
+                agentChats: stats.agent_chats || 0,
+                aiAuto: stats.ai_auto || 0,
+                aiConfirmApproved: stats.ai_confirm_approved || 0,
+                aiConfirmEdited: stats.ai_confirm_edited || 0,
+            } : null,
         });
     } catch (error) {
         console.error("[conversations/detail] error:", error);
