@@ -1,120 +1,240 @@
-export const config = { regions: ['icn1'] };
-import * as admin from 'firebase-admin';
-if (!admin.apps.length) admin.initializeApp();
+// pages/api/conversations/detail.js
+import admin from "firebase-admin";
+
+if (!admin.apps.length) {
+    admin.initializeApp({
+        credential: admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+        }),
+    });
+}
+
 const db = admin.firestore();
 
 // ============================================
-// 📊 플랜별 조회 제한 설정 (null = 무제한)
+// 📊 플랜별 조회 제한 설정 (여기서 수정)
 // ============================================
 const PLAN_LIMITS = {
-    trial: { days: 30, maxDocs: null },
-    starter: { days: 30, maxDocs: null },
-    pro: { days: 90, maxDocs: null },
-    business: { days: null, maxDocs: null },
-    enterprise: { days: null, maxDocs: null },
+    trial: {
+        days: 30,        // 조회 가능 기간 (일)
+        maxDocs: null,   // 최대 문서 수 (null = 무제한)
+    },
+    starter: {
+        days: 30,
+        maxDocs: null,
+    },
+    pro: {
+        days: 90,
+        maxDocs: null,
+    },
+    business: {
+        days: null,      // null = 무제한
+        maxDocs: null,
+    },
+    enterprise: {
+        days: null,      // null = 무제한
+        maxDocs: null,
+    },
 };
 
-async function getPlanOfTenant(tenantId) {
-    try {
-        const snap = await db.collection('tenants').doc(String(tenantId)).get();
-        const plan = (snap.exists && snap.data()?.plan) ? String(snap.data().plan) : 'starter';
-        return PLAN_LIMITS[plan] ? plan : 'starter';
-    } catch {
-        return 'starter';
-    }
-}
+// 기본값 (플랜 정보 없을 때)
+const DEFAULT_LIMIT = {
+    days: 30,
+    maxDocs: null,
+};
+// ============================================
 
-function millis(v) {
-    if (!v) return 0;
-    if (typeof v?.toMillis === 'function') return v.toMillis();
-    const n = Number(v);
-    return Number.isFinite(n) ? n : new Date(v).getTime() || 0;
-}
+// helpers
+const safeIso = (t) =>
+    (t?.toDate?.()?.toISOString?.() ? t.toDate().toISOString() : null);
 
 export default async function handler(req, res) {
     try {
-        res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
-
-        const { tenant, chatId, since, until } = req.query || {};
-        const tenantId = String(tenant || '').trim();
-        const conversationId = String(chatId || '').trim();
-        if (!tenantId || !conversationId)
-            return res.status(400).json({ error: 'tenant & chatId are required' });
-
-        const plan = await getPlanOfTenant(tenantId);
-        const { days, maxDocs } = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
-
-        const now = Date.now();
-        const sinceMs = Number(since) || null;
-        const untilMs = Number(until) || null;
-
-        let qRef = db.collection('FAQ_realtime_cw')
-            .where('tenant_id', '==', tenantId)
-            .where('chat_id', '==', conversationId)
-            .orderBy('lastMessageAt', 'desc');
-
-        // 기간 필터: 쿼리 우선, 없으면 플랜 days 적용, days=null이면 생략
-        if (sinceMs) {
-            qRef = qRef.where('lastMessageAt', '>=', admin.firestore.Timestamp.fromMillis(sinceMs));
-        } else if (Number.isFinite(days)) {
-            const defaultSince = now - (days * 86400 * 1000);
-            qRef = qRef.where('lastMessageAt', '>=', admin.firestore.Timestamp.fromMillis(defaultSince));
-        }
-        if (untilMs) {
-            qRef = qRef.where('lastMessageAt', '<=', admin.firestore.Timestamp.fromMillis(untilMs));
+        const { tenant, chatId } = req.query;
+        if (!tenant || !chatId) {
+            return res.status(400).json({ error: "tenant and chatId are required" });
         }
 
-        // 문서 수 제한: maxDocs가 숫자일 때만 적용, null이면 무제한
-        if (Number.isFinite(maxDocs)) {
-            qRef = qRef.limit(Number(maxDocs));
+        // ✅ 플랜 정보 가져오기 (tenants 컬렉션에서)
+        let userPlan = 'trial'; // 기본값
+        try {
+            const tenantDoc = await db.collection("tenants").doc(tenant).get();
+            if (tenantDoc.exists) {
+                const tenantData = tenantDoc.data();
+                userPlan = tenantData.plan || tenantData.subscription?.plan || 'trial';
+            }
+        } catch (e) {
+            console.warn('[detail] Failed to get plan, using default:', e);
         }
 
-        const snap = await qRef.get();
-        if (snap.empty) {
-            return res.status(200).json({
-                ok: true,
-                items: [],
-                meta: {
-                    tenantId, conversationId, plan,
-                    appliedSince: sinceMs || (Number.isFinite(days) ? (now - days * 86400 * 1000) : null),
-                    appliedUntil: untilMs || null,
-                    limitDocs: Number.isFinite(maxDocs) ? maxDocs : null,
-                }
-            });
+        // ✅ 플랜별 제한 가져오기
+        const limits = PLAN_LIMITS[userPlan] || DEFAULT_LIMIT;
+        console.log(`[detail] Plan: ${userPlan}, Limits:`, limits);
+
+        // 1) 우선 안정 키(tenant_chatId)로 조회
+        const stableId = `${tenant}_${chatId}`;
+        let convDoc = await db.collection("FAQ_realtime_cw").doc(stableId).get();
+
+        // 2) 레거시( chatId_timestamp ) 호환: chat_id == chatId의 모든 문서 가져오기
+        let allDocs = [];
+        let query = db
+            .collection("FAQ_realtime_cw")
+            .where("tenant_id", "==", tenant)
+            .where("chat_id", "==", chatId);
+
+        // ✅ 기간 제한 적용 (days가 있으면)
+        if (limits.days) {
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - limits.days);
+            const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoffDate);
+
+            query = query.where("lastMessageAt", ">=", cutoffTimestamp);
+            console.log(`[detail] Applying ${limits.days} days filter (after ${cutoffDate.toISOString()})`);
         }
 
-        // 최신 1건 기준(기존 동작 유지)
-        const head = snap.docs[0].data() || {};
-        const messages = Array.isArray(head.messages) ? head.messages : [];
-        const summary = (typeof head.summary === 'string' && head.summary.trim()) ? head.summary.trim() : '';
+        query = query.orderBy("lastMessageAt", "desc");
 
-        const counters = {
-            user: head.user_chats || head.counters?.user || 0,
-            ai: head.ai_allchats || head.counters?.ai || 0,
-            agent: head.agent_chats || head.counters?.agent || 0,
-            total: (head.user_chats || 0) + (head.ai_allchats || 0) + (head.agent_chats || 0),
-        };
+        // ✅ 문서 개수 제한 적용 (maxDocs가 있으면)
+        if (limits.maxDocs) {
+            query = query.limit(limits.maxDocs);
+            console.log(`[detail] Applying maxDocs limit: ${limits.maxDocs}`);
+        }
 
-        return res.status(200).json({
-            ok: true,
-            meta: {
-                tenantId,
-                conversationId,
-                brand_name: head.brandName || head.brand_name || null,
-                channel: head.channel || 'unknown',
-                status: head.status || null,
-                lastMessageAt: millis(head.lastMessageAt),
-                plan,
-                appliedSince: sinceMs || (Number.isFinite(days) ? (now - days * 86400 * 1000) : null),
-                appliedUntil: untilMs || null,
-                limitDocs: Number.isFinite(maxDocs) ? maxDocs : null,
-            },
-            summary,
-            counters,
-            messages,
+        if (!convDoc.exists) {
+            const legacySnap = await query.get();
+
+            if (!legacySnap.empty) {
+                allDocs = legacySnap.docs;
+                convDoc = legacySnap.docs[0]; // 최신 문서를 대표로 사용
+            }
+        } else {
+            // 안정 키로 찾았어도, 같은 chat_id의 다른 문서들이 있을 수 있음
+            const additionalSnap = await query.get();
+
+            if (!additionalSnap.empty) {
+                allDocs = additionalSnap.docs;
+            } else {
+                allDocs = [convDoc];
+            }
+        }
+
+        if (!convDoc.exists) return res.status(404).json({ error: "conversation_not_found" });
+
+        const d = convDoc.data();
+
+        // ✅ 모든 문서의 메시지를 합치기
+        const allMessages = [];
+        allDocs.forEach(doc => {
+            const docData = doc.data();
+            const docMessages = Array.isArray(docData.messages) ? docData.messages : [];
+            allMessages.push(...docMessages);
         });
-    } catch (e) {
-        console.error('[conversations/detail] error:', e);
-        return res.status(500).json({ ok: false, error: e.message || 'internal_error' });
+
+        // ✅ 시간순 정렬 (오래된 순)
+        allMessages.sort((a, b) => {
+            const tsA = a.timestamp?.toMillis?.() || 0;
+            const tsB = b.timestamp?.toMillis?.() || 0;
+            return tsA - tsB;
+        });
+
+        // ✅ 중복 제거 (msgId 기준)
+        const uniqueMessages = [];
+        const seenMsgIds = new Set();
+        allMessages.forEach(msg => {
+            const msgId = msg.msgId || `${msg.sender}_${msg.timestamp?.toMillis?.()}_${msg.text?.slice(0, 20)}`;
+            if (!seenMsgIds.has(msgId)) {
+                seenMsgIds.add(msgId);
+                uniqueMessages.push(msg);
+            }
+        });
+
+        const messages = uniqueMessages.map((m) => ({
+            sender: m.sender,
+            text: m.text || "",
+            pics: Array.isArray(m.pics) ? m.pics : [],
+            timestamp: safeIso(m.timestamp),
+            msgId: m.msgId || null,
+            modeSnapshot: m.modeSnapshot || null, // ✅ 상담원 구분용 (UI에는 표시 안 함)
+        }));
+
+        // ✅ channel 보정: unknown이면 integrations에서 inboxId로 매핑
+        let channel = d.channel || "unknown";
+        if (channel === "unknown" && d.cw_inbox_id) {
+            try {
+                const integrationDoc = await db
+                    .collection("integrations")
+                    .doc(tenant)
+                    .get();
+
+                if (integrationDoc.exists) {
+                    const integrationData = integrationDoc.data();
+                    const cwConfig = integrationData?.cw;
+
+                    if (cwConfig && Array.isArray(cwConfig.inboxes)) {
+                        const inbox = cwConfig.inboxes.find(
+                            (ib) => ib.inboxId === d.cw_inbox_id
+                        );
+                        if (inbox?.channel) {
+                            channel = inbox.channel;
+                            console.log(`[detail] Channel resolved: ${channel} (from inbox ${d.cw_inbox_id})`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("[detail] Failed to resolve channel:", e);
+            }
+        }
+
+        // 2) 슬랙/통계 배치 조회
+        const [slackDoc, statsDoc] = await Promise.all([
+            db.collection("slack_threads").doc(convDoc.id).get(),
+            db.collection("stats_conversations").doc(convDoc.id).get(),
+        ]);
+
+        const slackData = slackDoc.exists ? slackDoc.data() : null;
+        const stats = statsDoc.exists ? statsDoc.data() : null;
+
+        return res.json({
+            conversation: {
+                id: convDoc.id,
+                chatId: d.chat_id,
+                userId: d.user_id,
+                userName: d.user_name || "익명",
+                brandName: d.brandName || null,
+                channel: channel, // ✅ 보정된 channel 사용
+                status: d.status || "waiting",
+                modeSnapshot: d.modeSnapshot || "AUTO",
+                lastMessageAt: safeIso(d.lastMessageAt),
+                cwConversationId: d.cw_conversation_id || null,
+                summary: d.summary || null,
+                category: d.category || null, // 문자열 (예: "결제/환불|예약/변경")
+                categories: d.category ? d.category.split('|').map(c => c.trim()) : [], // 배열로 변환
+            },
+            messages,
+            slack: slackData
+                ? {
+                    channelId: slackData.channel_id,
+                    threadTs: slackData.thread_ts,
+                    cardType: slackData.card_type,
+                    isTask: !!slackData.is_task,
+                    slackUrl: `https://slack.com/app_redirect?channel=${slackData.channel_id}&message_ts=${slackData.thread_ts}`,
+                }
+                : null,
+            stats: stats
+                ? {
+                    userChats: stats.user_chats || 0,
+                    aiChats: stats.ai_allchats || 0,
+                    agentChats: stats.agent_chats || 0,
+                    aiAuto: stats.ai_auto || 0,
+                    aiConfirmApproved: stats.ai_confirm_approved || 0,
+                    aiConfirmEdited: stats.ai_confirm_edited || 0,
+                }
+                : null,
+        });
+    } catch (error) {
+        console.error("[conversations/detail] error:", error);
+        return res.status(500).json({ error: error.message || "internal_error" });
     }
 }
