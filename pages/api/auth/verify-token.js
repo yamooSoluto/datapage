@@ -17,6 +17,28 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: '토큰이 필요합니다.' });
   }
 
+  // ✅ 개발 환경 Fastlane: JWT 검증 없이 바로 통과
+  const isDev = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV !== 'production';
+  if (isDev && token === 'dev-admin') {
+    console.log('🧭 [Dev Fastlane] 관리자 토큰 통과');
+    return res.status(200).json({
+      success: true,
+      email: 'dev-admin@yamoo.ai',
+      source: 'magic-link-admin-dev',
+      tenants: [
+        {
+          id: 't_dev',
+          name: '로컬테넌트',
+          email: 'dev-admin@yamoo.ai',
+          plan: 'pro',
+          status: 'active',
+          faqCount: 0,
+          showOnboarding: true,
+        },
+      ],
+    });
+  }
+
   try {
     // ✅ JWT 토큰 검증
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -42,8 +64,8 @@ export default async function handler(req, res) {
       const tenant = rows.find(row => row[0] === tenantId);
 
       if (!tenant) {
-        return res.status(404).json({ 
-          error: '테넌트를 찾을 수 없습니다.' 
+        return res.status(404).json({
+          error: '테넌트를 찾을 수 없습니다.'
         });
       }
 
@@ -111,7 +133,7 @@ export default async function handler(req, res) {
     });
 
     const rows = response.data.values || [];
-    
+
     const tenants = rows
       .filter(row => row[3]?.toLowerCase() === email.toLowerCase())
       .map(row => ({
@@ -129,8 +151,8 @@ export default async function handler(req, res) {
       }));
 
     if (tenants.length === 0) {
-      return res.status(404).json({ 
-        error: '등록된 테넌트를 찾을 수 없습니다.' 
+      return res.status(404).json({
+        error: '등록된 테넌트를 찾을 수 없습니다.'
       });
     }
 
@@ -140,9 +162,9 @@ export default async function handler(req, res) {
         spreadsheetId: process.env.GOOGLE_SHEET_ID,
         range: 'FAQ_Master!A2:A1000',
       });
-      
+
       const faqRows = faqResponse.data.values || [];
-      
+
       tenants.forEach(tenant => {
         const faqCount = faqRows.filter(row => row[0] === tenant.id).length;
         tenant.faqCount = faqCount;
@@ -165,14 +187,14 @@ export default async function handler(req, res) {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ error: '토큰이 만료되었습니다.' });
     }
-    
+
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({ error: '유효하지 않은 토큰입니다.' });
     }
 
     console.error('❌ [Verify Token] Error:', error);
-    return res.status(500).json({ 
-      error: '서버 오류가 발생했습니다.' 
+    return res.status(500).json({
+      error: '서버 오류가 발생했습니다.'
     });
   }
 }

@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     if (!tenant) {
       console.warn(`[Magic Link] 등록되지 않은 이메일: ${email}`);
       // 보안상 존재 여부를 명확히 알려주지 않음
-      return res.status(200).json({ 
+      return res.status(200).json({
         success: true,
         message: '이메일이 등록되어 있다면 로그인 링크가 전송됩니다.'
       });
@@ -98,7 +98,7 @@ export default async function handler(req, res) {
     console.error('❌ [Magic Link] Error:', error);
 
     if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
-      return res.status(503).json({ 
+      return res.status(503).json({
         error: 'Google Sheets 연결에 실패했습니다.',
       });
     }
@@ -109,56 +109,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-// ===================================
-// .env.local 설정
-// ===================================
-/*
-JWT_SECRET=your-super-secret-key
-GOOGLE_SHEET_ID=your-sheet-id
-GOOGLE_SERVICE_ACCOUNT_EMAIL=...
-GOOGLE_PRIVATE_KEY="-----BEGIN..."
-
-PORTAL_DOMAIN=https://portal.yoursite.com
-N8N_EMAIL_WEBHOOK_URL=https://your-n8n.com/webhook/send-magic-link
-
-NODE_ENV=development  # 개발 모드에서는 콘솔에 Magic Link 출력
-*/
-
-// ===================================
-// n8n 이메일 전송 워크플로우
-// ===================================
-/*
-Webhook 노드:
-- Path: send-magic-link
-- Method: POST
-
-Code 노드:
-const { to, brandName, magicLink } = $input.item.json;
-
-return {
-  json: {
-    to,
-    subject: `🔐 ${brandName || '포털'} 로그인 링크`,
-    html: `
-      <h2>안녕하세요!</h2>
-      <p>로그인하려면 아래 버튼을 클릭하세요:</p>
-      <a href="${magicLink}" 
-         style="display:inline-block; padding:15px 30px; 
-                background:#6366f1; color:white; 
-                text-decoration:none; border-radius:8px;">
-        로그인하기
-      </a>
-      <p style="color:#666; font-size:14px; margin-top:20px;">
-        링크는 7일간 유효합니다.<br>
-        본인이 요청하지 않았다면 이 메일을 무시하세요.
-      </p>
-    `
-  }
-};
-
-Send Email 노드:
-- To: {{$json.to}}
-- Subject: {{$json.subject}}
-- HTML: {{$json.html}}
-*/

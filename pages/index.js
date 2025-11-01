@@ -3,9 +3,14 @@ import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, Alert
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import ModularFAQBuilderV2 from '../components/ModularFAQBuilderV2';
 import ConversationsPage from '../components/ConversationsPage';
+import CommaChips from '../components/CommaChips';
+import OnboardingModal from "../components/onboarding/OnboardingModal";
+
 
 
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
+
+const FORCE_ONBOARDING = process.env.NODE_ENV === 'development';
 
 // ✅ 플랜 설정
 const PLAN_CONFIG = {
@@ -41,18 +46,29 @@ export default function TenantPortal() {
   const [loginError, setLoginError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // ✅ 온보딩 관련 (3단계 스와이프)
+  // 프로필 & 온보딩 입력 초안
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  // 탭 & 온보딩
+  const [activeTab, setActiveTab] = useState('faq');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(1);
-  const [copiedWidget, setCopiedWidget] = useState(false);
-  const [copiedNaver, setCopiedNaver] = useState(false);
-  const [canDismissOnboarding, setCanDismissOnboarding] = useState(false); // ✅ FAQ 작성 후 닫기 가능
+  const [canDismissOnboarding, setCanDismissOnboarding] = useState(true);
 
-  const [showBuilder, setShowBuilder] = useState(false);
+  // 온보딩 입력값(2단계용)
+  const [obEmail, setObEmail] = useState('');
+  const [obSlackId, setObSlackId] = useState('');
+  const [obFacilities, setObFacilities] = useState([]);
+  const [obPasses, setObPasses] = useState([]);
+  const [obMenu, setObMenu] = useState([]);
 
-  const [activeTab, setActiveTab] = useState('faq');
+  // FAQ / 통계 데이터
   const [faqData, setFaqData] = useState([]);
   const [statsData, setStatsData] = useState(null);
+
+  // 샘플/모듈 빌더 모달 (이름 하나로 통일)
+  const [showBuilder, setShowBuilder] = useState(false);
 
 
   // ✅ 업무카드 탭용 상태
@@ -110,9 +126,10 @@ export default function TenantPortal() {
   }, [currentTenant]);
 
   const faqStats = useMemo(() => {
-    const expired = faqData.filter(i => i.expiryDate && new Date(i.expiryDate) < new Date()).length;
-    const needStaff = faqData.filter(i => i.staffHandoff && i.staffHandoff !== '필요없음').length;
-    return { total: faqData.length, expired, needStaff };
+    const list = Array.isArray(faqData) ? faqData : [];
+    const expired = list.filter(i => i?.expiryDate && new Date(i.expiryDate) < new Date()).length;
+    const needStaff = list.filter(i => i?.staffHandoff && i.staffHandoff !== '필요없음').length;
+    return { total: list.length, expired, needStaff };
   }, [faqData]);
 
   // ✅ 구독 만료일 계산
@@ -141,11 +158,38 @@ export default function TenantPortal() {
     };
   }, [currentTenant, currentPlanConfig]);
 
-
   useEffect(() => {
+    // 🚀 개발환경 Fastlane: 로그인 스킵 + 테스트용 테넌트 세팅
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🧭 Dev Fastlane: 내부 테스트 모드 진입');
+      const devTenant = {
+        id: 't_dev',
+        brandName: '로컬 테스트',
+        email: 'dev@yamoo.ai',
+        plan: 'trial',
+        status: 'active',
+        faqCount: 0,
+      };
+      setCurrentTenant(devTenant);
+      setIsLoggedIn(true);
+      setShowOnboarding(true);
+      setCanDismissOnboarding(true);
+      console.log('✅ Dev Fastlane 완료: 온보딩 강제 표시');
+      return; // ✅ 아래 로그인 로직 완전히 스킵
+    }
+
+    // ⬇️ 이하부터는 실제 로그인 흐름 (배포 환경)
     const savedEmail = localStorage.getItem('userEmail');
     const savedTenantId = localStorage.getItem('tenantId');
     const isMagicLogin = localStorage.getItem('magicLogin');
+
+    // ✅ 개발환경에서는 자동 로그인 패스
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🧭 Dev Fastlane: 로그인 생략');
+      setIsLoggedIn(true);
+      setCurrentTenant({ id: 't_dev', brandName: '로컬 테스트', email: 'dev@yamoo.ai' });
+      return;
+    }
 
     if (savedEmail && savedTenantId && isMagicLogin === 'true') {
       console.log('✅ [Auth] 저장된 세션 발견:', { savedEmail, savedTenantId });
@@ -198,6 +242,10 @@ export default function TenantPortal() {
   async function verifyToken(token) {
     setIsLoading(true);
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirectPath = urlParams.get('redirect');     // 예: /admin
+      const isAdminFastlane = urlParams.get('admin') === '1';
+
       const res = await fetch(`/api/auth/verify-token?token=${token}`);
       const data = await res.json();
 
@@ -210,14 +258,35 @@ export default function TenantPortal() {
 
       // ✅ Slack에서 온 경우 온보딩 스킵
       const fromSlack = data.source === 'slack';
+      const fromAdmin = isAdminFastlane || data.role === 'admin';
 
       if (data.tenants && data.tenants.length > 1) {
         setAvailableTenants(data.tenants);
         setShowTenantSelector(true);
       } else if (data.tenants && data.tenants.length === 1) {
-        selectTenant(data.tenants[0], fromSlack);
-      } else {
-        setLoginError('연결된 테넌트가 없습니다.');
+        const t = data.tenants[0];
+        const fromSlack = data.source === 'slack';
+        const fromAdmin = isAdminFastlane || data.role === 'admin';
+
+        selectTenant(t, (fromSlack || fromAdmin));
+
+        // 프로필 로드 & 온보딩 판단
+        const p = await loadProfile(t.id);
+        const needOnboarding =
+          !t.onboardingDismissed && (
+            !p || !p.dictionaries || (
+              (!p.dictionaries.facilities || p.dictionaries.facilities.length === 0) &&
+              (!p.dictionaries.passes || p.dictionaries.passes.length === 0) &&
+              (!p.dictionaries.menu || p.dictionaries.menu.length === 0)
+            )
+          );
+
+        setShowOnboarding(fromSlack ? false : needOnboarding);
+        setCanDismissOnboarding(true);
+
+        if (redirectPath) {
+          setTimeout(() => window.location.replace(redirectPath), 50);
+        }
       }
 
       setIsLoading(false);
@@ -248,6 +317,7 @@ export default function TenantPortal() {
     console.log(`✅ [Auth] 테넌트 선택 완료: ${tenant.id}${fromSlack ? ' (from Slack)' : ''}`);
   }
 
+
   async function handleEmailLogin(e) {
     e.preventDefault();
     setIsLoading(true);
@@ -263,9 +333,27 @@ export default function TenantPortal() {
       const data = await res.json();
       if (data?.error) {
         setLoginError(data.error);
-      } else {
+      } else if (data?.adminChallenge) {
+        // ❗관리자: 2단계 비밀키 입력
+        const secret = window.prompt('관리자 비밀키를 입력하세요');
+        if (!secret) return;
+        const res2 = await fetch('/api/auth/send-magic-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, adminSecret: secret }),
+        });
+        const data2 = await res2.json();
+        if (data2?.direct && data2?.redirectUrl) {
+          // 즉시 관리자 페이지로 이동 (token & redirect 포함)
+          window.location.href = data2.redirectUrl;
+          return;
+        }
+        setLoginError(data2?.error || '관리자 로그인 실패');
+      } else if (data?.success) {
         alert('✅ 이메일로 로그인 링크가 발송되었습니다!');
         setEmail('');
+      } else {
+        setLoginError('알 수 없는 응답입니다.');
       }
     } catch (err) {
       setLoginError('로그인 요청 중 오류가 발생했습니다.');
@@ -296,6 +384,48 @@ export default function TenantPortal() {
       fetchStatsData();
     }
   }, [isLoggedIn, currentTenant, activeTab, dateRange]);
+
+
+  async function loadProfile(tenantId) {
+    setProfileLoading(true);
+    try {
+      const r = await fetch(`/api/profile?tenantId=${tenantId}`);
+      const j = await r.json();
+      const p = j?.data || null;
+      setProfile(p);
+
+      // 온보딩 프리필
+      setObEmail(currentTenant?.email || p?.contactEmail || '');
+      setObSlackId(p?.slackUserId || '');
+      setObFacilities((p?.dictionaries?.facilities || []).map(x => x?.name).filter(Boolean));
+      setObPasses((p?.dictionaries?.passes || []).map(x => x?.name).filter(Boolean));
+      setObMenu((p?.dictionaries?.menu || []).map(x => x?.name).filter(Boolean));
+
+      return p; // ✅ 중요
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  async function saveProfileBasic() {
+    if (!currentTenant?.id) return;
+    const body = {
+      contactEmail: obEmail,
+      slackUserId: obSlackId,
+      dictionaries: {
+        facilities: obFacilities.map(name => ({ name })),
+        passes: obPasses.map(name => ({ name })),
+        menu: obMenu.map(name => ({ name })),
+      },
+      updatedAt: Date.now(),
+    };
+    await fetch(`/api/profile?tenantId=${currentTenant.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    await loadProfile(currentTenant.id);
+  }
 
   // ✅ 탭 전환 시 대화 리스트/업무카드 로드
   useEffect(() => {
@@ -540,9 +670,9 @@ export default function TenantPortal() {
     const term = searchTerm.toLowerCase();
     return faqData.filter(item => {
       // ✅ faq.js는 question을 문자열로 저장
-      const questionText = item.question || '';
-      return questionText.toLowerCase().includes(term) ||
-        item.answer?.toLowerCase().includes(term);
+      const questionText = String(item.question || '');
+      const answerText = String(item.answer || '');
+      return questionText.toLowerCase().includes(term) || answerText.toLowerCase().includes(term);
     });
   }, [faqData, searchTerm]);
 
@@ -704,230 +834,31 @@ export default function TenantPortal() {
           </div>
         </div>
 
-        {/* ✅ 온보딩 모달 (스와이프 가능) */}
+
         {showOnboarding && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-              {/* 진행 표시 */}
-              <div className="bg-gradient-to-r from-yellow-100 to-amber-100 px-6 py-4 flex items-center justify-between">
-                <div className="flex gap-2">
-                  {[1, 2, 3].map(step => (
-                    <div
-                      key={step}
-                      className={`w-2 h-2 rounded-full transition-all ${step === onboardingStep ? 'bg-yellow-600 w-8' : 'bg-yellow-300'
-                        }`}
-                    />
-                  ))}
-                </div>
-                <span className="text-sm text-gray-600 font-semibold">
-                  {onboardingStep} / 3
-                </span>
-              </div>
-
-              <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-                {onboardingStep === 1 && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-800">
-                      🎉 환영합니다!
-                    </h2>
-                    <p className="text-gray-600 text-sm">
-                      야무지니가 정확한 답변을 하려면 먼저 기본 정보를 입력해주세요.
-                    </p>
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                      <ul className="space-y-2 text-sm text-gray-700">
-                        <li>✅ 영업시간, 위치, 연락처</li>
-                        <li>✅ 주요 상품/서비스 정보</li>
-                        <li>✅ 자주 받는 질문과 답변</li>
-                      </ul>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const formLink = currentTenant?.OnboardingFormLink || currentTenant?.onboardingFormLink;
-                        if (!formLink || formLink === '#' || formLink === '') {
-                          alert('⚠️ 온보딩 폼 링크가 설정되지 않았습니다.\n관리자에게 문의해주세요.');
-                          return;
-                        }
-                        window.open(formLink, '_blank', 'noopener,noreferrer');
-                      }}
-                      className="block w-full px-6 py-4 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl transition-all font-bold text-center cursor-pointer"
-                    >
-                      <ExternalLink className="inline w-5 h-5 mr-2" />
-                      기본 정보 입력하러 가기
-                    </button>
-                    <p className="text-xs text-gray-500 text-center">
-                      💡 작성하신 정보는 언제든 포털에서 수정 가능합니다
-                    </p>
-                  </div>
-                )}
-
-                {onboardingStep === 2 && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-800">
-                      💬 문의 위젯 링크
-                    </h2>
-                    <p className="text-gray-600 text-sm">
-                      고객에게 전달하거나 테스트할 수 있는 문의 창 링크입니다.
-                    </p>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <div className="mb-3">
-                        <div className="text-xs text-gray-600 mb-2 font-semibold">문의 위젯 링크</div>
-                        <div className="bg-white p-3 rounded-lg font-mono text-sm break-all border border-blue-100">
-                          {currentTenant?.WidgetLink || '링크가 설정되지 않았습니다'}
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          if (currentTenant?.WidgetLink) {
-                            navigator.clipboard.writeText(currentTenant.WidgetLink);
-                            setCopiedWidget(true);
-                            setTimeout(() => setCopiedWidget(false), 2000);
-                          }
-                        }}
-                        className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold flex items-center justify-center gap-2"
-                      >
-                        {copiedWidget ? (
-                          <>
-                            <Check className="w-4 h-4" />
-                            복사됨!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4" />
-                            링크 복사하기
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
-                      <p className="font-semibold text-gray-800">✨ 활용 방법</p>
-                      <ul className="space-y-1 text-gray-600 ml-4">
-                        <li>• 고객에게 "여기로 문의해주세요" 전달</li>
-                        <li>• SNS/카톡 프로필에 링크 게시</li>
-                        <li>• 링크로 직접 테스트 가능</li>
-                      </ul>
-                    </div>
-                  </div>
-                )}
-
-                {onboardingStep === 3 && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-bold text-gray-800">
-                      💚 네이버톡톡 연동 (선택)
-                    </h2>
-                    <p className="text-gray-600 text-sm">
-                      네이버 스마트플레이스에서 톡톡 상담을 사용 중이신가요?<br />
-                      아래 링크를 연동하면 톡톡 문의도 자동 응답됩니다.
-                    </p>
-
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                      <div className="flex items-start gap-2 mb-3">
-                        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm text-amber-800">
-                          <strong>네이버톡톡이 없으신가요?</strong>
-                          <p className="text-xs mt-1">건너뛰고 나중에 설정할 수 있습니다</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                      <div className="mb-3">
-                        <div className="text-xs text-gray-600 mb-2 font-semibold">
-                          연동 경로
-                        </div>
-                        <div className="bg-white p-3 rounded-lg text-sm border border-green-100 space-y-1">
-                          <p className="font-semibold text-green-700">네이버톡톡 관리자센터</p>
-                          <p className="text-gray-600">→ 연동관리</p>
-                          <p className="text-gray-600">→ 챗봇API설정</p>
-                          <p className="text-gray-600">→ Event받을 URL 입력</p>
-                        </div>
-                      </div>
-
-                      <div className="mb-3">
-                        <div className="text-xs text-gray-600 mb-2 font-semibold">입력할 URL</div>
-                        <div className="bg-white p-3 rounded-lg font-mono text-xs break-all border border-green-100">
-                          {currentTenant?.NaverOutbound || '링크가 설정되지 않았습니다'}
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          if (currentTenant?.NaverOutbound) {
-                            navigator.clipboard.writeText(currentTenant.NaverOutbound);
-                            setCopiedNaver(true);
-                            setTimeout(() => setCopiedNaver(false), 2000);
-                          }
-                        }}
-                        className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold flex items-center justify-center gap-2"
-                      >
-                        {copiedNaver ? (
-                          <>
-                            <Check className="w-4 h-4" />
-                            복사됨!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4" />
-                            URL 복사하기
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* ✅ 설치 가이드 재확인 안내 */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                      <div className="flex items-start gap-2">
-                        <BookOpen className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-sm text-blue-800">
-                          <strong>이 가이드를 다시 보려면?</strong>
-                          <p className="text-xs mt-1">
-                            포털 우측 상단 <Settings className="inline w-3 h-3" /> 설정 메뉴 → 📖 설치 가이드를 클릭하세요
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-gray-500 text-center">
-                      💡 네이버톡톡 연동은 선택사항입니다. 나중에 설정할 수 있습니다.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* 네비게이션 */}
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t">
-                <button
-                  onClick={() => setOnboardingStep(Math.max(1, onboardingStep - 1))}
-                  disabled={onboardingStep === 1}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  이전
-                </button>
-
-                <div className="flex gap-2">
-                  {onboardingStep < 3 ? (
-                    <button
-                      onClick={() => setOnboardingStep(onboardingStep + 1)}
-                      className="px-6 py-2 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-xl hover:shadow-lg transition-all font-semibold flex items-center gap-2"
-                    >
-                      다음
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={dismissOnboarding}
-                      className="px-6 py-2 bg-gradient-to-r from-green-400 to-emerald-400 text-white rounded-xl hover:shadow-lg transition-all font-semibold"
-                    >
-                      완료하고 시작하기 🚀
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+          <OnboardingModal
+            open={showOnboarding}
+            initial={{
+              email: obEmail,
+              slackUserId: obSlackId,
+              industry: "study_cafe",   // 기본 업종
+              facilities: obFacilities, // 있으면 유지, 없으면 []
+              passes: obPasses,
+              menu: obMenu,
+            }}
+            onClose={() => setShowOnboarding(false)}
+            onComplete={async (payload) => {
+              // 저장 로직
+              await saveProfileBasic(payload); // 네가 쓰던 함수에 맞춰 전달
+              // 로컬 상태 업데이트
+              setObEmail(payload.contactEmail || "");
+              setObSlackId(payload.slackUserId || "");
+              setObFacilities((payload.dictionaries?.facilities || []).map((x) => x.name));
+              setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
+              setObMenu((payload.dictionaries?.menu || []).map((x) => x.name));
+              setShowOnboarding(false);
+            }}
+          />
         )}
 
         <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-6">
@@ -965,6 +896,16 @@ export default function TenantPortal() {
 
           {/* ✅ 탭 버튼 (모바일 최적화) */}
           <div className="flex gap-2 border-b border-white/30 backdrop-blur-xl pb-3 mb-4 overflow-x-auto">
+            {/* mypage */}
+            <button
+              onClick={() => setActiveTab('mypage')}
+              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl font-bold ${activeTab === 'mypage'
+                ? 'bg-gradient-to-r from-emerald-400 via-green-300 to-teal-400 text-gray-800'
+                : 'bg-white/50 text-gray-600 hover:bg-white/70'}`}>
+              <Building2 className="inline w-4 h-4 mr-1 sm:mr-2" />
+              마이페이지
+            </button>
+
             {/* FAQ */}
             <button
               onClick={() => setActiveTab('faq')}
@@ -1018,6 +959,40 @@ export default function TenantPortal() {
               통계
             </button>
           </div>
+
+          {/* mypage */}
+          {activeTab === 'mypage' && (
+            <div className="space-y-5 max-w-3xl">
+              <h2 className="text-xl font-bold text-gray-800">기본 정보</h2>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-900 mb-1">이메일</label>
+                  <input value={obEmail} onChange={(e) => setObEmail(e.target.value)} className="w-full px-3 py-2 bg-white border rounded-lg" />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-900 mb-1">Slack 사용자 ID</label>
+                  <input value={obSlackId} onChange={(e) => setObSlackId(e.target.value)} className="w-full px-3 py-2 bg-white border rounded-lg" />
+                </div>
+              </div>
+
+              <CommaChips label="시설" values={obFacilities} onChange={setObFacilities} />
+              <CommaChips label="이용권" values={obPasses} onChange={setObPasses} />
+              <CommaChips label="메뉴" values={obMenu} onChange={setObMenu} />
+
+              <div className="flex justify-end">
+                <button onClick={saveProfileBasic} className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold">
+                  저장
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-500">
+                💡 네이버/카카오 연동 등 추가 가이드는 여기에서 점차 확장해도 좋아.
+              </div>
+            </div>
+          )}
+
           {/* FAQ 탭 */}
           {activeTab === 'faq' && (
             <div className="space-y-6">
@@ -1102,7 +1077,8 @@ export default function TenantPortal() {
                     const questions = item.question
                       ? item.question.split('\n').filter(q => q.trim())
                       : [item.question || '질문 없음'];
-                    const isExpired = item.expiryDate && new Date(item.expiryDate) < new Date();
+                    const isExpired = !!item.expiryDate && !Number.isNaN(new Date(item.expiryDate).getTime()) &&
+                      new Date(item.expiryDate) < new Date();
 
                     return (
                       <div
@@ -1704,37 +1680,6 @@ function TaskCard({ task }) {
           </a>
         )}
       </div>
-      {/* ✅ 샘플 빌더 모달 */}
-      {showSampleBuilder && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-yellow-50 to-amber-50">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">
-                  ✨ 샘플로 쉽게 FAQ 만들기
-                </h2>
-                <p className="text-xs text-gray-600 mt-0.5">
-                  클릭만으로 질문-답변을 완성하세요
-                </p>
-              </div>
-              <button
-                onClick={closeSampleBuilder}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-hidden">
-              <iframe
-                src="/faq-sample-builder.html"
-                className="w-full h-full border-0"
-                title="FAQ 샘플 빌더"
-              />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
