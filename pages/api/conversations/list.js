@@ -1,4 +1,6 @@
+// /pages/api/conversations/list.js
 export const config = { regions: ['icn1'] };
+
 import admin from "firebase-admin";
 
 if (!admin.apps.length) {
@@ -28,9 +30,7 @@ function millis(v) {
     return Number.isFinite(n) ? n : new Date(v).getTime() || 0;
 }
 function buildSummary(d) {
-    if (typeof d.summary === 'string' && d.summary.trim()) {
-        return d.summary.trim();
-    }
+    if (typeof d.summary === 'string' && d.summary.trim()) return d.summary.trim();
     const msgs = Array.isArray(d.messages) ? d.messages : [];
     const sorted = msgs.slice().sort((a, b) => millis(b.timestamp) - millis(a.timestamp));
     const pick = sorted.find((m) => (m?.text || '').trim());
@@ -40,7 +40,7 @@ const clampLimit = (n, def = 50, max = 500) => {
     const x = Number(n);
     if (!Number.isFinite(x) || x <= 0) return def;
     return Math.min(x, max);
-}
+};
 // cursor helpers (base64)
 function decodeCursor(cur) {
     try {
@@ -76,7 +76,7 @@ function classifyCardTypeFromRoute(route) {
 
 // ✅ 전체 히스토리 기준으로 한 번이라도 업무 라우트가 있으면 true
 async function hasWorkRouteEver(tenantId, chatId) {
-    // Firestore에서 서로 다른 필드는 OR이 안 되므로 3개 where를 병렬로 점검
+    // 빠른 OR 유사체크: 3개 boolean 필드 각각 limit(1)
     const base = db.collection('FAQ_realtime_cw')
         .where('tenant_id', '==', tenantId)
         .where('chat_id', '==', chatId)
@@ -90,8 +90,7 @@ async function hasWorkRouteEver(tenantId, chatId) {
     ]);
     if (!q1.empty || !q2.empty || !q3.empty) return true;
 
-    // 보수적 폴백: 최근 N(=20)개 문서만 추가 스캔해 slack_route 문자열에 update|create|upgrade 포함 여부 확인
-    // (문자열 contains 쿼리가 안돼서 메모리 검사)
+    // 보수적 폴백: 최근 N개를 메모리 검사(slack_route 문자열)
     const recent = await db.collection('FAQ_realtime_cw')
         .where('tenant_id', '==', tenantId)
         .where('chat_id', '==', chatId)
@@ -99,13 +98,21 @@ async function hasWorkRouteEver(tenantId, chatId) {
         .limit(20)
         .get();
 
-    const re = /(update|create|upgrade)/i;
-    return recent.docs.some(d => re.test(String(d.data()?.slack_route || '')));
+    // shadow_* 는 절대 업무 아님
+    const re = /\b(create|update|upgrade)\b/i;
+    return recent.docs.some(d => {
+        const s = String(d.data()?.slack_route || '').toLowerCase();
+        if (s.includes('shadow')) return false;
+        return re.test(s);
+    });
 }
 
 // ──────────────────────────────────────────────
 export default async function handler(req, res) {
     try {
+        // ✅ CDN 캐싱 (플랫폼 캐시만 15초)
+        res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
+
         const { tenant, channel = "all", category = "all", limit, cursor } = req.query;
         if (!tenant) return res.status(400).json({ error: "tenant is required" });
 
@@ -125,7 +132,7 @@ export default async function handler(req, res) {
         // 더 넉넉히 가져와 chat_id 중복 제거
         const snap = await q.limit(pageSize * 3).get();
 
-        // chat_id별 최신 문서 선택
+        // chat_id별 최신 문서만
         const chatMap = new Map();
         snap.docs.forEach(doc => {
             const data = doc.data();
@@ -154,7 +161,7 @@ export default async function handler(req, res) {
         const slackDocs = slackRefs.length ? await db.getAll(...slackRefs) : [];
         const slackMap = new Map(slackDocs.map((sd, idx) => [uniqueDocs[idx].doc.id, sd.exists ? sd.data() : null]));
 
-        // ✅ “히스토리 기준 업무여부” 병렬 계산
+        // ✅ 히스토리 기준 업무여부 병렬 계산
         const chatIds = uniqueDocs.map(({ data }) => data.chat_id);
         const workEverPairs = await Promise.all(
             chatIds.map(async (cid) => [cid, await hasWorkRouteEver(tenant, cid)])
@@ -173,6 +180,7 @@ export default async function handler(req, res) {
 
             const lastMsg = msgs[msgs.length - 1] || null;
 
+            // 이미지 썸네일 스캔
             const allPics = [];
             const allThumbnails = [];
             msgs.forEach(m => {
@@ -194,7 +202,7 @@ export default async function handler(req, res) {
                 ? classifyCardType(cardTypeFromSlack)
                 : (slackRoute ? classifyCardTypeFromRoute(slackRoute) : null);
 
-            // ✅ 최종 업무여부: 히스토리 기준 OR 현재 카드 분류
+            // 최종 업무여부
             const everWork = !!workEverMap.get(v.chat_id);
             const finalIsTask = everWork || (cardInfo?.isTask || false);
             const finalTaskType = everWork ? 'work' : (cardInfo?.taskType || null);
@@ -233,9 +241,9 @@ export default async function handler(req, res) {
                 categories: v.category ? v.category.split('|').map(c => c.trim()) : [],
 
                 hasSlackCard: !!slack,
-                isTask: finalIsTask,           // ← 최종 판단값
-                isTaskEver: everWork,          // ← 히스토리에 한 번이라도 있었는지
-                taskType: finalTaskType,       // 'work' | 'shadow' | 'other' | null
+                isTask: finalIsTask,      // ← 최종 판단
+                isTaskEver: everWork,     // ← 히스토리에 한 번이라도 업무 라우트 있었는지
+                taskType: finalTaskType,  // 'work' | 'shadow' | 'other' | null
                 slackCardType: cardInfo?.cardType || null,
             };
         });

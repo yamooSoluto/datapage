@@ -1,6 +1,8 @@
+// /pages/api/conversations/detail.js
 export const config = { regions: ['icn1'] };
 
 import admin from "firebase-admin";
+
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.cert({
@@ -12,6 +14,7 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+// 플랜별 제한 (원래 로직 유지)
 const PLAN_LIMITS = {
     trial: { days: 30, maxDocs: null },
     starter: { days: 30, maxDocs: null },
@@ -26,6 +29,9 @@ const millis = (v) => (typeof v?.toMillis === 'function' ? v.toMillis() : (Numbe
 
 export default async function handler(req, res) {
     try {
+        // ✅ CDN 캐싱
+        res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
+
         const { tenant, chatId } = req.query;
         if (!tenant || !chatId) {
             return res.status(400).json({ error: "tenant and chatId are required" });
@@ -44,7 +50,7 @@ export default async function handler(req, res) {
         const stableId = `${tenant}_${chatId}`;
         let convDoc = await db.collection("FAQ_realtime_cw").doc(stableId).get();
 
-        // 같은 chat_id 전체(레거시 포함)
+        // 같은 chat_id 문서들(레거시 포함)
         let q = db.collection("FAQ_realtime_cw")
             .where("tenant_id", "==", tenant)
             .where("chat_id", "==", chatId)
@@ -72,7 +78,7 @@ export default async function handler(req, res) {
         if (!convDoc.exists) return res.status(404).json({ error: "conversation_not_found" });
         const d = convDoc.data();
 
-        // 메시지 병합 + 정렬 + 중복제거
+        // 메시지 병합 + 정렬 + 중복 제거
         const allMessages = [];
         allDocs.forEach(doc => {
             const arr = Array.isArray(doc.data()?.messages) ? doc.data().messages : [];
@@ -85,7 +91,8 @@ export default async function handler(req, res) {
         allMessages.forEach(m => {
             const id = m.msgId || `${m.sender}_${m.timestamp?.toMillis?.()}_${m.text?.slice(0, 20)}`;
             if (!seen.has(id)) {
-                seen.add(id); messages.push({
+                seen.add(id);
+                messages.push({
                     sender: m.sender,
                     text: m.text || "",
                     pics: Array.isArray(m.pics) ? m.pics : [],
@@ -96,13 +103,15 @@ export default async function handler(req, res) {
             }
         });
 
-        // ✅ 전체 히스토리 중 한 번이라도 업무 라우트가 있었는지
-        const re = /(update|create|upgrade)/i;
-        const isTaskEver =
-            allDocs.some(dd => {
-                const x = dd.data() || {};
-                return x.route_update || x.route_create || x.route_upgrade_task || re.test(String(x.slack_route || ''));
-            });
+        // ✅ 히스토리 전체에서 한 번이라도 업무 라우트가 있었는지( shadow_* 제외 )
+        const re = /\b(create|update|upgrade)\b/i;
+        const isTaskEver = allDocs.some(dd => {
+            const x = dd.data() || {};
+            if (x.route_update || x.route_create || x.route_upgrade_task) return true;
+            const s = String(x.slack_route || '').toLowerCase();
+            if (s.includes('shadow')) return false;
+            return re.test(s);
+        });
 
         // channel 보정
         let channel = d.channel || "unknown";
@@ -143,14 +152,14 @@ export default async function handler(req, res) {
                 summary: summary || null,
                 category: d.category || null,
                 categories: d.category ? d.category.split('|').map(c => c.trim()) : [],
-                isTaskEver,                // ← 추가: 히스토리 업무 여부
+                isTaskEver, // ← 히스토리 기반 업무 여부
             },
             messages,
             slack: slackData ? {
                 channelId: slackData.channel_id,
                 threadTs: slackData.thread_ts,
                 cardType: slackData.card_type,
-                isTask: !!slackData.is_task || isTaskEver,   // ← Ever를 반영
+                isTask: !!slackData.is_task || isTaskEver,
                 slackUrl: `https://slack.com/app_redirect?channel=${slackData.channel_id}&message_ts=${slackData.thread_ts}`,
             } : null,
             stats: stats ? {
