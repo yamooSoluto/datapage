@@ -141,6 +141,7 @@ export default function TenantPortal() {
     };
   }, [currentTenant, currentPlanConfig]);
 
+
   useEffect(() => {
     const savedEmail = localStorage.getItem('userEmail');
     const savedTenantId = localStorage.getItem('tenantId');

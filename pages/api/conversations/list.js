@@ -1,250 +1,202 @@
-// pages/api/conversations/list.js
-import admin from "firebase-admin";
+export const config = { regions: ['icn1'] };
+import * as admin from 'firebase-admin';
 
 if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
-    });
+    // 필요 시 서비스 계정 사용 가능 (환경에 맞게 교체)
+    admin.initializeApp();
 }
-
 const db = admin.firestore();
 
-// ── helpers
-function normalizeChannel(v) {
-    const s = String(v || "").toLowerCase().trim();
-    if (!s) return "widget";
-    if (s.includes("naver")) return "naver";
-    if (s.includes("kakao")) return "kakao";
-    if (s.includes("channel")) return s; // channeltalk_kakao 등
-    if (s.includes("widget") || s.includes("web")) return "widget";
-    return "unknown";
-}
+// ============================================
+// 📊 플랜별 조회 제한 설정 (null = 무제한)
+// ============================================
+const PLAN_LIMITS = {
+    trial: { days: 30, maxDocs: null }, // maxDocs는 detail에서 사용
+    starter: { days: 30, maxDocs: null },
+    pro: { days: 90, maxDocs: null },
+    business: { days: null, maxDocs: null },
+    enterprise: { days: null, maxDocs: null },
+};
 
-function clampLimit(x, def = 50, max = 100) {
-    const n = Number(x) || def;
-    return Math.max(1, Math.min(max, n));
-}
+// ── helpers ─────────────────────────────────────────────────
+const clampLimit = (n, def = 50, max = 500) => {
+    const x = Number(n);
+    if (!Number.isFinite(x) || x <= 0) return def;
+    return Math.min(x, max);
+};
 
+function normalizeChannel(val) {
+    const v = String(val || '').toLowerCase();
+    if (!v) return 'unknown';                       // 빈 값은 unknown 고정
+    if (v.includes('naver') || v === 'api') return 'naver';
+    if (v.includes('kakao')) return 'kakao';
+    if (v.includes('widget') || v.includes('web')) return 'widget';
+    return 'unknown';
+}
+function parseChannelFilter(v) {
+    if (v === undefined || v === null) return null; // 쿼리 미지정 → 필터 미적용
+    const s = String(v).trim();
+    if (!s) return null;                            // 빈 문자열 → 필터 미적용
+    return normalizeChannel(s);
+}
+function millis(v) {
+    if (!v) return 0;
+    if (typeof v?.toMillis === 'function') return v.toMillis();
+    const n = Number(v);
+    return Number.isFinite(n) ? n : new Date(v).getTime() || 0;
+}
+function buildSummary(d) {
+    if (typeof d.summary === 'string' && d.summary.trim()) return d.summary.trim();
+    const msgs = Array.isArray(d.messages) ? d.messages : [];
+    const sorted = msgs.slice().sort((a, b) => millis(b.timestamp) - millis(a.timestamp));
+    const pick = sorted.find((m) => (m?.text || '').trim());
+    return pick ? String(pick.text).trim().slice(0, 140) : '';
+}
 function decodeCursor(cur) {
     try {
         if (!cur) return null;
-        const obj = JSON.parse(Buffer.from(cur, "base64").toString("utf8"));
-        if (Number.isFinite(obj.ts) && typeof obj.chatId === "string") return obj;
-        return null;
-    } catch {
-        return null;
-    }
+        const obj = JSON.parse(Buffer.from(cur, 'base64').toString('utf8'));
+        if (Number.isFinite(obj.ts)) return obj;
+    } catch { }
+    return null;
 }
-
 function encodeCursor(ts, chatId) {
-    return Buffer.from(JSON.stringify({ ts, chatId }), "utf8").toString("base64");
+    return Buffer.from(JSON.stringify({ ts, chatId }), 'utf8').toString('base64');
 }
 
-// ✅ 슬랙 카드 타입 분류 (card_type 기반)
+async function getPlanOfTenant(tenantId) {
+    try {
+        const snap = await db.collection('tenants').doc(String(tenantId)).get();
+        const plan = (snap.exists && snap.data()?.plan) ? String(snap.data().plan) : 'starter';
+        return PLAN_LIMITS[plan] ? plan : 'starter';
+    } catch {
+        return 'starter';
+    }
+}
+
 function classifyCardType(cardType) {
-    const type = String(cardType || "").toLowerCase();
-
-    // 업무 카드 (create/update/upgrade)
-    if (type.includes('create') || type.includes('update') || type.includes('upgrade')) {
-        return {
-            isTask: true,
-            taskType: 'work',
-            cardType: type
-        };
-    }
-
-    // Shadow 카드 (skip/shadow - 자동 처리됨)
-    if (type.includes('shadow') || type.includes('skip')) {
-        return {
-            isTask: false,
-            taskType: 'shadow',
-            cardType: type
-        };
-    }
-
-    // 기타
-    return {
-        isTask: !!type,
-        taskType: type ? 'other' : null,
-        cardType: type
-    };
+    const type = String(cardType || '').toLowerCase();
+    if (type.includes('create') || type.includes('update') || type.includes('upgrade'))
+        return { isTask: true, taskType: 'work', cardType: type };
+    if (type.includes('shadow') || type === 'skip')
+        return { isTask: false, taskType: 'shadow', cardType: type };
+    return { isTask: !!type, taskType: type ? 'other' : null, cardType: type };
 }
-
-// ✅ slack_route 기반 카드 타입 분류 (폴백)
 function classifyCardTypeFromRoute(route) {
-    const r = String(route || "").toLowerCase();
-
-    // Shadow 라우트
-    if (r.includes('shadow') || r === 'skip') {
-        return {
-            isTask: false,
-            taskType: 'shadow',
-            cardType: route
-        };
-    }
-
-    // 업무 라우트
-    if (r.includes('create') || r.includes('update') || r.includes('upgrade')) {
-        return {
-            isTask: true,
-            taskType: 'work',
-            cardType: route
-        };
-    }
-
-    // Confirm 라우트
-    if (r.includes('confirm')) {
-        return {
-            isTask: false,
-            taskType: 'confirm',
-            cardType: route
-        };
-    }
-
-    // Agent 라우트
-    if (r.includes('agent')) {
-        return {
-            isTask: true,
-            taskType: 'agent',
-            cardType: route
-        };
-    }
-
-    return {
-        isTask: false,
-        taskType: null,
-        cardType: route
-    };
+    const r = String(route || '').toLowerCase();
+    if (r.includes('shadow') || r === 'skip') return { isTask: false, taskType: 'shadow', cardType: route };
+    if (r.includes('create') || r.includes('update') || r.includes('upgrade')) return { isTask: true, taskType: 'work', cardType: route };
+    if (r.includes('confirm')) return { isTask: false, taskType: 'confirm', cardType: route };
+    if (r.includes('agent')) return { isTask: true, taskType: 'agent', cardType: route };
+    return { isTask: false, taskType: null, cardType: route };
 }
 
+// ── handler ────────────────────────────────────────────────
 export default async function handler(req, res) {
     try {
-        const {
-            tenant,
-            channel = "all",
-            category = "all",
-            limit,
-            cursor
-        } = req.query;
+        // 짧은 CDN 캐시로 체감 성능 개선
+        res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=60');
 
-        if (!tenant) return res.status(400).json({ error: "tenant is required" });
+        const { tenant, channel, limit, cursor, since, until } = req.query || {};
+        if (!tenant) return res.status(400).json({ error: 'tenant is required' });
 
         const pageSize = clampLimit(limit);
+        const parsedChannel = parseChannelFilter(channel);
 
-        // ✅ chat_id 기반 조회 (각 채팅방의 최신 세션만)
-        let q = db
-            .collection("FAQ_realtime_cw")
-            .where("tenant_id", "==", tenant)
-            .orderBy("lastMessageAt", "desc");
+        // 플랜 조회 → days(null이면 기간 제한 없음)
+        const plan = await getPlanOfTenant(tenant);
+        const { days } = PLAN_LIMITS[plan] || PLAN_LIMITS.starter;
 
-        // 필터 적용
-        if (channel !== "all") q = q.where("channel", "==", normalizeChannel(channel));
+        const now = Date.now();
+        const sinceMs = Number(since) || null;
+        const untilMs = Number(until) || null;
 
-        // 카테고리 필터는 클라이언트에서 처리 (문자열 기반)
+        // 기간 필터 적용 기준:
+        // - since/until 쿼리가 있으면 그대로 우선 적용
+        // - 없고, 플랜 days가 숫자면 days기간만큼 필터
+        // - days가 null이면 (무제한) 기간 필터 생략
+        let q = db.collection('FAQ_realtime_cw')
+            .where('tenant_id', '==', String(tenant))
+            .orderBy('lastMessageAt', 'desc');
 
-        // 커서 적용 (타임스탬프 기반)
+        if (sinceMs) {
+            q = q.where('lastMessageAt', '>=', admin.firestore.Timestamp.fromMillis(sinceMs));
+        } else if (Number.isFinite(days)) {
+            const defaultSince = now - (days * 86400 * 1000);
+            q = q.where('lastMessageAt', '>=', admin.firestore.Timestamp.fromMillis(defaultSince));
+        }
+        if (untilMs) {
+            q = q.where('lastMessageAt', '<=', admin.firestore.Timestamp.fromMillis(untilMs));
+        }
+
+        if (parsedChannel !== null) {
+            q = q.where('channel', '==', parsedChannel);
+        }
+
         const cur = decodeCursor(cursor);
-        if (cur) {
+        if (cur?.ts) {
             const lastTs = admin.firestore.Timestamp.fromMillis(cur.ts);
             q = q.startAfter(lastTs);
         }
 
-        // ✅ 더 많이 가져와서 chat_id 중복 제거 (pageSize * 3)
-        const snap = await q.limit(pageSize * 3).get();
+        const snap = await q.limit(pageSize * 3).get(); // 여유로 가져와 chat_id 유니크화
 
-        // ✅ chat_id 기준으로 그룹핑 (최신 문서만 사용)
-        const chatMap = new Map();
-        snap.docs.forEach(doc => {
+        const byChat = new Map();
+        snap.docs.forEach((doc) => {
             const data = doc.data();
             const chatId = data.chat_id;
-
-            if (!chatMap.has(chatId)) {
-                chatMap.set(chatId, { doc, data });
-            } else {
-                // 이미 있으면 더 최신 것만 유지
-                const existing = chatMap.get(chatId);
-                const existingTs = existing.data.lastMessageAt?.toMillis() || 0;
-                const currentTs = data.lastMessageAt?.toMillis() || 0;
-
-                if (currentTs > existingTs) {
-                    chatMap.set(chatId, { doc, data });
-                }
+            const prev = byChat.get(chatId);
+            if (!prev) byChat.set(chatId, { doc, data });
+            else {
+                const a = prev.data.lastMessageAt?.toMillis() || 0;
+                const b = data.lastMessageAt?.toMillis() || 0;
+                if (b > a) byChat.set(chatId, { doc, data });
             }
         });
 
-        // ✅ 최신순 정렬 후 페이지 크기만큼만 반환
-        const uniqueDocs = Array.from(chatMap.values())
+        const unique = Array.from(byChat.values())
             .sort((a, b) => {
-                const tsA = a.data.lastMessageAt?.toMillis() || 0;
-                const tsB = b.data.lastMessageAt?.toMillis() || 0;
-                return tsB - tsA;
+                const A = a.data.lastMessageAt?.toMillis() || 0;
+                const B = b.data.lastMessageAt?.toMillis() || 0;
+                return B - A;
             })
             .slice(0, pageSize);
 
-        // 슬랙 스레드 배치 조회 - doc.id를 직접 사용
-        const slackRefs = uniqueDocs.map(({ doc }) =>
-            db.collection("slack_threads").doc(doc.id)
-        );
-        const slackDocs = slackRefs.length > 0 ? await db.getAll(...slackRefs) : [];
-        const slackMap = new Map(
-            slackDocs.map((sd, idx) => [uniqueDocs[idx].doc.id, sd.exists ? sd.data() : null])
-        );
+        // 슬랙 메타
+        const slackRefs = unique.map(({ doc }) => db.collection('slack_threads').doc(doc.id));
+        const slackDocs = slackRefs.length ? await db.getAll(...slackRefs) : [];
+        const slackMap = new Map(slackDocs.map((sd, i) => [unique[i].doc.id, sd.exists ? sd.data() : null]));
 
-        // 응답 변환
-        const conversations = uniqueDocs.map(({ doc, data: v }) => {
+        const conversations = unique.map(({ doc, data: v }) => {
             const msgs = Array.isArray(v.messages) ? v.messages : [];
-            const userCount = msgs.filter(m => m.sender === "user").length;
-            const aiCount = msgs.filter(m => m.sender === "ai").length;
+            const cnt = {
+                user: msgs.filter(m => String(m.sender).toLowerCase() === 'user').length,
+                ai: msgs.filter(m => String(m.sender).toLowerCase() === 'ai').length,
+                agent: msgs.filter(m => ['agent', 'admin'].includes(String(m.sender).toLowerCase())).length,
+            };
 
-            // ✅ agent 카운트 제대로 계산 (admin도 포함)
-            const agentCount = msgs.filter(m => {
-                const sender = String(m.sender || '').toLowerCase();
-                return sender === 'agent' || sender === 'admin';
-            }).length;
-
-            const lastMsg = msgs[msgs.length - 1];
-
-            // ✅ 이미지 첨부 정보 수집
-            // ✅ 썸네일 URL 추출
-            const allPics = [];
-            const allThumbnails = [];
-
+            const pics = [], thumbs = [];
             msgs.forEach(m => {
-                if (Array.isArray(m.pics) && m.pics.length > 0) {
+                if (Array.isArray(m.pics)) {
                     m.pics.forEach(p => {
                         if (p?.url) {
-                            allPics.push(p.url);
-                            // ✅ 썸네일 URL 우선, 없으면 원본
-                            allThumbnails.push(p.thumbnail_url || p.url);
+                            pics.push(p.url);
+                            thumbs.push(p.thumbnail_url || p.url);
                         }
                     });
                 }
             });
 
             const slack = slackMap.get(doc.id);
-
-            // ✅ 슬랙 카드 타입 분류
-            // slack_threads 없으면 FAQ_realtime_cw의 slack_route 사용
             const slackRoute = v.slack_route || null;
-            const cardTypeFromSlack = slack?.card_type || null;
-
-            const cardInfo = cardTypeFromSlack
-                ? classifyCardType(cardTypeFromSlack)
+            const cardFromSlack = slack?.card_type || null;
+            const cardInfo = cardFromSlack ? classifyCardType(cardFromSlack)
                 : (slackRoute ? classifyCardTypeFromRoute(slackRoute) : null);
 
-            // ✅ 사용자 이름에서 중간 글자 추출 (예: "화곡역 송아지" -> "송")
             const extractMiddleChar = (name) => {
                 if (!name || name.length < 3) return name?.charAt(0) || '?';
                 const parts = name.trim().split(/\s+/);
-                if (parts.length > 1) {
-                    // 공백으로 구분된 경우 두번째 단어의 첫 글자
-                    return parts[1]?.charAt(0) || parts[0]?.charAt(1) || '?';
-                }
-                // 공백 없으면 중간 글자
+                if (parts.length > 1) return parts[1]?.charAt(0) || parts[0]?.charAt(1) || '?';
                 const mid = Math.floor(name.length / 2);
                 return name.charAt(mid);
             };
@@ -253,61 +205,54 @@ export default async function handler(req, res) {
                 id: doc.id,
                 chatId: v.chat_id,
                 userId: v.user_id,
-                userName: v.user_name || "익명",
-                userNameInitial: extractMiddleChar(v.user_name), // ✅ 중간 글자 추가
+                userName: v.user_name || '익명',
+                userNameInitial: extractMiddleChar(v.user_name),
                 brandName: v.brand_name || v.brandName || null,
-                channel: v.channel || "unknown",
-                status: v.status || "waiting",
-                modeSnapshot: v.modeSnapshot || "AUTO",
+                channel: v.channel || 'unknown',
+                status: v.status || 'waiting',
+                modeSnapshot: v.modeSnapshot || 'AUTO',
                 lastMessageAt: v.lastMessageAt?.toDate?.()?.toISOString() || null,
 
-                // ✅ summary 우선, 없으면 마지막 메시지 텍스트
-                lastMessageText: v.summary || lastMsg?.text?.slice(0, 80) || (allPics.length > 0 ? `(이미지 ${allPics.length}개)` : ""),
-                summary: v.summary || null, // ✅ summary 필드 추가
+                lastMessageText: buildSummary(v) || (pics.length ? `(이미지 ${pics.length}개)` : ''),
+                summary: typeof v.summary === 'string' ? v.summary : null,
 
-                // ✅ 이미지 정보 추가
-                hasImages: allPics.length > 0,
-                imageCount: allPics.length,
-                firstImageUrl: allPics[0] || null,
-                firstThumbnailUrl: allThumbnails[0] || null,
+                hasImages: pics.length > 0,
+                imageCount: pics.length,
+                firstImageUrl: pics[0] || null,
+                firstThumbnailUrl: thumbs[0] || null,
 
-                messageCount: {
-                    user: userCount,
-                    ai: aiCount,
-                    agent: agentCount, // ✅ Agent 카운트 추가
-                    total: msgs.length
-                },
-                // ✅ 카테고리 정보 추가 (문자열 또는 배열 모두 지원)
-                category: v.category || null, // 문자열 (예: "결제/환불|예약/변경")
-                categories: v.category ? v.category.split('|').map(c => c.trim()) : [], // 배열로 변환
-                // ✅ 슬랙 카드 정보 추가
+                messageCount: { ...cnt, total: msgs.length },
+
+                category: v.category || null,
+                categories: v.category ? v.category.split('|').map(s => s.trim()).filter(Boolean) : [],
+
                 hasSlackCard: !!slack,
                 isTask: cardInfo?.isTask || false,
-                taskType: cardInfo?.taskType || null, // 'work', 'shadow', 'other'
+                taskType: cardInfo?.taskType || null,
                 slackCardType: cardInfo?.cardType || null,
             };
         });
 
-        // 다음 페이지 커서
-        const last = uniqueDocs[uniqueDocs.length - 1];
+        const last = unique[unique.length - 1];
         const nextCursor = last
-            ? encodeCursor(
-                last.data.lastMessageAt?.toMillis() || 0,
-                last.data.chat_id
-            )
+            ? encodeCursor(last.data.lastMessageAt?.toMillis() || 0, last.data.chat_id)
             : null;
 
-        return res.json({
+        return res.status(200).json({
             conversations,
             nextCursor,
             _meta: {
-                totalDocs: snap.size,
-                uniqueChats: chatMap.size,
                 returned: conversations.length,
+                uniqueChats: byChat.size,
+                plan,
+                planDays: (PLAN_LIMITS[plan] || {}).days ?? null,
+                appliedChannel: parsedChannel,                 // null이면 필터 미적용
+                appliedSince: sinceMs || null,                 // 기본 윈도우는 서버 내부에서만 적용
+                appliedUntil: untilMs || null,
             }
         });
-    } catch (error) {
-        console.error("[conversations/list] error:", error);
-        return res.status(500).json({ error: error.message || "internal_error" });
+    } catch (e) {
+        console.error('[conversations/list] error:', e);
+        return res.status(500).json({ error: e.message || 'internal_error' });
     }
 }
