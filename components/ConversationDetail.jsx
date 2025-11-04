@@ -215,27 +215,27 @@ function MessageBubble({ message, onImageClick }) {
         user: {
             name: '사용자',
             icon: User,
-            align: 'flex-row',
+            align: 'flex-row-reverse',
             bubbleBg: 'bg-gray-200 text-gray-900',
-            bubbleAlign: 'mr-auto',
+            bubbleAlign: 'ml-auto',
             iconBg: 'bg-gray-300',
             iconColor: 'text-gray-700',
         },
         ai: {
             name: 'AI',
             icon: Bot,
-            align: 'flex-row-reverse',
+            align: 'flex-row',
             bubbleBg: 'bg-blue-600 text-white',
-            bubbleAlign: 'ml-auto',
+            bubbleAlign: 'mr-auto',
             iconBg: 'bg-blue-500',
             iconColor: 'text-white',
         },
         agent: {
             name: '상담원',
             icon: UserCheck,
-            align: 'flex-row-reverse',
+            align: 'flex-row',
             bubbleBg: 'bg-purple-600 text-white',
-            bubbleAlign: 'ml-auto',
+            bubbleAlign: 'mr-auto',
             iconBg: 'bg-purple-500',
             iconColor: 'text-white',
         },
@@ -339,7 +339,7 @@ function MessageBubble({ message, onImageClick }) {
                 </div>
 
                 {/* 시간 */}
-                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-right' : 'text-left'}`}>
+                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-left' : 'text-right'}`}>
                     {formatTime(message.timestamp)}
                 </div>
             </div>
