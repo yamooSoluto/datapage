@@ -897,51 +897,51 @@ export default function TenantPortal() {
             </div>
           )}
 
-          {/* ✅ 탭 버튼 (모바일 최적화) */}
-          <div className="flex gap-2 border-b border-white/30 backdrop-blur-xl pb-3 mb-4 overflow-x-auto">
+          {/* ✅ 탭 버튼 - 애플 스타일 */}
+          <div className="flex gap-2 pb-3 mb-4 overflow-x-auto [-webkit-overflow-scrolling:touch]">
             {/* mypage */}
             <button
               onClick={() => setActiveTab('mypage')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl font-bold ${activeTab === 'mypage'
-                ? 'bg-gradient-to-r from-emerald-400 via-green-300 to-teal-400 text-gray-800'
-                : 'bg-white/50 text-gray-600 hover:bg-white/70'}`}>
-              <Building2 className="inline w-4 h-4 mr-1 sm:mr-2" />
+              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'mypage'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'}`}>
+              <Building2 className="inline w-4 h-4 mr-2" />
               마이페이지
             </button>
 
             {/* FAQ */}
             <button
               onClick={() => setActiveTab('faq')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'faq'
-                ? 'bg-gradient-to-r from-yellow-400 via-yellow-300 to-amber-400 text-gray-800 shadow-lg shadow-yellow-400/30'
-                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
+              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'faq'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
                 }`}
             >
-              <Database className="inline w-4 h-4 mr-1 sm:mr-2" />
+              <Database className="inline w-4 h-4 mr-2" />
               FAQ 관리
             </button>
 
             {/* ✅ 대화 관리 */}
             <button
               onClick={() => setActiveTab('conversations')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'conversations'
-                ? 'bg-gradient-to-r from-blue-400 via-blue-300 to-cyan-400 text-gray-800 shadow-lg shadow-blue-400/30'
-                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
+              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'conversations'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
                 }`}
             >
-              <MessageSquare className="inline w-4 h-4 mr-1 sm:mr-2" />
+              <MessageSquare className="inline w-4 h-4 mr-2" />
               대화 관리
             </button>
 
             {/* 통계 */}
             <button
               onClick={() => setActiveTab('stats')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'stats'
-                ? 'bg-gradient-to-r from-purple-400 via-purple-300 to-pink-400 text-gray-800 shadow-lg shadow-purple-400/30'
-                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
+              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'stats'
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
                 }`}
             >
-              <BarChart3 className="inline w-4 h-4 mr-1 sm:mr-2" />
+              <BarChart3 className="inline w-4 h-4 mr-2" />
               통계
             </button>
           </div>
