@@ -19,7 +19,16 @@
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true, // ✅ import 오류 방지
     "forceConsistentCasingInFileNames": true,
-    "jsx": "preserve"
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@/lib/*": [
+        "./lib/*"
+      ]
+    }
   },
   "include": [
     "next-env.d.ts",
