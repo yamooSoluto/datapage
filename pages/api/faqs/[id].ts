@@ -1,6 +1,6 @@
 //pages/api/faqs/[id].ts
 
-import { db } from '@/lib/firebase';
+import { db } from '../../../lib/firebase';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
