@@ -407,25 +407,42 @@ export default function TenantPortal() {
     }
   }
 
-  async function saveProfileBasic() {
-    if (!currentTenant?.id) return;
-    const body = {
-      contactEmail: obEmail,
-      slackUserId: obSlackId,
-      dictionaries: {
-        facilities: obFacilities.map(name => ({ name })),
-        passes: obPasses.map(name => ({ name })),
-        menu: obMenu.map(name => ({ name })),
-      },
-      updatedAt: Date.now(),
-    };
-    await fetch(`/api/profile?tenantId=${currentTenant.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    await loadProfile(currentTenant.id);
-  }
+  // ✅ 기존 index 페이지에서 saveProfileBasic 함수를 이렇게 수정
+
+  const saveProfileBasic = async () => {
+    try {
+      // ✅ tenant 파라미터로 호출 (tenantId 아님!)
+      const response = await fetch(`/api/profile?tenant=${tenantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brandName: obBrandName || '',  // 브랜드명이 있다면
+          slackUserId: obSlackId || '',
+          // ✅ 배열을 그대로 전송 (API가 자동으로 정규화)
+          facilities: obFacilities,  // ['헬스장', 'VIP룸'] 형태
+          passes: obPasses,
+          menu: obMenu,
+          links: {},
+          policies: {}
+        })
+      });
+
+      if (response.ok) {
+        // ✅ SWR 캐시 갱신 (useProfile 훅 사용하는 곳에 자동 반영)
+        // mutate 함수가 있다면:
+        // await mutate();
+
+        alert('저장되었습니다! FAQ 모달에서 바로 사용 가능합니다 ✨');
+      } else {
+        const error = await response.json();
+        console.error('저장 실패:', error);
+        alert('저장에 실패했습니다');
+      }
+    } catch (error) {
+      console.error('저장 오류:', error);
+      alert('저장 중 오류가 발생했습니다');
+    }
+  };
 
   // ✅ 탭 전환 시 대화 리스트/업무카드 로드
   useEffect(() => {
@@ -506,26 +523,6 @@ export default function TenantPortal() {
   }
 
   // ✅ 대화 탭은 ConversationsPage 컴포넌트가 자체적으로 관리
-
-  // ✅ 업무카드 대시보드 가져오기
-  async function fetchTasks() {
-    if (!currentTenant?.id) return;
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/tasks/dashboard?tenant=${currentTenant.id}`);
-      const data = await res.json();
-      if (data.error) {
-        console.error('❌ 업무카드 조회 실패:', data.error);
-        return;
-      }
-      setTasksData(data);
-      console.log('✅ 업무카드 데이터 로드 완료:', data.summary);
-    } catch (error) {
-      console.error('❌ 업무카드 조회 에러:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
 
   function openModal(item = null) {
     if (item) {
@@ -771,6 +768,33 @@ export default function TenantPortal() {
       </div>
 
       <div className="relative">
+
+        {showOnboarding && (
+          <OnboardingModal
+            open={showOnboarding}
+            initial={{
+              email: obEmail,
+              slackUserId: obSlackId,
+              industry: "study_cafe",   // 기본 업종
+              facilities: obFacilities, // 있으면 유지, 없으면 []
+              passes: obPasses,
+              menu: obMenu,
+            }}
+            onClose={() => setShowOnboarding(false)}
+            onComplete={async (payload) => {
+              // 저장 로직
+              await saveProfileBasic(payload); // 네가 쓰던 함수에 맞춰 전달
+              // 로컬 상태 업데이트
+              setObEmail(payload.contactEmail || "");
+              setObSlackId(payload.slackUserId || "");
+              setObFacilities((payload.dictionaries?.facilities || []).map((x) => x.name));
+              setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
+              setObMenu((payload.dictionaries?.menu || []).map((x) => x.name));
+              setShowOnboarding(false);
+            }}
+          />
+        )}
+
         {/* ✅ 모바일 최적화 헤더 */}
         <div className="bg-white/70 backdrop-blur-xl border-b border-white/30 sticky top-0 z-40 shadow-sm">
           <div className="max-w-7xl mx-auto px-3 py-3 sm:px-6 sm:py-4">
@@ -802,30 +826,30 @@ export default function TenantPortal() {
                 </div>
               </div>
 
-              {/* ✅ 설정 버튼 (로그아웃 숨김) */}
-              <div className="relative flex-shrink-0">
+              {/* 설정 메뉴 */}
+              <div className="relative">
                 <button
                   onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className="p-2 sm:p-2.5 bg-white/60 backdrop-blur-sm rounded-xl hover:bg-white/80 transition-all"
+                  className="p-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all"
                 >
                   <Settings className="w-5 h-5 text-gray-600" />
                 </button>
 
                 {showSettingsMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
                     <button
                       onClick={reopenOnboarding}
-                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-2 text-sm"
+                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm transition-colors"
                     >
-                      <BookOpen className="w-4 h-4" />
-                      <span>설치 가이드</span>
+                      <BookOpen className="w-4 h-4 text-gray-600" />
+                      <span className="text-gray-900">설치 가이드</span>
                     </button>
                     <button
                       onClick={handleLogout}
-                      className="w-full px-4 py-3 text-left hover:bg-red-50 flex items-center gap-2 text-sm text-red-600 border-t"
+                      className="w-full px-4 py-3 text-left hover:bg-red-50 flex items-center gap-3 text-sm border-t border-gray-100 transition-colors"
                     >
-                      <LogOut className="w-4 h-4" />
-                      <span>로그아웃</span>
+                      <LogOut className="w-4 h-4 text-red-600" />
+                      <span className="text-red-600">로그아웃</span>
                     </button>
                   </div>
                 )}
@@ -835,49 +859,28 @@ export default function TenantPortal() {
         </div>
 
 
-        {showOnboarding && (
-          <OnboardingModal
-            open={showOnboarding}
-            initial={{
-              email: obEmail,
-              slackUserId: obSlackId,
-              industry: "study_cafe",   // 기본 업종
-              facilities: obFacilities, // 있으면 유지, 없으면 []
-              passes: obPasses,
-              menu: obMenu,
-            }}
-            onClose={() => setShowOnboarding(false)}
-            onComplete={async (payload) => {
-              // 저장 로직
-              await saveProfileBasic(payload); // 네가 쓰던 함수에 맞춰 전달
-              // 로컬 상태 업데이트
-              setObEmail(payload.contactEmail || "");
-              setObSlackId(payload.slackUserId || "");
-              setObFacilities((payload.dictionaries?.facilities || []).map((x) => x.name));
-              setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
-              setObMenu((payload.dictionaries?.menu || []).map((x) => x.name));
-              setShowOnboarding(false);
-            }}
-          />
-        )}
-
-        <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 sm:py-6">
-          {/* ✅ 구독 정보 카드 (모바일 최적화) */}
+        {/* ===================================== */}
+        {/* 메인 컨텐츠 */}
+        {/* ===================================== */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          {/* 구독 정보 카드 */}
           {subscriptionInfo && (
-            <div className={`mb-4 p-3 sm:p-4 rounded-2xl border-2 ${subscriptionInfo.isExpired
+            <div className={`mb-6 p-4 rounded-2xl border-2 transition-all ${subscriptionInfo.isExpired
               ? 'bg-red-50 border-red-200'
               : subscriptionInfo.isExpiringSoon
                 ? 'bg-orange-50 border-orange-200'
                 : 'bg-blue-50 border-blue-200'
               }`}>
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-2">
-                  <Clock className={`w-4 h-4 sm:w-5 sm:h-5 ${subscriptionInfo.isExpired ? 'text-red-600' :
-                    subscriptionInfo.isExpiringSoon ? 'text-orange-600' :
-                      'text-blue-600'
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Clock className={`w-5 h-5 ${subscriptionInfo.isExpired
+                    ? 'text-red-600'
+                    : subscriptionInfo.isExpiringSoon
+                      ? 'text-orange-600'
+                      : 'text-blue-600'
                     }`} />
                   <div>
-                    <div className="text-xs sm:text-sm font-bold text-gray-800">
+                    <div className="text-sm font-semibold text-gray-900">
                       {subscriptionInfo.isExpired ? '구독 만료' : '구독 중'}
                     </div>
                     <div className="text-xs text-gray-600">
@@ -886,7 +889,7 @@ export default function TenantPortal() {
                   </div>
                 </div>
                 {(subscriptionInfo.isExpired || subscriptionInfo.isExpiringSoon) && (
-                  <button className="text-xs px-3 py-1.5 bg-white rounded-lg font-semibold hover:shadow-md transition-all">
+                  <button className="text-sm px-4 py-2 bg-white hover:bg-gray-50 rounded-xl font-medium border border-gray-200 transition-all">
                     연장하기
                   </button>
                 )}
@@ -928,23 +931,6 @@ export default function TenantPortal() {
             >
               <MessageSquare className="inline w-4 h-4 mr-1 sm:mr-2" />
               대화 관리
-            </button>
-
-            {/* ✅ 업무카드 */}
-            <button
-              onClick={() => setActiveTab('tasks')}
-              className={`px-4 py-2 sm:px-6 sm:py-3 rounded-xl sm:rounded-2xl transition-all font-bold shadow-sm text-sm sm:text-base whitespace-nowrap ${activeTab === 'tasks'
-                ? 'bg-gradient-to-r from-red-400 via-red-300 to-orange-400 text-gray-800 shadow-lg shadow-red-400/30'
-                : 'bg-white/50 backdrop-blur-md text-gray-600 hover:bg-white/70'
-                }`}
-            >
-              <AlertCircle className="inline w-4 h-4 mr-1 sm:mr-2" />
-              업무카드
-              {tasksData?.summary?.pending > 0 && (
-                <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
-                  {tasksData.summary.pending}
-                </span>
-              )}
             </button>
 
             {/* 통계 */}
@@ -1183,45 +1169,6 @@ export default function TenantPortal() {
           {/* ✅ 대화 관리 탭 */}
           {activeTab === 'conversations' && (
             <ConversationsPage tenantId={currentTenant.id} />
-          )}
-
-          {/* ✅ 업무카드 탭 */}
-          {activeTab === 'tasks' && (
-            <div className="space-y-6">
-              {/* 업무 요약 */}
-              {tasksData?.summary && (
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-orange-50 rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-orange-600">{tasksData.summary.pending || 0}</div>
-                    <div className="text-sm text-gray-600 font-semibold">대기중</div>
-                  </div>
-                  <div className="bg-blue-50 rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-blue-600">{tasksData.summary.inProgress || 0}</div>
-                    <div className="text-sm text-gray-600 font-semibold">진행중</div>
-                  </div>
-                  <div className="bg-green-50 rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-green-600">{tasksData.summary.completed || 0}</div>
-                    <div className="text-sm text-gray-600 font-semibold">완료</div>
-                  </div>
-                </div>
-              )}
-
-              {/* 업무카드 리스트 */}
-              {tasksData?.tasks && tasksData.tasks.length > 0 ? (
-                <div className="space-y-3">
-                  {tasksData.tasks.map(task => (
-                    <TaskCard key={task.id} task={task} />
-                  ))}
-                </div>
-              ) : (
-                <div className="bg-white/60 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-lg shadow-gray-200/20 p-8 sm:p-16 text-center">
-                  <AlertCircle className="w-16 h-16 sm:w-20 sm:h-20 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-base sm:text-lg font-semibold">
-                    업무카드가 없습니다
-                  </p>
-                </div>
-              )}
-            </div>
           )}
 
           {/* 통계 탭 (기존 유지, 모바일 최적화) */}
@@ -1640,45 +1587,6 @@ export default function TenantPortal() {
             .animation-delay-4000 { animation-delay: 4s; }
           `}</style>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ✅ 업무카드 컴포넌트
-function TaskCard({ task }) {
-  const channelBadge = {
-    widget: 'bg-blue-100 text-blue-700',
-    naver: 'bg-green-100 text-green-700',
-    kakao: 'bg-yellow-100 text-yellow-700',
-  }[task.channel] || 'bg-gray-100 text-gray-700';
-
-  return (
-    <div className="bg-white/60 backdrop-blur-xl rounded-2xl shadow-lg p-4 mb-3 hover:shadow-xl transition-all">
-      <div className="flex justify-between items-start">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="font-bold">{task.userName}</span>
-            <span className={`text-xs px-2 py-1 rounded-lg font-semibold ${channelBadge}`}>{task.channel}</span>
-            {task.priority === 'high' && (
-              <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-lg font-semibold">🚨 긴급</span>
-            )}
-          </div>
-          <p className="text-sm text-gray-600 mb-2">{task.lastMessage}</p>
-          <p className="text-xs text-gray-400">
-            {task.lastMessageAt ? new Date(task.lastMessageAt).toLocaleString('ko-KR') : '-'}
-          </p>
-        </div>
-        {task.slackUrl && (
-          <a
-            href={task.slackUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 bg-purple-600 text-white text-sm rounded-xl hover:bg-purple-700 transition-all font-semibold"
-          >
-            슬랙에서 보기
-          </a>
-        )}
       </div>
     </div>
   );

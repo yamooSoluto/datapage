@@ -1,8 +1,11 @@
+// hooks/useprogile.ts
+
 import useSWR from 'swr';
-export function useProfile(tenantId: string) {
+export function useProfile(tenant: string) {
     const { data, error, mutate } = useSWR(
-        tenantId ? `/api/profile?tenantId=${tenantId}` : null,
+        tenant ? `/api/profile?tenant=${tenant}` : null,
         (url) => fetch(url).then(r => r.json())
     );
-    return { profile: data?.data, loading: !error && !data, error, mutate };
+    // API가 바로 프로필 객체를 반환하므로 data를 그대로 profile로 노출
+    return { profile: data, loading: !error && !data, error, mutate };
 }

@@ -1,6 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Clock, Calendar, Sparkles, Zap, X, GripVertical, Check, ChevronDown, Hash, Plus, Scissors, LayoutGrid, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { createPortal } from 'react-dom';
+// components/ModularFAQBuilderV2.jsx
+"use client";
+
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import {
+    Clock, Calendar, Sparkles, Zap, X, GripVertical, Check,
+    ChevronDown, Hash, Plus, Scissors, LayoutGrid, ChevronLeft, ChevronRight, Search
+} from "lucide-react";
+import { createPortal } from "react-dom";
+import {
+    getKeywords,
+    getPresetOptions,
+    getQASetOptions,
+    ENDING_SETS,
+    getPlaceholderCycle,
+    TOP_CATS,
+    SUB_CATS,
+} from "./faq/taxonomy";
+
+
 
 // ✅ 모듈 타입 (단순화)
 const MODULE_TYPES = {
@@ -97,6 +114,7 @@ function DropCaret() {
     );
 }
 
+
 // ✅ CategoryNav (모바일 대응 패치 버전)
 function CategoryNav({ categories, value, onChange }) {
     const items = Object.entries(categories).map(([key, v]) => ({
@@ -170,16 +188,22 @@ function CategoryNav({ categories, value, onChange }) {
                 {/* ✅ 모바일 가로 스크롤 영역 */}
                 <div
                     ref={wrapRef}
-                    className={`
-            relative flex-1 overflow-x-auto whitespace-nowrap scroll-smooth py-1
-            [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
-            [-webkit-overflow-scrolling:touch] [touch-action:pan-x] overscroll-x-contain
-            snap-x snap-mandatory
-             style={(canLeft || canRight) ? {
-            WebkitMaskImage: 'linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%)',
-            maskImage: 'linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%)'
-            } : undefined}
-          `}
+                    className="
+     relative flex-1 overflow-x-auto whitespace-nowrap scroll-smooth py-1
+     [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden
+     [-webkit-overflow-scrolling:touch] [touch-action:pan-x] overscroll-x-contain
+     snap-x snap-mandatory
+   "
+                    style={
+                        (canLeft || canRight)
+                            ? {
+                                WebkitMaskImage:
+                                    'linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%)',
+                                maskImage:
+                                    'linear-gradient(to right, transparent 0, black 14px, black calc(100% - 14px), transparent 100%)'
+                            }
+                            : undefined
+                    }
                 >
 
 
@@ -904,129 +928,13 @@ const DraggableModule = ({
 // ─────────────────────────────────────────────────────────────
 const ENDING_GROUPS = [
     ['입니다', '이에요', '에요'],
-    ['불가능해요', '불가합니다', '안돼요', '안됩니다'],
+    ['가능여부', '가능해요', '자유롭게 가능해요', '불가해요', '안돼요'],
     ['가능해요', '가능합니다', '돼요', '됩니다'],
     ['있어요', '있습니다', '없어요', '없습니다'],
     ['해주세요', '부탁드립니다', '해주시면 됩니다'],
 ];
 
 const SYMBOLS = ['~', ',', '.', '/', '(', ')', '[', ']', '-', '·'];
-
-// ✅ 프리셋을 "모듈"로도 제공 가능 (qMods, aMods)
-const MAIN_CATEGORIES = {
-    facility: {
-        label: '시설/편의',
-        keywords: ['와이파이', '프린터', '콘센트', '주차', '화장실', '정수기', '스낵바', '엘리베이터', '휠체어', '흡연구역'],
-        presets: [
-            { q: '와이파이 비밀번호가 뭔가요?', a: '와이파이 이름은 CONCENTABLE, 비밀번호는 안내판을 확인해주세요' },
-            { q: '프린터 사용 가능한가요?', a: '매장 내 프린터 사용 가능하며, 페이지당 100원입니다' },
-            { q: '주차 가능해요?', a: '건물 지하 1층에 유료 주차 가능합니다' },
-            { q: '콘센트는 모든 자리에 있나요?', a: '네, 모든 좌석에 220V 콘센트가 설치되어 있습니다' },
-            { q: '흡연 가능한 곳이 있나요?', a: '건물 외부 지정된 흡연구역에서만 가능합니다' },
-        ],
-    },
-    hours: {
-        label: '운영/시간',
-        keywords: ['영업시간', '무인', '출입', '퇴실', '브레이크타임', '공휴일', '휴무', '심야', '야간', '연중무휴'],
-        presets: [
-            { q: '영업시간이 어떻게 되나요?', a: '평일 09:00~22:00, 주말/공휴일 10:00~20:00 운영합니다' },
-            { q: '무인시간에도 출입 가능한가요?', a: '무인시간에는 등록된 번호로 도어락 인증 후 출입 가능합니다' },
-            { q: '브레이크타임 있나요?', a: '매일 14:00~15:00은 정리 시간으로 일부 서비스가 제한됩니다' },
-            { q: '공휴일에도 운영하나요?', a: '네, 공휴일에도 정상 운영합니다' },
-            { q: '새벽 이용 가능한가요?', a: '24시간 운영으로 새벽 이용 가능합니다' },
-            { q: '정기휴무가 있나요?', a: '매주 월요일 정기휴무입니다' },
-        ],
-    },
-    seats: {
-        label: '좌석/예약',
-        keywords: ['자유석', '전용석', '스터디룸', '예약', '연장', '자리변경', '그룹석', '타이핑', '조용구역', '1인석'],
-        presets: [
-            { q: '스터디룸 예약 어떻게 하나요?', a: '포털 예약 메뉴에서 날짜/시간 선택 후 결제하면 예약 완료됩니다' },
-            { q: '자유석과 전용석 차이가 뭔가요?', a: '자유석은 선착순 이용, 전용석은 지정 좌석을 기간 동안 고정 사용합니다' },
-            { q: '자리 변경 가능한가요?', a: '여석이 있을 경우 가능하며, 카운터 혹은 채널로 문의해주세요' },
-            { q: '조용한 구역이 따로 있나요?', a: '네, 2층은 조용존으로 통화/대화가 제한됩니다' },
-            { q: '그룹 스터디 가능한가요?', a: '4인 스터디룸과 6인 그룹석이 마련되어 있습니다' },
-            { q: '예약 없이 당일 이용 가능한가요?', a: '자유석은 예약 없이 선착순 이용 가능합니다' },
-        ],
-    },
-    passes: {
-        label: '이용권',
-        keywords: ['1회권', '시간권', '정기권', '기간연장', '일시정지', '잔여시간', '전환', '업그레이드', '자동결제'],
-        presets: [
-            { q: '정기권 기간 연장할 수 있나요?', a: '만료 7일 전부터 연장 가능하며, 포털 결제 또는 현장 결제가 가능합니다' },
-            { q: '시간권 잔여시간 확인은?', a: '마이페이지 > 이용권에서 실시간으로 확인할 수 있습니다' },
-            { q: '1회권에서 정기권으로 전환 가능한가요?', a: '네, 차액 결제로 정기권 전환 가능합니다' },
-            { q: '이용권 일시정지 가능한가요?', a: '정기권은 월 1회, 최대 7일간 일시정지 가능합니다' },
-            { q: '자동결제는 어떻게 설정하나요?', a: '마이페이지 > 결제관리에서 자동결제 등록 가능합니다' },
-        ],
-    },
-    payment: {
-        label: '결제/영수증',
-        keywords: ['카드', '계좌', '현금영수증', '세금계산서', '영수증', '간편결제', '부분결제', '결제오류', '할부'],
-        presets: [
-            { q: '현금영수증 발급되나요?', a: '결제 시 휴대폰 번호 입력으로 발급 가능하며, 마이페이지에서도 재발급됩니다' },
-            { q: '세금계산서 가능해요?', a: '사업자등록증 제출 시 월말 일괄 발행 가능합니다' },
-            { q: '결제 오류가 나요', a: '카드 한도/인증 문제일 수 있습니다. 다른 카드 또는 간편결제로 시도해주세요' },
-            { q: '카카오페이 결제 되나요?', a: '네, 카카오페이/네이버페이/토스 등 간편결제 모두 가능합니다' },
-            { q: '할부 가능한가요?', a: '5만원 이상 결제 시 2~12개월 무이자 할부 가능합니다' },
-        ],
-    },
-    refund: {
-        label: '환불/취소',
-        keywords: ['중도해지', '위약금', '부분환불', '환불기간', '취소수수료', '정책', '영업일', '쿨링오프'],
-        presets: [
-            { q: '환불 규정이 어떻게 되나요?', a: '결제 후 24시간 이내 전액 환불, 이후 사용일수·위약금 공제 후 환불됩니다' },
-            { q: '예약 취소 수수료 있나요?', a: '이용 3일 전까지 무료, 이후 일정 비율의 수수료가 발생합니다' },
-            { q: '환불은 언제 입금되나요?', a: '영업일 기준 3~5일 내 처리됩니다' },
-            { q: '중도해지 시 위약금이 있나요?', a: '정기권 중도해지 시 잔여기간의 30% 위약금이 발생합니다' },
-            { q: '부분 환불도 가능한가요?', a: '미사용 일수에 대해 부분 환불 가능합니다' },
-        ],
-    },
-    policy: {
-        label: '규정/이용안내',
-        keywords: ['소음', '음식물', '통화', '촬영', '반려동물', '흡연', '자리맡기', '분실물', '퇴실', '안전', '에티켓'],
-        presets: [
-            { q: '음식물 반입 가능한가요?', a: '뜨거운 음식/강한 냄새는 제한되며, 뚜껑 있는 음료는 가능합니다' },
-            { q: '통화 가능한가요?', a: '카페존에서만 가능하며, 조용존/스위트존은 통화·대화가 제한됩니다' },
-            { q: '분실물은 어디서 찾나요?', a: '카운터 또는 채널로 문의 주시면 보관 여부를 확인해드립니다' },
-            { q: '자리 맡아두고 나갔다 올 수 있나요?', a: '30분 이상 자리 비움 시 다른 고객에게 양도될 수 있습니다' },
-            { q: '반려동물 동반 가능한가요?', a: '안전과 위생상의 이유로 반려동물 동반은 불가합니다' },
-            { q: '촬영이나 녹화 가능한가요?', a: '개인 촬영은 가능하나 다른 고객이 찍히지 않도록 주의해주세요' },
-        ],
-    },
-    tech: {
-        label: '기술/장애',
-        keywords: ['앱오류', '도어락', '인증', '네트워크', '프린터오류', '비밀번호', '로그인', '접속오류', '시스템'],
-        presets: [
-            { q: '도어락이 안 열려요', a: '등록된 번호인지 확인 후 다시 시도해주세요. 계속 안되면 채널로 연락주세요' },
-            { q: '와이파이가 끊겨요', a: '다른 SSID로 접속하거나 공유기 재연결을 시도해주세요' },
-            { q: '로그인이 안돼요', a: '비밀번호 찾기로 재설정하거나, 소셜 로그인을 이용해보세요' },
-            { q: '앱이 계속 꺼져요', a: '앱을 최신 버전으로 업데이트하거나 재설치해주세요' },
-            { q: '프린터가 작동하지 않아요', a: '용지 걸림이나 토너 부족일 수 있으니 카운터에 문의해주세요' },
-        ],
-    },
-    service: {
-        label: '상담/문의',
-        keywords: ['응대시간', '연락처', '카카오톡', '네이버', '인스타DM', '이메일', '현장', '지연', '긴급'],
-        presets: [
-            { q: '상담 가능 시간은요?', a: '평일 10:00~18:00(점심 12:30~13:30) 응대합니다' },
-            { q: '어디로 문의하면 되나요?', a: '채널톡/카카오/네이버 중 편한 채널로 남겨주세요. 순차 응대합니다' },
-            { q: '긴급 상황은 어떻게 연락하나요?', a: '긴급 시 매장 비상연락처로 전화 주시면 즉시 대응합니다' },
-            { q: '답변이 늦어지는 이유가 뭔가요?', a: '문의 폭주 시 순차 응대로 지연될 수 있습니다. 양해 부탁드립니다' },
-        ],
-    },
-    events: {
-        label: '이벤트/프로모션',
-        keywords: ['쿠폰', '프로모션', '친구추천', '멤버십', '적립', '가격할인', '이벤트', '혜택', '포인트'],
-        presets: [
-            { q: '쿠폰 사용 방법 알려주세요', a: '결제 화면에서 쿠폰 코드 입력 후 적용을 눌러주세요' },
-            { q: '친구추천 있나요?', a: '추천인 코드 입력 시 양쪽 모두 1만원 쿠폰이 지급됩니다' },
-            { q: '멤버십 혜택이 뭔가요?', a: '매월 무료 이용권과 10% 할인 쿠폰이 제공됩니다' },
-            { q: '포인트는 어떻게 적립되나요?', a: '결제 금액의 1%가 자동 적립되며, 1만원 이상부터 사용 가능합니다' },
-            { q: '진행 중인 이벤트가 있나요?', a: '현재 신규가입 시 2주 무료 체험 이벤트가 진행 중입니다' },
-        ],
-    },
-};
 
 // ─────────────────────────────────────────────────────────────
 // 모듈 → 텍스트 변환 (텍스트화 버튼에서 사용)
@@ -1051,32 +959,74 @@ const moduleToText = (module) => {
 
 const modulesToPlain = (mods) => mods.map(moduleToText).join(' ');
 
-// ─────────────────────────────────────────────────────────────
-// 인라인 삽입 포인트 버튼
-// ─────────────────────────────────────────────────────────────
-const InsertPoint = ({ onClick }) => (
-    <button
-        title="여기에 삽입"
-        onClick={onClick}
-        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white border border-dashed border-gray-300 text-gray-400 hover:text-blue-600 hover:border-blue-300"
-    >
-        <Plus className="w-3 h-3" />
-    </button>
-);
 
 // ─────────────────────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────────────────────
-export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
+export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict = { facilities: [], passes: [], menu: [] }, }) {
     const [mainCategory, setMainCategory] = useState('facility'); // 대분류 (싱글)
+
+    // ✅ 최상단/서브 카테고리 (얇은 두 줄)
+    const [topCat, setTopCat] = useState("facility");   // 기본: 시설/비품 (원하면 'store_info'로)
+    const [subCat, setSubCat] = useState("info");       // 기본: 정보 안내
+    const [selectedMod, setSelectedMod] = useState("프린터");
+
     const [questionModules, setQuestionModules] = useState([]);
     const [answerModules, setAnswerModules] = useState([]);
     const [currentMode, setCurrentMode] = useState('question');
     const [draggedIndex, setDraggedIndex] = useState(null);
     const [showPresetPanel, setShowPresetPanel] = useState(false);
+
+    // state
+    const [lastQaSetId, setLastQaSetId] = useState("");
+    const qaSetOptions = useMemo(() => getQASetOptions(topCat, subCat), [topCat, subCat]);
+
+    // 메모: 카테고리 변하면 키워드/프리셋/플레이스홀더 갱신
+    const keywordList = useMemo(() => getKeywords(topCat, subCat), [topCat, subCat]);
+    const presetOptions = useMemo(() => getPresetOptions(topCat, subCat, currentMode), [topCat, subCat, currentMode]);
+    const phPool = useMemo(() => getPlaceholderCycle(topCat, subCat, currentMode), [topCat, subCat, currentMode]);
+
+    const [placeholderIdx, setPlaceholderIdx] = useState(0);
+    const rotatePh = () => setPlaceholderIdx(i => (phPool.length ? (i + 1) % phPool.length : 0));
+
+    // 기존 onPickSinglePreset / onPickQASet 대신 이걸로 통일
+    function applyQaSetAndRemember(id, { append = false } = {}) {
+        const s = qaSetOptions.find(o => o.id === id);
+        if (!s) return;
+
+        const built = s.build({ modName: selectedMod || "모듈" });
+        const q = (built.question || []).map(m => ({ id: Date.now() + Math.random(), ...m }));
+        const a = (built.answer || []).map(m => ({ id: Date.now() + Math.random(), ...m }));
+
+        if (append) {
+            setQuestionModules(prev => [...prev, ...q]);
+            setAnswerModules(prev => [...prev, ...a]);
+        } else {
+            setQuestionModules(q);
+            setAnswerModules(a);
+        }
+
+        // ✅ 드롭다운에 선택값 유지
+        setLastQaSetId(id);
+    }
+    // ✅ 카테고리(최상단 or 서브) 바뀔 때마다 드롭다운 첫 값 자동 선택 & 즉시 주입
+    useEffect(() => {
+        if (!qaSetOptions || qaSetOptions.length === 0) return;
+        const firstId = qaSetOptions[0].id;
+        applyQaSetAndRemember(firstId); // reset 주입
+    }, [topCat, subCat]);  // ← 카테고리 버튼이 바뀔 때마다 실행
+
+    // ✅ 어미(ENDING) 후보를 카테고리/모드에 맞춰 동기화(선택사항; 변경 시 호출)
+    function syncEndingOptions() {
+        const qOpts = ENDING_SETS.question[subCat] || [];
+        const aOpts = ENDING_SETS.answer[subCat] || [];
+        setQuestionModules(prev => prev.map(m => m.type === "ENDING" ? { ...m, data: { ...m.data, options: qOpts, selected: qOpts[0] || m.data.selected } } : m));
+        setAnswerModules(prev => prev.map(m => m.type === "ENDING" ? { ...m, data: { ...m.data, options: aOpts, selected: aOpts[0] || m.data.selected } } : m));
+    }
+
+
     const [insertIndex, setInsertIndex] = useState(null); // 사이 삽입 인덱스
 
-    const currentCategoryData = MAIN_CATEGORIES[mainCategory];
 
     // 드래그 상태(롱프레스 → 드래그 시작)
     const [drag, setDrag] = useState({ active: false, from: null, mode: null }); // from=index
@@ -1102,6 +1052,61 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
     const qWrapRef = useRef(null);
     const aWrapRef = useRef(null);
     const itemRefs = useRef({ question: new Map(), answer: new Map() }); // index -> element
+
+
+    // ✅ 텐넌트 커스텀 모듈 이름 모음 (안전한 메모이즈)
+    const tenantModules = useMemo(() => {
+        const f = Array.isArray(tenantDict?.facilities) ? tenantDict.facilities : [];
+        const p = Array.isArray(tenantDict?.passes) ? tenantDict.passes : [];
+        const m = Array.isArray(tenantDict?.menu) ? tenantDict.menu : [];
+        return [...f, ...p, ...m]
+            .map(v => (typeof v === "string" ? v : v?.name))
+            .filter(Boolean);
+    }, [tenantDict]);
+
+
+    useEffect(() => {
+        if (tenantModules.length) {
+            // 처음 로드되었거나 기본값일 때만 최초 칩으로 교체
+            setSelectedMod(prev =>
+                prev && prev !== "프린터" ? prev : tenantModules[0]
+            );
+        }
+    }, [tenantModules]);
+
+
+    // 프리셋이 없을 때 최소 조합으로 만들어주는 기본 빌더
+    const buildFallback = (mode, modName) => {
+        if (mode === "question") {
+            return [
+                { type: MODULE_TYPES.TEXT, data: { text: `${modName}` } },
+                { type: MODULE_TYPES.TEXT, data: { text: "어떻게 이용하나요?" } },
+            ];
+        }
+        return [
+            { type: MODULE_TYPES.TEXT, data: { text: `${modName} 안내드립니다.` } },
+        ];
+    };
+
+    function applyPresetReset(presetId) {
+
+        const found = presetOptions.find(p => p.id === presetId);
+        const built = (found?.build?.({ modName: selectedMod, MODULE_TYPES })
+            || buildFallback(currentMode, selectedMod))
+            .map(m => ({ id: Date.now() + Math.random(), ...m }));
+        if (currentMode === "question") setQuestionModules(built);
+        else setAnswerModules(built);
+    }
+
+    // ✅ 하단 가이드/키데이터/담당자 전달
+    const [guideOpen, setGuideOpen] = useState(false);
+    const [guideModules, setGuideModules] = useState([]); // 프리셋+모듈 조합 가능
+    const [keydataOpen, setKeydataOpen] = useState(false);
+    const [keydata, setKeydata] = useState([]); // 단순 키-값 or 텍스트 모듈로 구성해도 됨
+    const [handoff, setHandoff] = useState("none"); // none | required | conditional
+    const [guideText, setGuideText] = useState("");
+
+
 
     function registerRef(mode, index, el) {
         const m = itemRefs.current[mode];
@@ -1338,7 +1343,6 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
         setMods(mods);
         setDraggedIndex(index);
     };
-    const handleDragEnd = () => setDraggedIndex(null);
 
     const textify = () => {
         const mods = getMods();
@@ -1367,8 +1371,18 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
             alert('질문과 답변을 모두 작성해주세요!');
             return;
         }
-        onComplete?.({ question, answer, questionModules, answerModules, category: mainCategory });
+        onComplete?.({
+            question,
+            answer,
+            questionModules,
+            answerModules,
+            category: { top: topCat, sub: subCat },
+            handoff,                                     // none | required | conditional
+            guideText,
+            keydata,                                     // [{key, value}]
+        });
     };
+
 
     const applyPreset = (preset) => {
         // 1) 모듈 프리셋이 있으면 구조를 유지하여 추가
@@ -1387,54 +1401,167 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
         <div className="space-y-5" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
             {/* 대분류 (싱글) */}
             <CategoryNav
-                categories={MAIN_CATEGORIES}
-                value={mainCategory}
-                onChange={setMainCategory}
+                categories={TOP_CATS}
+                value={topCat}
+                onChange={setTopCat}
             />
+            {/* ===== 상단 제어 영역 (sticky) ===== */}
+            <div className="sticky top-0 z-10 bg-white pb-3 pt-1">
 
 
-            {/* 미리보기: 질문 */}
-            <div className="space-y-3">
-                <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-gray-900">질문</span>
+                {/* 2줄: 서브 카테고리 */}
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {Object.values(SUB_CATS).map(c => {
+                        const active = subCat === c.key;
+                        return (
+                            <button
+                                key={c.key}
+                                onClick={() => setSubCat(c.key)}
+                                className={`h-8 px-3 rounded-full text-sm border transition
+            ${active ? "bg-gray-900 text-white border-gray-900"
+                                        : "bg-white text-gray-800 border-gray-200 hover:bg-gray-50"}`}
+                            >
+                                {c.label}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* 프리셋 드롭다운 바 (질문/답변에 따라 목록 달라짐) */}
+                <div className="mt-3 flex flex-col gap-2 rounded-xl border border-gray-200 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* 모듈 선택칩 (테넌트 온보딩/마이페이지 설정 모듈) */}
+                        <div className="flex items-center gap-2 overflow-x-auto">
+                            <span className="text-xs text-gray-600 shrink-0">모듈:</span>
+                            {((tenantModules && tenantModules.length)
+                                ? tenantModules
+                                : ["프린터", "자유석", "휴게존"]
+                            ).map((n) => {
+                                const active = selectedMod === n;
+                                return (
+                                    <button
+                                        key={n}
+                                        onClick={() => setSelectedMod(n)}
+                                        className={`h-7 px-3 rounded-full text-xs border shrink-0 ${active
+                                            ? "bg-blue-600 text-white border-blue-600"
+                                            : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                                            }`}
+                                    >
+                                        {n}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* 프리셋 드롭다운 */}
                         <div className="flex items-center gap-2">
-                            <button
-                                onClick={textify}
-                                className="px-3 h-7 text-xs font-semibold rounded-full bg-white border border-gray-300 hover:bg-gray-50"
+                            <span className="text-xs text-gray-600">프리셋:</span>
+                            <select
+                                value={lastQaSetId || ""} // ✅ 선택값 유지
+                                onChange={(e) => applyQaSetAndRemember(e.target.value)}
+                                className="h-9 rounded-lg border border-gray-300 px-3 text-sm bg-white"
                             >
-                                문자로 변환
-                            </button>
-                            <button
-                                onClick={() => setCurrentMode('question')}
-                                className={`px-3 h-7 text-xs font-semibold rounded-full transition-all ${currentMode === 'question' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95'
-                                    }`}
-                            >
-                                {currentMode === 'question' ? '✏️ 편집중' : '편집'}
-                            </button>
+                                {/* 대표 플레이스홀더(모드/카테고리 따라 다르게 유지) */}
+                                <option value="" disabled>
+                                    {phPool[placeholderIdx] || "프리셋 선택 시 질문/답변에 동시에 적용"}
+                                </option>
+
+                                {qaSetOptions.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.label.replace("{모듈}", selectedMod || "모듈")} {/* ✅ 세트명 노출 없이 */}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </div>
 
-                    <div ref={qWrapRef} className="min-h-[96px] p-4 bg-gray-50 rounded-2xl flex flex-wrap gap-2 items-start shadow-inner relative
-           [-webkit-overflow-scrolling:touch] [touch-action:pan-y] overscroll-contain">
-                        {drop.mode === 'question' && drop.index === 0 && <DropCaret />}
-                        {questionModules.map((module, index) => (
-                            <React.Fragment key={module.id}>
-                                <DraggableModule
-                                    module={module}
-                                    index={index}
-                                    mode="question"
-                                    isEditing={currentMode === 'question'}
-                                    registerRef={registerRef}
-                                    onUpdate={updateModule}
-                                    onRemove={removeModule}
-                                    onRequestSplitInsert={onRequestSplitInsert}
-                                    onPointerStart={handlePointerStart}
-                                    drag={drag}
-                                />
-                                {drop.mode === 'question' && drop.index === index + 1 && <DropCaret />}
-                            </React.Fragment>
-                        ))}
+                    {/* 예시 키워드: 선택된 모듈의 내부 값 → 없으면 카테고리 기본값 */}
+                    <div className="flex flex-wrap gap-1.5">
+                        {(() => {
+                            const vals =
+                                (typeof getModuleValues === "function"
+                                    ? getModuleValues(profile || {}, topCat, selectedMod)
+                                    : []) || [];
+                            const fallback =
+                                (typeof DEFAULT_MODULE_VALUES !== "undefined" &&
+                                    DEFAULT_MODULE_VALUES &&
+                                    DEFAULT_MODULE_VALUES[topCat]) || [];
+                            const show = Array.isArray(vals) && vals.length > 0 ? vals : fallback;
+
+                            return (show || []).map((v) => (
+                                <span
+                                    key={`${selectedMod || "모듈"}:${String(v)}`}
+                                    className="px-2.5 h-7 rounded-full bg-gray-100 text-gray-700 text-[11px] inline-flex items-center"
+                                >
+                                    {String(v)}
+                                </span>
+                            ));
+                        })()}
+                    </div>
+                </div>
+            </div>
+
+
+            {/* 미리보기: 질문 + 답변 세트 - 편집중일 때 함께 sticky */}
+            <div className={`space-y-3 ${(currentMode === 'question' || currentMode === 'answer') ? 'sticky top-0 z-20 bg-white py-2' : ''}`}>
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-gray-900">질문</span>
+                        {currentMode === 'question' && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    textify();
+                                }}
+                                className="px-3 h-7 text-xs font-medium rounded-lg bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
+                            >
+                                문자로 변환
+                            </button>
+                        )}
+                    </div>
+
+                    <div
+                        ref={qWrapRef}
+                        onClick={() => setCurrentMode('question')}
+                        className={`
+                            relative cursor-pointer transition-all duration-200
+                            ${currentMode === 'question'
+                                ? 'min-h-[96px] p-4 rounded-xl bg-white border border-gray-300'
+                                : 'h-12 px-4 rounded-lg bg-gray-50 border border-transparent hover:bg-gray-100 overflow-hidden'
+                            }
+                        `}
+                    >
+                        {currentMode === 'question' ? (
+                            <div className="flex flex-wrap gap-2 items-start [-webkit-overflow-scrolling:touch] [touch-action:pan-y] overscroll-contain">
+                                {drop.mode === 'question' && drop.index === 0 && <DropCaret />}
+                                {questionModules.map((module, index) => (
+                                    <React.Fragment key={module.id}>
+                                        <DraggableModule
+                                            module={module}
+                                            index={index}
+                                            mode="question"
+                                            isEditing={currentMode === 'question'}
+                                            registerRef={registerRef}
+                                            onUpdate={updateModule}
+                                            onRemove={removeModule}
+                                            onRequestSplitInsert={onRequestSplitInsert}
+                                            onPointerStart={handlePointerStart}
+                                            drag={drag}
+                                        />
+                                        {drop.mode === 'question' && drop.index === index + 1 && <DropCaret />}
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex items-center h-full overflow-hidden">
+                                <span className="text-sm text-gray-400 truncate">
+                                    {questionModules.length > 0
+                                        ? modulesToPlain(questionModules)
+                                        : '질문을 작성해주세요'
+                                    }
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -1442,45 +1569,64 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-semibold text-gray-900">답변</span>
-                        <div className="flex items-center gap-2">
+                        {currentMode === 'answer' && (
                             <button
-                                onClick={textify}
-                                className="px-3 h-7 text-xs font-semibold rounded-full bg-white border border-gray-300 hover:bg-gray-50"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    textify();
+                                }}
+                                className="px-3 h-7 text-xs font-medium rounded-lg bg-white border border-gray-200 hover:bg-gray-50 transition-colors"
                             >
                                 문자로 변환
                             </button>
-                            <button
-                                onClick={() => setCurrentMode('answer')}
-                                className={`px-3 h-7 text-xs font-semibold rounded-full transition-all ${currentMode === 'answer' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:scale-95'
-                                    }`}
-                            >
-                                {currentMode === 'answer' ? '✏️ 편집중' : '편집'}
-                            </button>
-                        </div>
+                        )}
                     </div>
-                    <div ref={aWrapRef} className="min-h-[110px] p-4 bg-gray-50 rounded-2xl flex flex-wrap gap-2 items-start shadow-inner relative">
-                        {drop.mode === 'answer' && drop.index === 0 && <DropCaret />}
-                        {answerModules.length > 0 ? (
-                            answerModules.map((module, index) => (
-                                <React.Fragment key={module.id}>
-                                    <DraggableModule
-                                        module={module}
-                                        index={index}
-                                        mode="answer"
-                                        isEditing={currentMode === 'answer'}
-                                        registerRef={registerRef}
-                                        onUpdate={updateModule}
-                                        onRemove={removeModule}
-                                        onEdit={() => { }}
-                                        onRequestSplitInsert={onRequestSplitInsert}
-                                        onPointerStart={handlePointerStart}
-                                        drag={drag}
-                                    />
-                                    {drop.mode === 'answer' && drop.index === index + 1 && <DropCaret />}
-                                </React.Fragment>
-                            ))
+                    <div
+                        ref={aWrapRef}
+                        onClick={() => setCurrentMode('answer')}
+                        className={`
+                            relative cursor-pointer transition-all duration-200
+                            ${currentMode === 'answer'
+                                ? 'min-h-[110px] p-4 rounded-xl bg-white border border-gray-300'
+                                : 'h-12 px-4 rounded-lg bg-gray-50 border border-transparent hover:bg-gray-100 overflow-hidden'
+                            }
+                        `}
+                    >
+                        {currentMode === 'answer' ? (
+                            <div className="flex flex-wrap gap-2 items-start [-webkit-overflow-scrolling:touch] [touch-action:pan-y] overscroll-contain">
+                                {drop.mode === 'answer' && drop.index === 0 && <DropCaret />}
+                                {answerModules.length > 0 ? (
+                                    answerModules.map((module, index) => (
+                                        <React.Fragment key={module.id}>
+                                            <DraggableModule
+                                                module={module}
+                                                index={index}
+                                                mode="answer"
+                                                isEditing={currentMode === 'answer'}
+                                                registerRef={registerRef}
+                                                onUpdate={updateModule}
+                                                onRemove={removeModule}
+                                                onEdit={() => { }}
+                                                onRequestSplitInsert={onRequestSplitInsert}
+                                                onPointerStart={handlePointerStart}
+                                                drag={drag}
+                                            />
+                                            {drop.mode === 'answer' && drop.index === index + 1 && <DropCaret />}
+                                        </React.Fragment>
+                                    ))
+                                ) : (
+                                    <span className="text-gray-400 text-sm">답변도 조합하세요</span>
+                                )}
+                            </div>
                         ) : (
-                            <span className="text-gray-400 text-sm">답변도 조합하세요</span>
+                            <div className="flex items-center h-full overflow-hidden">
+                                <span className="text-sm text-gray-400 truncate">
+                                    {answerModules.length > 0
+                                        ? modulesToPlain(answerModules)
+                                        : '답변을 작성해주세요'
+                                    }
+                                </span>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -1528,10 +1674,6 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                     <button onClick={() => addModule(MODULE_TYPES.DATE, { dates: [] })} className="px-3 h-9 text-xs font-semibold rounded-xl bg-white shadow-sm hover:shadow-md active:scale-95 transition-all">
                         🗓 날짜
                     </button>
-                    <button onClick={() => setShowPresetPanel(!showPresetPanel)} className={`px-3 h-9 text-xs font-semibold rounded-xl transition-all active:scale-95 ${showPresetPanel ? 'bg-gray-900 text-white shadow-lg' : 'bg-white shadow-sm hover:shadow-md'
-                        }`}>
-                        ✨ 프리셋
-                    </button>
                 </div>
             </div>
 
@@ -1559,11 +1701,11 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                 </div>
             )}
 
-            {/* 키워드 */}
+            {/* 키워드: taxonomy.js의 getKeywords(topKey, subKey) 사용 */}
             <div>
                 <div className="text-xs font-semibold text-gray-900 mb-2">키워드</div>
                 <div className="flex flex-wrap gap-2">
-                    {currentCategoryData.keywords.map((keyword) => (
+                    {getKeywords(topCat, subCat).map((keyword) => (
                         <button
                             key={keyword}
                             onClick={() => addModule(MODULE_TYPES.TEXT, { text: keyword })}
@@ -1606,6 +1748,120 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel }) {
                     ))}
                 </div>
             </div>
+            {/* ── 메타: 담당자 전달 / 가이드 / 키데이터 ───────────── */}
+            <div className="space-y-3">
+                {/* 담당자 전달 여부 */}
+                <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold text-gray-900">담당자 전달</span>
+                    {["none", "required", "conditional"].map(v => (
+                        <button
+                            key={v}
+                            onClick={() => {
+                                setHandoff(v);
+                                if (v === "conditional") setGuideOpen(true);
+                            }}
+                            className={`h-7 px-3 text-xs rounded-full border ${handoff === v ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-700 border-gray-200"}`}
+                        >
+                            {v === "none" ? "필요 없음" : v === "required" ? "필요함" : "조건부 전달"}
+                        </button>
+                    ))}
+                </div>
+
+                {/* 가이드(접힘) */}
+                <div>
+                    <button
+                        onClick={() => setGuideOpen((s) => !s)}
+                        className="text-xs text-gray-700 underline underline-offset-4"
+                    >
+                        {guideOpen ? "가이드 숨기기" : "가이드 작성(선택)"}
+                    </button>
+                    {guideOpen && (
+                        <div className="mt-2 p-3 rounded-xl border border-gray-200 bg-gray-50">
+                            <div className="text-[11px] text-gray-500 mb-2">• 답변 시 주의사항/내부 메모. 프리셋/모듈 추가 가능</div>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                                {/* 간단 프리셋 버튼 (필요시 taxonomy.guidePresets에서 가져오도록 확장) */}
+                                {["개인정보 수집 후 안내", "지점별 정책 상이", "현장 확인 필요"].map(g => (
+                                    <button key={g} onClick={() => setGuideModules(m => [...m, { id: Date.now() + Math.random(), type: "TEXT", data: { text: g } }])}
+                                        className="h-7 px-3 rounded-full bg-white border border-gray-200 text-xs">
+                                        {g}
+                                    </button>
+                                ))}
+                            </div>
+                            {/* 미니 에디터: TEXT 칩만 사용 (원하면 TIME/DATE도 가능) */}
+                            <div className="flex flex-wrap gap-2">
+                                {guideModules.map((m, i) => (
+                                    <div key={m.id} className="inline-flex items-center gap-1 px-2.5 h-7 bg-white border border-gray-200 rounded-lg text-xs">
+                                        <input
+                                            value={m.data.text}
+                                            onChange={(e) => {
+                                                const next = [...guideModules];
+                                                next[i] = { ...m, data: { text: e.target.value } };
+                                                setGuideModules(next);
+                                            }}
+                                            className="bg-transparent outline-none w-40"
+                                        />
+                                        <button onClick={() => setGuideModules(guideModules.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500">
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={() => setGuideModules([...guideModules, { id: Date.now() + Math.random(), type: "TEXT", data: { text: "" } }])}
+                                    className="h-7 px-3 rounded-lg bg-gray-900 text-white text-xs"
+                                >
+                                    + 추가
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* 키데이터(접힘) */}
+                <div>
+                    <button
+                        onClick={() => setKeydataOpen((s) => !s)}
+                        className="text-xs text-gray-700 underline underline-offset-4"
+                    >
+                        {keydataOpen ? "Key Data 숨기기" : "Key Data 선택(선택)"}
+                    </button>
+                    {keydataOpen && (
+                        <div className="mt-2 p-3 rounded-xl border border-gray-200 bg-gray-50">
+                            <div className="text-[11px] text-gray-500 mb-2">• 자주 쓰는 내부 값(예: 현관비밀번호, 공유링크 등)</div>
+                            <div className="flex flex-wrap gap-2">
+                                {keydata.map((kv, i) => (
+                                    <div key={i} className="inline-flex items-center gap-2 px-2.5 h-8 bg-white border border-gray-200 rounded-lg text-xs">
+                                        <input
+                                            placeholder="라벨"
+                                            value={kv.key || ""}
+                                            onChange={(e) => {
+                                                const next = [...keydata]; next[i] = { ...kv, key: e.target.value }; setKeydata(next);
+                                            }}
+                                            className="w-28 bg-transparent outline-none"
+                                        />
+                                        <span className="text-gray-400">:</span>
+                                        <input
+                                            placeholder="값"
+                                            value={kv.value || ""}
+                                            onChange={(e) => {
+                                                const next = [...keydata]; next[i] = { ...kv, value: e.target.value }; setKeydata(next);
+                                            }}
+                                            className="w-40 bg-transparent outline-none"
+                                        />
+                                        <button onClick={() => setKeydata(keydata.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500">✕</button>
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={() => setKeydata([...keydata, { key: "", value: "" }])}
+                                    className="h-7 px-3 rounded-lg bg-gray-900 text-white text-xs"
+                                >
+                                    + 추가
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
 
             {/* 하단 버튼 */}
             <div className="flex gap-3 pt-2">

@@ -1,3 +1,5 @@
+//pages/api/faqs/[id].ts
+
 import { db } from '@/lib/firebase';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
