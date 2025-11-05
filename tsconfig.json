@@ -6,18 +6,18 @@
       "DOM.Iterable",
       "ESNext"
     ],
-    "allowJs": true, // ✅ JS 파일도 포함
-    "checkJs": false, // ✅ JS 타입 검사 비활성화 (밑줄 최소화)
-    "skipLibCheck": true, // ✅ 외부 라이브러리 타입검사 생략
-    "strict": false, // ✅ 타입검사 느슨하게 (필수)
-    "noEmit": true, // ✅ 결과물(JS) 따로 생성 안 함
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmit": true,
     "incremental": true,
     "module": "ESNext",
     "esModuleInterop": true,
     "moduleResolution": "Node",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "allowSyntheticDefaultImports": true, // ✅ import 오류 방지
+    "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "preserve",
     "baseUrl": ".",
@@ -28,14 +28,27 @@
       "@/lib/*": [
         "./lib/*"
       ]
-    }
+    },
+    // 🔥 타입 검사 완전히 끄기
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": false,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitAny": false,
+    "noImplicitThis": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "alwaysStrict": false
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     "**/*.js",
-    "**/*.jsx" // ✅ JSX도 포함시켜야 IDE 밑줄 사라짐
+    "**/*.jsx"
   ],
   "exclude": [
     "node_modules"

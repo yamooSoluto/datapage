@@ -1,3 +1,5 @@
+// hooks/useFaq.ts
+
 import useSWR from 'swr';
 export function useFaqs(tenantId: string) {
     const { data, error, mutate } = useSWR(

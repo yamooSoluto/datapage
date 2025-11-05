@@ -11,10 +11,9 @@ import {
     getKeywords,
     getPresetOptions,
     getQASetOptions,
-    ENDING_SETS,
+    ENDING_CONTEXTS,
     getPlaceholderCycle,
     TOP_CATS,
-    SUB_CATS,
 } from "./faq/taxonomy";
 
 
@@ -24,6 +23,7 @@ const MODULE_TYPES = {
     TIME: 'TIME', // 시간 (멀티 + 자유 입력)
     DATE: 'DATE', // 날짜 (멀티)
     ENDING: 'ENDING', // 어미 (싱글)
+    CRITERIA: 'CRITERIA', // 기준 값 (CRITERIA 드롭다운)
     SYMBOL: 'SYMBOL', // 특수문자 (텍스트 취급)
     TEXT: 'TEXT', // 자유 텍스트
 };
@@ -874,6 +874,124 @@ const TextChip = ({ data, onRemove, isEditing, onEdit, onSplitAtCaret }) => {
     );
 };
 
+// ─────────────────────────────────────────────────────────────
+// CRITERIA Chip (드롭다운 기준 값 - 멀티셀렉 지원)
+// ─────────────────────────────────────────────────────────────
+const CriteriaChip = ({ data, onRemove, isEditing, onChange }) => {
+    const [showDropdown, setShowDropdown] = React.useState(false);
+    const dropdownRef = React.useRef(null);
+
+    const options = data.options || [];
+    const selected = data.selected || []; // 배열로 변경
+    const criteriaLabel = data.label || '선택';
+    const isMulti = data.multi !== false; // 기본값 true (멀티셀렉)
+
+    // 선택된 값들을 문자열로 표시
+    const displayText = Array.isArray(selected) && selected.length > 0
+        ? selected.join(', ')
+        : (typeof selected === 'string' ? selected : '선택');
+
+    // 드롭다운 외부 클릭 감지
+    React.useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                setShowDropdown(false);
+            }
+        };
+
+        if (showDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showDropdown]);
+
+    const handleToggle = (option) => {
+        if (!isMulti) {
+            // 싱글 셀렉
+            onChange?.({ ...data, selected: option });
+            setShowDropdown(false);
+            return;
+        }
+
+        // 멀티 셀렉
+        const currentSelected = Array.isArray(selected) ? selected : [];
+        const newSelected = currentSelected.includes(option)
+            ? currentSelected.filter(item => item !== option)
+            : [...currentSelected, option];
+
+        onChange?.({ ...data, selected: newSelected });
+    };
+
+    if (!isEditing) {
+        return (
+            <div className="inline-flex items-center gap-1.5 px-3 h-8 bg-emerald-100 rounded-lg text-sm font-medium opacity-40">
+                <span className="text-emerald-800">{displayText}</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="inline-flex relative" ref={dropdownRef}>
+            <button
+                onClick={() => setShowDropdown(!showDropdown)}
+                className="inline-flex items-center gap-1.5 px-3 h-8 bg-emerald-100 rounded-lg shadow-sm text-sm font-medium hover:shadow-md transition-all cursor-pointer"
+            >
+                <span className="text-emerald-800 font-semibold">{displayText}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-emerald-600" />
+            </button>
+
+            {isEditing && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
+                    className="ml-1.5 text-gray-400 hover:text-red-500"
+                >
+                    <X className="w-3.5 h-3.5" />
+                </button>
+            )}
+
+            {/* 드롭다운 메뉴 */}
+            {showDropdown && (
+                <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-50 min-w-[200px] max-h-[300px] overflow-y-auto">
+                    <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100 flex items-center justify-between">
+                        <span>{criteriaLabel}</span>
+                        {isMulti && (
+                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                                다중선택
+                            </span>
+                        )}
+                    </div>
+                    {options.map((option, idx) => {
+                        const isSelected = Array.isArray(selected)
+                            ? selected.includes(option)
+                            : selected === option;
+
+                        return (
+                            <button
+                                key={idx}
+                                onClick={() => handleToggle(option)}
+                                className={`w-full text-left px-4 py-2 text-sm hover:bg-emerald-50 transition-colors flex items-center gap-2 ${isSelected
+                                    ? 'bg-emerald-50 text-emerald-700 font-medium'
+                                    : 'text-gray-700'
+                                    }`}
+                            >
+                                {isMulti && (
+                                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isSelected
+                                        ? 'bg-emerald-500 border-emerald-500'
+                                        : 'border-gray-300'
+                                        }`}>
+                                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                                    </div>
+                                )}
+                                <span>{option}</span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 // ─────────────────────────────────────────────────────────────
 // 드래그 가능한 모듈 래퍼 + 사이 삽입 포인트
@@ -889,6 +1007,7 @@ const DraggableModule = ({
         [MODULE_TYPES.TIME]: TimeModule,
         [MODULE_TYPES.DATE]: DateModule,
         [MODULE_TYPES.ENDING]: EndingModule,
+        [MODULE_TYPES.CRITERIA]: CriteriaChip,
         [MODULE_TYPES.SYMBOL]: TextChip,
         [MODULE_TYPES.TEXT]: TextChip,
     }[module.type];
@@ -949,6 +1068,11 @@ const moduleToText = (module) => {
             return `${module.data.value || '0'}${module.data.unit || ''}`;
         case MODULE_TYPES.ENDING:
             return module.data.selected || module.data.options?.[0] || '';
+        case MODULE_TYPES.CRITERIA:
+            // 배열이면 join, 문자열이면 그대로
+            return Array.isArray(module.data.selected)
+                ? module.data.selected.join(', ')
+                : (module.data.selected || module.data.options?.[0] || '');
         case MODULE_TYPES.SYMBOL:
         case MODULE_TYPES.TEXT:
             return module.data.text || '';
@@ -966,9 +1090,8 @@ const modulesToPlain = (mods) => mods.map(moduleToText).join(' ');
 export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict = { facilities: [], passes: [], menu: [] }, }) {
     const [mainCategory, setMainCategory] = useState('facility'); // 대분류 (싱글)
 
-    // ✅ 최상단/서브 카테고리 (얇은 두 줄)
-    const [topCat, setTopCat] = useState("facility");   // 기본: 시설/비품 (원하면 'store_info'로)
-    const [subCat, setSubCat] = useState("info");       // 기본: 정보 안내
+    // ✅ 최상단 카테고리 (SUB_CATS 제거됨)
+    const [topCat, setTopCat] = useState("facility");   // 기본: 시설/비품
     const [selectedMod, setSelectedMod] = useState("프린터");
 
     const [questionModules, setQuestionModules] = useState([]);
@@ -979,12 +1102,12 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict =
 
     // state
     const [lastQaSetId, setLastQaSetId] = useState("");
-    const qaSetOptions = useMemo(() => getQASetOptions(topCat, subCat), [topCat, subCat]);
+    const qaSetOptions = useMemo(() => getQASetOptions(topCat), [topCat]);
 
     // 메모: 카테고리 변하면 키워드/프리셋/플레이스홀더 갱신
-    const keywordList = useMemo(() => getKeywords(topCat, subCat), [topCat, subCat]);
-    const presetOptions = useMemo(() => getPresetOptions(topCat, subCat, currentMode), [topCat, subCat, currentMode]);
-    const phPool = useMemo(() => getPlaceholderCycle(topCat, subCat, currentMode), [topCat, subCat, currentMode]);
+    const keywordList = useMemo(() => getKeywords(topCat), [topCat]);
+    const presetOptions = useMemo(() => getPresetOptions(topCat, currentMode), [topCat, currentMode]);
+    const phPool = useMemo(() => getPlaceholderCycle(topCat, currentMode), [topCat, currentMode]);
 
     const [placeholderIdx, setPlaceholderIdx] = useState(0);
     const rotatePh = () => setPlaceholderIdx(i => (phPool.length ? (i + 1) % phPool.length : 0));
@@ -1014,14 +1137,13 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict =
         if (!qaSetOptions || qaSetOptions.length === 0) return;
         const firstId = qaSetOptions[0].id;
         applyQaSetAndRemember(firstId); // reset 주입
-    }, [topCat, subCat]);  // ← 카테고리 버튼이 바뀔 때마다 실행
+    }, [topCat]);  // ← 카테고리 버튼이 바뀔 때마다 실행
 
-    // ✅ 어미(ENDING) 후보를 카테고리/모드에 맞춰 동기화(선택사항; 변경 시 호출)
+    // ✅ 어미(ENDING) 후보를 카테고리/모드에 맞춰 동기화
+    // Note: taxonomy-v2에서는 각 모듈이 자체적으로 context를 가지므로 
+    // 전역 동기화가 필요없음
     function syncEndingOptions() {
-        const qOpts = ENDING_SETS.question[subCat] || [];
-        const aOpts = ENDING_SETS.answer[subCat] || [];
-        setQuestionModules(prev => prev.map(m => m.type === "ENDING" ? { ...m, data: { ...m.data, options: qOpts, selected: qOpts[0] || m.data.selected } } : m));
-        setAnswerModules(prev => prev.map(m => m.type === "ENDING" ? { ...m, data: { ...m.data, options: aOpts, selected: aOpts[0] || m.data.selected } } : m));
+        // 더 이상 사용하지 않음 (각 ENDING 모듈이 자체 context 사용)
     }
 
 
@@ -1376,7 +1498,7 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict =
             answer,
             questionModules,
             answerModules,
-            category: { top: topCat, sub: subCat },
+            category: { top: topCat },  // sub 제거됨
             handoff,                                     // none | required | conditional
             guideText,
             keydata,                                     // [{key, value}]
@@ -1408,24 +1530,6 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict =
             {/* ===== 상단 제어 영역 (sticky) ===== */}
             <div className="sticky top-0 z-10 bg-white pb-3 pt-1">
 
-
-                {/* 2줄: 서브 카테고리 */}
-                <div className="mt-2 flex flex-wrap gap-2">
-                    {Object.values(SUB_CATS).map(c => {
-                        const active = subCat === c.key;
-                        return (
-                            <button
-                                key={c.key}
-                                onClick={() => setSubCat(c.key)}
-                                className={`h-8 px-3 rounded-full text-sm border transition
-            ${active ? "bg-gray-900 text-white border-gray-900"
-                                        : "bg-white text-gray-800 border-gray-200 hover:bg-gray-50"}`}
-                            >
-                                {c.label}
-                            </button>
-                        );
-                    })}
-                </div>
 
                 {/* 프리셋 드롭다운 바 (질문/답변에 따라 목록 달라짐) */}
                 <div className="mt-3 flex flex-col gap-2 rounded-xl border border-gray-200 p-3">
@@ -1705,7 +1809,7 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict =
             <div>
                 <div className="text-xs font-semibold text-gray-900 mb-2">키워드</div>
                 <div className="flex flex-wrap gap-2">
-                    {getKeywords(topCat, subCat).map((keyword) => (
+                    {getKeywords(topCat).map((keyword) => (
                         <button
                             key={keyword}
                             onClick={() => addModule(MODULE_TYPES.TEXT, { text: keyword })}
@@ -1881,3 +1985,8 @@ export default function ModularFAQBuilderV2({ onComplete, onCancel, tenantDict =
         </div>
     );
 }
+
+// ModularFAQBuilderV2.jsx 맨 아래 어딘가에 추가
+export { TextEditorSheet as MiniTextSheet };
+export { DateModule as MiniDateModule };   // 날짜 모듈
+export { TimeModule as MiniTimeModule };   // 시간 모듈

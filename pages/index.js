@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/router';
 import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, AlertCircle, Crown, Calendar, BarChart3, Users, MessageSquare, Zap, Building2, ChevronDown, X, Copy, Check, ChevronLeft, ChevronRight, Settings, ExternalLink, BookOpen } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import ModularFAQBuilderV2 from '../components/ModularFAQBuilderV2';
 import ConversationsPage from '../components/ConversationsPage';
 import CommaChips from '../components/CommaChips';
 import OnboardingModal from "../components/onboarding/OnboardingModal";
-
+import CriteriaSheetEditor from '@/components/mypage/CriteriaSheetEditor';
+import TemplateManager from '@/components/mypage/TemplateManager';
+import { useTemplates } from '@/hooks/useTemplates';
 
 
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
@@ -35,6 +38,8 @@ const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'
 export default function TenantPortal() {
   console.log('🔧 TenantPortal 컴포넌트 렌더링됨!');
 
+  const router = useRouter();
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentTenant, setCurrentTenant] = useState(null);
 
@@ -56,12 +61,29 @@ export default function TenantPortal() {
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [canDismissOnboarding, setCanDismissOnboarding] = useState(true);
 
-  // 온보딩 입력값(2단계용)
+  // ✅ 온보딩 입력값(2단계용)
   const [obEmail, setObEmail] = useState('');
   const [obSlackId, setObSlackId] = useState('');
   const [obFacilities, setObFacilities] = useState([]);
   const [obPasses, setObPasses] = useState([]);
   const [obMenu, setObMenu] = useState([]);
+
+
+  // 온보딩 - 마이페이지 템플릿
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
+  const { templates, saveTemplates, mutate } = useTemplates(currentTenant);
+
+
+  // CRITERIA 기반 데이터 (SimpleCriteriaInput용)
+  const [tenantData, setTenantData] = useState({
+    industry: 'studycafe', // 기본값
+    criteriaData: {},      // 일반 정책용
+    items: {               // 시설/상품용 (신규)
+      facility: [],        // [{ id: 1, name: '프린터', data: { ... } }]
+      product: []          // [{ id: 1, name: '시간제', data: { ... } }]
+    }
+  });
 
   // FAQ / 통계 데이터
   const [faqData, setFaqData] = useState([]);
@@ -187,7 +209,7 @@ export default function TenantPortal() {
     if (process.env.NODE_ENV === 'development') {
       console.log('🧭 Dev Fastlane: 로그인 생략');
       setIsLoggedIn(true);
-      setCurrentTenant({ id: 't_dev', brandName: '로컬 테스트', email: 'dev@yamoo.ai' });
+      setCurrentTenant('t_dev');
       return;
     }
 
@@ -223,7 +245,7 @@ export default function TenantPortal() {
         return;
       }
 
-      setCurrentTenant(data);
+      setCurrentTenant(data.id || data.tenantId || data.tenant);
       setIsLoggedIn(true);
 
       // ✅ 온보딩 표시 조건: FAQ가 없으면 무조건 표시
@@ -401,6 +423,13 @@ export default function TenantPortal() {
       setObPasses((p?.dictionaries?.passes || []).map(x => x?.name).filter(Boolean));
       setObMenu((p?.dictionaries?.menu || []).map(x => x?.name).filter(Boolean));
 
+      // CRITERIA 데이터 로드
+      setTenantData({
+        industry: p?.industry || 'studycafe',
+        criteriaData: p?.criteriaData || {},
+        items: p?.items || { facility: [], product: [] }
+      });
+
       return p; // ✅ 중요
     } finally {
       setProfileLoading(false);
@@ -422,6 +451,10 @@ export default function TenantPortal() {
           facilities: obFacilities,  // ['헬스장', 'VIP룸'] 형태
           passes: obPasses,
           menu: obMenu,
+          // ✅ CRITERIA 기반 데이터 추가
+          industry: tenantData.industry,
+          criteriaData: tenantData.criteriaData,
+          items: tenantData.items,  // 시설/상품 데이터 추가
           links: {},
           policies: {}
         })
@@ -441,6 +474,45 @@ export default function TenantPortal() {
     } catch (error) {
       console.error('저장 오류:', error);
       alert('저장 중 오류가 발생했습니다');
+    }
+  };
+
+
+  // ✅ 1. 온보딩 체크 로직 추가
+  useEffect(() => {
+    if (isLoggedIn && currentTenant) {
+      checkOnboarding();
+    }
+  }, [isLoggedIn, currentTenant]);
+
+  const checkOnboarding = async () => {
+    // ✅ tenant 문자열 추출
+    const tenantId = typeof currentTenant === 'string'
+      ? currentTenant
+      : currentTenant?.id || currentTenant?.tenantId || '';
+
+    if (!tenantId) {
+      console.error('❌ tenantId가 없습니다:', currentTenant);
+      return;
+    }
+
+    const res = await fetch(`/api/onboarding?tenant=${tenantId}`);
+    const data = await res.json();
+
+    if (!data.onboardingCompleted) {
+      router.push(`/onboarding?tenant=${tenantId}`); // ✅ 문자열
+    }
+  };
+
+  // 2. 프로필 탭을 마이페이지로 변경
+  const handleTabClick = (tab) => {
+    if (tab === 'profile') {
+      const tenantId = typeof currentTenant === 'string'
+        ? currentTenant
+        : (currentTenant?.id || currentTenant?.tenantId || '');
+      router.push(`/mypage?tenant=${tenantId}`);
+    } else {
+      setActiveTab(tab);
     }
   };
 
@@ -769,56 +841,41 @@ export default function TenantPortal() {
 
       <div className="relative">
 
-        {showOnboarding && (
+        {showOnboarding && !onboardingCompleted && (
           <OnboardingModal
-            open={showOnboarding}
-            initial={{
-              email: obEmail,
-              slackUserId: obSlackId,
-              industry: "study_cafe",   // 기본 업종
-              facilities: obFacilities, // 있으면 유지, 없으면 []
-              passes: obPasses,
-              menu: obMenu,
-            }}
-            onClose={() => setShowOnboarding(false)}
-            onComplete={async (payload) => {
-              // 저장 로직
-              await saveProfileBasic(payload); // 네가 쓰던 함수에 맞춰 전달
-              // 로컬 상태 업데이트
-              setObEmail(payload.contactEmail || "");
-              setObSlackId(payload.slackUserId || "");
-              setObFacilities((payload.dictionaries?.facilities || []).map((x) => x.name));
-              setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
-              setObMenu((payload.dictionaries?.menu || []).map((x) => x.name));
+            tenant={currentTenant}
+            onComplete={() => {
               setShowOnboarding(false);
+              setOnboardingCompleted(true);
+              fetchProfile();
             }}
           />
         )}
 
         {/* ✅ 모바일 최적화 헤더 */}
         <div className="bg-white/70 backdrop-blur-xl border-b border-white/30 sticky top-0 z-40 shadow-sm">
-          <div className="max-w-7xl mx-auto px-3 py-3 sm:px-6 sm:py-4">
+          <div className="max-w-7xl mx-auto px-3 py-2 sm:px-6 sm:py-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3 flex-1 min-w-0">
-                <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-yellow-400 to-amber-400 rounded-2xl shadow-lg shadow-yellow-400/30 flex items-center justify-center">
-                  <Database className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800" />
+              <div className="flex items-center space-x-2 flex-1 min-w-0">
+                <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-r from-yellow-400 to-amber-400 rounded-xl shadow-sm flex items-center justify-center">
+                  <Database className="w-4 h-4 sm:w-5 sm:h-5 text-gray-800" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h1 className="text-base sm:text-xl font-bold bg-gradient-to-r from-yellow-600 to-amber-600 bg-clip-text text-transparent truncate">
-                    {currentTenant?.brandName || '야무 포털'}
-                  </h1>
-                  {/* ✅ 플랜 뱃지 */}
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${PLAN_BADGE_CLASS[currentTenant?.plan?.toLowerCase()] || PLAN_BADGE_CLASS.trial}`}>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+                      {currentTenant?.brandName || '야무 포털'}
+                    </h1>
+                    {/* ✅ 플랜 & 구독 정보 - 한 줄로 통합 */}
+                    <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${PLAN_BADGE_CLASS[currentTenant?.plan?.toLowerCase()] || PLAN_BADGE_CLASS.trial}`}>
                       {currentPlanConfig.name}
                     </span>
                     {subscriptionInfo && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${subscriptionInfo.isExpired ? 'bg-red-100 text-red-700' :
+                      <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${subscriptionInfo.isExpired ? 'bg-red-100 text-red-700' :
                         subscriptionInfo.isExpiringSoon ? 'bg-orange-100 text-orange-700' :
                           'bg-gray-100 text-gray-600'
                         }`}>
                         {subscriptionInfo.isExpired
-                          ? '만료됨'
+                          ? '만료'
                           : `D-${subscriptionInfo.daysLeft}`}
                       </span>
                     )}
@@ -830,7 +887,7 @@ export default function TenantPortal() {
               <div className="relative">
                 <button
                   onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                  className="p-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl transition-all"
+                  className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
                 >
                   <Settings className="w-5 h-5 text-gray-600" />
                 </button>
@@ -862,126 +919,179 @@ export default function TenantPortal() {
         {/* ===================================== */}
         {/* 메인 컨텐츠 */}
         {/* ===================================== */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-          {/* 구독 정보 카드 */}
-          {subscriptionInfo && (
-            <div className={`mb-6 p-4 rounded-2xl border-2 transition-all ${subscriptionInfo.isExpired
-              ? 'bg-red-50 border-red-200'
-              : subscriptionInfo.isExpiringSoon
-                ? 'bg-orange-50 border-orange-200'
-                : 'bg-blue-50 border-blue-200'
-              }`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Clock className={`w-5 h-5 ${subscriptionInfo.isExpired
-                    ? 'text-red-600'
-                    : subscriptionInfo.isExpiringSoon
-                      ? 'text-orange-600'
-                      : 'text-blue-600'
-                    }`} />
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">
-                      {subscriptionInfo.isExpired ? '구독 만료' : '구독 중'}
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      {subscriptionInfo.endDate.toLocaleDateString('ko-KR')}까지
-                    </div>
-                  </div>
-                </div>
-                {(subscriptionInfo.isExpired || subscriptionInfo.isExpiringSoon) && (
-                  <button className="text-sm px-4 py-2 bg-white hover:bg-gray-50 rounded-xl font-medium border border-gray-200 transition-all">
-                    연장하기
-                  </button>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          {/* ✅ 탭 네비게이션 - 모던 언더라인 스타일 */}
+          <div className="sticky top-0 z-10 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-gray-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+
+            <div className="flex gap-10 overflow-x-auto [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden">
+
+
+              {/* 대화 관리 */}
+              <button
+                onClick={() => setActiveTab('conversations')}
+                className={`flex items-center gap-2 py-3 text-sm font-medium transition-colors whitespace-nowrap relative ${activeTab === 'conversations'
+                  ? 'text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                <MessageSquare className="w-4 h-4" />
+                대화 관리
+                {activeTab === 'conversations' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t-full" />
                 )}
-              </div>
+              </button>
+
+              {/* FAQ */}
+              <button
+                onClick={() => setActiveTab('faq')}
+                className={`flex items-center gap-2 py-3 text-sm font-medium transition-colors whitespace-nowrap relative ${activeTab === 'faq'
+                  ? 'text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                <Database className="w-4 h-4" />
+                FAQ 관리
+                {activeTab === 'faq' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t-full" />
+                )}
+              </button>
+
+
+              {/* 통계 */}
+              <button
+                onClick={() => setActiveTab('stats')}
+                className={`flex items-center gap-2 py-3 text-sm font-medium transition-colors whitespace-nowrap relative ${activeTab === 'stats'
+                  ? 'text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                통계
+                {activeTab === 'stats' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t-full" />
+                )}
+              </button>
+
+              {/* mypage */}
+              <button
+                onClick={() => setActiveTab('mypage')}
+                className={`flex items-center gap-2 py-3 text-sm font-medium transition-colors whitespace-nowrap relative ${activeTab === 'mypage'
+                  ? 'text-gray-900'
+                  : 'text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                <Building2 className="w-4 h-4" />
+                마이페이지
+                {activeTab === 'mypage' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-t-full" />
+                )}
+              </button>
+
             </div>
-          )}
-
-          {/* ✅ 탭 버튼 - 애플 스타일 */}
-          <div className="flex gap-2 pb-3 mb-4 overflow-x-auto [-webkit-overflow-scrolling:touch]">
-            {/* mypage */}
-            <button
-              onClick={() => setActiveTab('mypage')}
-              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'mypage'
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'}`}>
-              <Building2 className="inline w-4 h-4 mr-2" />
-              마이페이지
-            </button>
-
-            {/* FAQ */}
-            <button
-              onClick={() => setActiveTab('faq')}
-              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'faq'
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
-                }`}
-            >
-              <Database className="inline w-4 h-4 mr-2" />
-              FAQ 관리
-            </button>
-
-            {/* ✅ 대화 관리 */}
-            <button
-              onClick={() => setActiveTab('conversations')}
-              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'conversations'
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
-                }`}
-            >
-              <MessageSquare className="inline w-4 h-4 mr-2" />
-              대화 관리
-            </button>
-
-            {/* 통계 */}
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200 whitespace-nowrap ${activeTab === 'stats'
-                ? 'bg-gray-900 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
-                }`}
-            >
-              <BarChart3 className="inline w-4 h-4 mr-2" />
-              통계
-            </button>
           </div>
 
           {/* mypage */}
           {activeTab === 'mypage' && (
-            <div className="space-y-5 max-w-3xl">
-              <h2 className="text-xl font-bold text-gray-800">기본 정보</h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-900 mb-1">이메일</label>
-                  <input value={obEmail} onChange={(e) => setObEmail(e.target.value)} className="w-full px-3 py-2 bg-white border rounded-lg" />
+            <div className="space-y-6 py-4">
+              {/* 기본 정보 (선택 - 필요하면 유지) */}
+              <div className="bg-white rounded-xl border p-6 max-w-5xl mx-auto">
+                <h2 className="text-lg font-bold mb-4">기본 정보</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">이메일</label>
+                    <input
+                      value={obEmail}
+                      onChange={(e) => setObEmail(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Slack ID</label>
+                    <input
+                      value={obSlackId}
+                      onChange={(e) => setObSlackId(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-900 mb-1">Slack 사용자 ID</label>
-                  <input value={obSlackId} onChange={(e) => setObSlackId(e.target.value)} className="w-full px-3 py-2 bg-white border rounded-lg" />
+                {/* 저장 버튼 */}
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    onClick={saveProfileBasic}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    기본 정보 저장
+                  </button>
                 </div>
               </div>
 
-              <CommaChips label="시설" values={obFacilities} onChange={setObFacilities} />
-              <CommaChips label="이용권" values={obPasses} onChange={setObPasses} />
-              <CommaChips label="메뉴" values={obMenu} onChange={setObMenu} />
+              {/* 데이터 에디터 */}
+              <CriteriaSheetEditor
+                tenantId={currentTenant?.id}
+                initialData={null}
+                onSave={async (data) => {
+                  try {
+                    const res = await fetch('/api/profile', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        tenantId: currentTenant?.id,
+                        criteriaData: data
+                      })
+                    });
 
+                    if (!res.ok) throw new Error('저장 실패');
+
+                    // 성공 시 프로필 새로고침
+                    await fetchProfile();
+                  } catch (err) {
+                    console.error('저장 실패:', err);
+                    throw err; // alert는 CriteriaSheetEditor에서 처리
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* ✅ 여기에 새 profile 탭 추가 */}
+          {activeTab === 'profile' && (
+            <div className="space-y-6">
+              {/* 템플릿 관리 버튼 */}
               <div className="flex justify-end">
-                <button onClick={saveProfileBasic} className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-bold">
-                  저장
+                <button
+                  onClick={() => setShowTemplateManager(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-300 rounded-xl hover:border-yellow-400"
+                >
+                  <Settings className="w-4 h-4" />
+                  템플릿 관리
                 </button>
               </div>
 
-              <div className="text-xs text-gray-500">
-                💡 네이버/카카오 연동 등 추가 가이드는 여기에서 점차 확장해도 좋아.
-              </div>
+              {/* CriteriaSheetEditor */}
+              <CriteriaSheetEditor tenantId={currentTenant} />
+
+              {/* 템플릿 관리 모달 */}
+              {showTemplateManager && templates && (
+                <TemplateManager
+                  initialTemplates={templates}
+                  onSave={async (newTemplates) => {
+                    const success = await saveTemplates(newTemplates);
+                    if (success) {
+                      mutate();
+                      setShowTemplateManager(false);
+                      alert('템플릿 저장 완료!');
+                    }
+                  }}
+                  onClose={() => setShowTemplateManager(false)}
+                />
+              )}
             </div>
           )}
 
           {/* FAQ 탭 */}
           {activeTab === 'faq' && (
-            <div className="space-y-6">
+            <div className="space-y-4 pt-4">
               {/* FAQ 사용량 게이지 - 세련된 디자인 */}
               {currentPlanConfig.maxFAQs !== Infinity && (
                 <div className="relative overflow-hidden bg-gradient-to-br from-white to-gray-50 rounded-2xl border border-gray-100 p-6">
@@ -1168,12 +1278,15 @@ export default function TenantPortal() {
 
           {/* ✅ 대화 관리 탭 */}
           {activeTab === 'conversations' && (
-            <ConversationsPage tenantId={currentTenant.id} />
+            <div className="pt-4">
+              <ConversationsPage tenantId={currentTenant.id} />
+            </div>
           )}
+
 
           {/* 통계 탭 (기존 유지, 모바일 최적화) */}
           {activeTab === 'stats' && (
-            <div className="space-y-4">
+            <div className="space-y-4 pt-4">
               {/* 날짜 필터 */}
               <div className="flex justify-end">
                 <select

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
+    "firebase": "^12.5.0",
     "firebase-admin": "^13.5.0",
     "googleapis": "^162.0.0",
     "jsonwebtoken": "^9.0.2",
