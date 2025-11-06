@@ -130,6 +130,27 @@ export default function TenantPortal() {
       }
     }
 
+    // 2) 커스텀 드롭다운 옵션을 템플릿에 병합
+    if (updatedData.customOptions && templates) {
+      const merged = JSON.parse(JSON.stringify(templates));
+      Object.entries(updatedData.customOptions).forEach(([compoundKey, opts]) => {
+        const [sheetKey, facetKey] = String(compoundKey).split('.');
+        const sheet = merged?.[sheetKey];
+        if (!sheet) return;
+        const facet = sheet.facets?.find(f => f.key === facetKey);
+        if (!facet) return;
+        const set = new Set([...(facet.options || []), ...opts]);
+        facet.options = Array.from(set);
+      });
+
+      await fetch(`/api/templates?tenant=${currentTenant?.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templates: merged })
+      });
+      await refreshTemplates?.();
+    }
+
     await refresh();
     alert('저장 완료!');
   };
@@ -137,9 +158,9 @@ export default function TenantPortal() {
   const handleTemplateSave = async (newTemplates) => {
     try {
       const res = await fetch(`/api/templates?tenant=${currentTenant?.id}`, {
-        method: 'POST',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTemplates)
+        body: JSON.stringify({ templates: newTemplates })
       });
 
       if (!res.ok) throw new Error('템플릿 저장 실패');
@@ -1069,6 +1090,8 @@ export default function TenantPortal() {
           {/* 템플릿 매니저 모달 */}
           {showTemplateManager && (
             <TemplateManager
+              initialTemplates={templates}
+              onSave={handleTemplateSave}
               onClose={() => setShowTemplateManager(false)}
             />
           )}

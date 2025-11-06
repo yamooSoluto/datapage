@@ -132,20 +132,24 @@ export default function TemplateManager({ initialTemplates, onSave, onClose }) {
                     </button>
                 </div>
 
-                {/* 시트 탭 - 가로 스크롤 */}
-                <div className="bg-white border-b border-gray-200 overflow-x-auto">
-                    <div className="flex gap-2 px-4 py-3 min-w-max">
+                {/* 시트 탭 - 가로 스크롤 + 크기 통일 */}
+                <div className="bg-white border-b-2 border-gray-200 overflow-x-auto scrollbar-hide">
+                    <div className="flex gap-2 px-4 py-3">
                         {Object.values(templates).map(sheet => (
                             <button
                                 key={sheet.id}
                                 onClick={() => setActiveSheet(sheet.id)}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all whitespace-nowrap ${activeSheet === sheet.id
-                                    ? 'bg-yellow-400 text-gray-900 shadow-sm'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
+                                className={`
+                                    flex-shrink-0 min-w-[120px] flex items-center justify-center gap-2 
+                                    px-4 py-3 rounded-xl font-semibold transition-all
+                                    ${activeSheet === sheet.id
+                                        ? 'bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 shadow-md'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    }
+                                `}
                             >
                                 <span className="text-lg">{sheet.icon}</span>
-                                <span className="text-sm">{sheet.title}</span>
+                                <span className="text-sm whitespace-nowrap">{sheet.title}</span>
                             </button>
                         ))}
                     </div>
@@ -246,6 +250,17 @@ export default function TemplateManager({ initialTemplates, onSave, onClose }) {
                     </button>
                 </div>
             </div>
+
+            {/* 스크롤바 숨기기 CSS */}
+            <style jsx>{`
+                .scrollbar-hide::-webkit-scrollbar {
+                    display: none;
+                }
+                .scrollbar-hide {
+                    -ms-overflow-style: none;
+                    scrollbar-width: none;
+                }
+            `}</style>
         </div>
     );
 }

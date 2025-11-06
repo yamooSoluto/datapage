@@ -1268,7 +1268,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 <div className="bg-white rounded-2xl shadow-sm p-4">
                     <div className="flex gap-2 overflow-x-auto pb-2">
                         {data.sheets.map(sheetId => {
-                            const template = SHEET_TEMPLATES[sheetId];
+                            const template = templates?.[sheetId] || SHEET_TEMPLATES[sheetId];
                             const isActive = data.activeSheet === sheetId;
                             const itemCount = data.items[sheetId]?.length || 0;
 
