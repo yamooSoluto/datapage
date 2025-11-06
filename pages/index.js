@@ -82,7 +82,11 @@ export default function TenantPortal() {
     addItem,
     refresh
   } = useMatrixData(currentTenant?.id);
-  const { data: templates } = useTemplates(currentTenant?.id);
+
+  const {
+    data: templates,
+    refresh: refreshTemplates  // ← 이거만 추가!
+  } = useTemplates(currentTenant?.id);
 
   // 템플릿 매니저 상태
   const [showTemplateManager, setShowTemplateManager] = useState(false);
@@ -128,6 +132,24 @@ export default function TenantPortal() {
 
     await refresh();
     alert('저장 완료!');
+  };
+
+  const handleTemplateSave = async (newTemplates) => {
+    try {
+      const res = await fetch(`/api/templates?tenant=${currentTenant?.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTemplates)
+      });
+
+      if (!res.ok) throw new Error('템플릿 저장 실패');
+
+      await refreshTemplates();
+      setShowTemplateManager(false);
+      alert('✅ 템플릿 저장 완료!');
+    } catch (error) {
+      alert('❌ 저장 실패: ' + error.message);
+    }
   };
 
   // FAQ / 통계 데이터
