@@ -89,10 +89,6 @@ export default function TenantPortal() {
     refresh
   } = useMatrixData(currentTenant?.id);
 
-  const {
-    data: templates,
-    refresh: refreshTemplates  // ← 이거만 추가!
-  } = useTemplates(currentTenant?.id);
 
   // 🔍 디버깅 로그 추가
   console.log('🎯 디버깅:', {
