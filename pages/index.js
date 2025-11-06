@@ -88,6 +88,23 @@ export default function TenantPortal() {
     refresh: refreshTemplates  // ← 이거만 추가!
   } = useTemplates(currentTenant?.id);
 
+  // 🔍 디버깅 로그 추가
+  console.log('🎯 디버깅:', {
+    currentTenant: currentTenant?.id,
+    templates,
+    templatesLoading,
+    templatesError
+  });
+
+  // 🔍 템플릿 구조 확인
+  if (templates) {
+    console.log('📦 templates 구조:', {
+      keys: Object.keys(templates),
+      facility: templates.facility,
+      facilityFacets: templates.facility?.facets
+    });
+  }
+
   // 템플릿 매니저 상태
   const [showTemplateManager, setShowTemplateManager] = useState(false);
 
