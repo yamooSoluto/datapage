@@ -1169,7 +1169,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, onSave }) {
         };
     });
 
-    const activeTemplate = SHEET_TEMPLATES[data.activeSheet];
+    const activeTemplate = templates?.[data.activeSheet] || SHEET_TEMPLATES[data.activeSheet];
     const activeItems = data.items[data.activeSheet] || [];
 
     const [openDropdown, setOpenDropdown] = React.useState(null);

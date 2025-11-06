@@ -1060,6 +1060,7 @@ export default function TenantPortal() {
                 <CriteriaSheetEditor
                   tenantId={currentTenant?.id}
                   initialData={criteriaData}
+                  templates={templates}
                   onSave={handleCriteriaSave}
                 />
               )}
