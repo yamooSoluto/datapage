@@ -1147,7 +1147,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
 // 4) 메인 컴포넌트
 // ═══════════════════════════════════════════════════════════
 
-export default function CriteriaSheetEditor({ tenantId, initialData, onSave }) {
+export default function CriteriaSheetEditor({ tenantId, initialData, templates, onSave }) {
     const [data, setData] = React.useState(() => {
         const defaultData = {
             sheets: ["facility", "room", "product", "rules"],
