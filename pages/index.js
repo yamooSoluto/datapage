@@ -35,12 +35,6 @@ const PLAN_BADGE_CLASS = {
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
 export default function TenantPortal() {
-  const {
-    data: templates,
-    refresh: refreshTemplates,
-    isLoading: templatesLoading,
-    error: templatesError
-  } = useTemplates(currentTenant?.id);
   console.log('🔧 TenantPortal 컴포넌트 렌더링됨!');
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -89,23 +83,10 @@ export default function TenantPortal() {
     refresh
   } = useMatrixData(currentTenant?.id);
 
-
-  // 🔍 디버깅 로그 추가
-  console.log('🎯 디버깅:', {
-    currentTenant: currentTenant?.id,
-    templates,
-    templatesLoading,
-    templatesError
-  });
-
-  // 🔍 템플릿 구조 확인
-  if (templates) {
-    console.log('📦 templates 구조:', {
-      keys: Object.keys(templates),
-      facility: templates.facility,
-      facilityFacets: templates.facility?.facets
-    });
-  }
+  const {
+    data: templates,
+    refresh: refreshTemplates  // ← 이거만 추가!
+  } = useTemplates(currentTenant?.id);
 
   // 템플릿 매니저 상태
   const [showTemplateManager, setShowTemplateManager] = useState(false);
