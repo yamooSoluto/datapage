@@ -1156,16 +1156,6 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         templateKeys: templates ? Object.keys(templates) : []
     });
 
-    const activeTemplate = templates?.[data.activeSheet] || SHEET_TEMPLATES[data.activeSheet];
-
-    // 🔍 activeTemplate 확인
-    console.log('🎨 activeTemplate:', {
-        activeSheet: data.activeSheet,
-        fromProps: templates?.[data.activeSheet],
-        fromHardcoded: SHEET_TEMPLATES[data.activeSheet],
-        final: activeTemplate,
-        facets: activeTemplate?.facets
-    });
     const [data, setData] = React.useState(() => {
         const defaultData = {
             sheets: ["facility", "room", "product", "rules"],
@@ -1188,6 +1178,16 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     });
 
     const activeTemplate = templates?.[data.activeSheet] || SHEET_TEMPLATES[data.activeSheet];
+
+    // 🔍 activeTemplate 확인
+    console.log('🎨 activeTemplate:', {
+        activeSheet: data.activeSheet,
+        fromProps: templates?.[data.activeSheet],
+        fromHardcoded: SHEET_TEMPLATES[data.activeSheet],
+        final: activeTemplate,
+        facets: activeTemplate?.facets
+    });
+
     const activeItems = data.items[data.activeSheet] || [];
 
     const [openDropdown, setOpenDropdown] = React.useState(null);
