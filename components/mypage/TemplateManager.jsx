@@ -682,27 +682,7 @@ export default function TemplateDemoPage() {
                         템플릿 관리 열기
                     </button>
 
-                    <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                        <div className="p-6 bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-100">
-                            <h3 className="font-bold mb-3 text-gray-900">✨ 디자인</h3>
-                            <ul className="text-sm text-gray-600 space-y-2">
-                                <li>• 카드형 레이아웃</li>
-                                <li>• 노란색 포인트</li>
-                                <li>• 깔끔한 그라데이션</li>
-                                <li>• 부드러운 그림자</li>
-                            </ul>
-                        </div>
 
-                        <div className="p-6 bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl border border-amber-100">
-                            <h3 className="font-bold mb-3 text-gray-900">🎯 기능</h3>
-                            <ul className="text-sm text-gray-700 space-y-2">
-                                <li>• 드래그 앤 드롭</li>
-                                <li>• 그룹 접기/펼치기</li>
-                                <li>• 호버 시 버튼 표시</li>
-                                <li>• 개수 뱃지</li>
-                            </ul>
-                        </div>
-                    </div>
                 </div>
             </div>
 

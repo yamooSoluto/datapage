@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/router';
 import { Plus, Edit2, Trash2, Search, LogOut, Database, TrendingUp, Clock, AlertCircle, Crown, Calendar, BarChart3, Users, MessageSquare, Zap, Building2, ChevronDown, X, Copy, Check, ChevronLeft, ChevronRight, Settings, ExternalLink, BookOpen } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import ModularFAQBuilderV2 from '../components/ModularFAQBuilderV2';
@@ -7,9 +6,9 @@ import ConversationsPage from '../components/ConversationsPage';
 import CommaChips from '../components/CommaChips';
 import OnboardingModal from "../components/onboarding/OnboardingModal";
 import CriteriaSheetEditor from '@/components/mypage/CriteriaSheetEditor';
-import TemplateManager from '@/components/mypage/TemplateManager';
+import { useMatrixData } from '@/hooks/useMatrixData';
 import { useTemplates } from '@/hooks/useTemplates';
-
+import TemplateManager from '@/components/mypage/TemplateManager';
 
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
 
@@ -38,8 +37,6 @@ const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'
 export default function TenantPortal() {
   console.log('🔧 TenantPortal 컴포넌트 렌더링됨!');
 
-  const router = useRouter();
-
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentTenant, setCurrentTenant] = useState(null);
 
@@ -61,19 +58,12 @@ export default function TenantPortal() {
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [canDismissOnboarding, setCanDismissOnboarding] = useState(true);
 
-  // ✅ 온보딩 입력값(2단계용)
+  // 온보딩 입력값(2단계용)
   const [obEmail, setObEmail] = useState('');
   const [obSlackId, setObSlackId] = useState('');
   const [obFacilities, setObFacilities] = useState([]);
   const [obPasses, setObPasses] = useState([]);
   const [obMenu, setObMenu] = useState([]);
-
-
-  // 온보딩 - 마이페이지 템플릿
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
-  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
-  const { templates, saveTemplates, mutate } = useTemplates(currentTenant);
-
 
   // CRITERIA 기반 데이터 (SimpleCriteriaInput용)
   const [tenantData, setTenantData] = useState({
@@ -84,6 +74,61 @@ export default function TenantPortal() {
       product: []          // [{ id: 1, name: '시간제', data: { ... } }]
     }
   });
+
+  const {
+    items,
+    isLoading: matrixLoading,
+    updateItem,
+    addItem,
+    refresh
+  } = useMatrixData(currentTenant?.id);
+  const { data: templates } = useTemplates(currentTenant?.id);
+
+  // 템플릿 매니저 상태
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+
+  // ========== 데이터 변환 ==========
+  const criteriaData = useMemo(() => {
+    if (!items || items.length === 0) {
+      return {
+        sheets: ["facility", "room", "product", "rules"],
+        activeSheet: "facility",
+        items: { facility: [], room: [], product: [], rules: [] }
+      };
+    }
+
+    return {
+      sheets: ["facility", "room", "product", "rules"],
+      activeSheet: "facility",
+      items: {
+        facility: items.filter(i => i.type === 'facility'),
+        room: items.filter(i => i.type === 'room'),
+        product: items.filter(i => i.type === 'product'),
+        rules: items.filter(i => i.type === 'rules')
+      }
+    };
+  }, [items]);
+
+  // ========== 저장 함수 ==========
+  const handleCriteriaSave = async (updatedData) => {
+    const allItems = [
+      ...updatedData.items.facility,
+      ...updatedData.items.room,
+      ...updatedData.items.product,
+      ...updatedData.items.rules
+    ];
+
+    for (const item of allItems) {
+      if (item.id.startsWith('row_')) {
+        await addItem(currentTenant?.id, item);
+      } else {
+        await updateItem(currentTenant?.id, item.id, item);
+      }
+    }
+
+    await refresh();
+    alert('저장 완료!');
+  };
 
   // FAQ / 통계 데이터
   const [faqData, setFaqData] = useState([]);
@@ -209,7 +254,7 @@ export default function TenantPortal() {
     if (process.env.NODE_ENV === 'development') {
       console.log('🧭 Dev Fastlane: 로그인 생략');
       setIsLoggedIn(true);
-      setCurrentTenant('t_dev');
+      setCurrentTenant({ id: 't_dev', brandName: '로컬 테스트', email: 'dev@yamoo.ai' });
       return;
     }
 
@@ -245,7 +290,7 @@ export default function TenantPortal() {
         return;
       }
 
-      setCurrentTenant(data.id || data.tenantId || data.tenant);
+      setCurrentTenant(data);
       setIsLoggedIn(true);
 
       // ✅ 온보딩 표시 조건: FAQ가 없으면 무조건 표시
@@ -474,45 +519,6 @@ export default function TenantPortal() {
     } catch (error) {
       console.error('저장 오류:', error);
       alert('저장 중 오류가 발생했습니다');
-    }
-  };
-
-
-  // ✅ 1. 온보딩 체크 로직 추가
-  useEffect(() => {
-    if (isLoggedIn && currentTenant) {
-      checkOnboarding();
-    }
-  }, [isLoggedIn, currentTenant]);
-
-  const checkOnboarding = async () => {
-    // ✅ tenant 문자열 추출
-    const tenantId = typeof currentTenant === 'string'
-      ? currentTenant
-      : currentTenant?.id || currentTenant?.tenantId || '';
-
-    if (!tenantId) {
-      console.error('❌ tenantId가 없습니다:', currentTenant);
-      return;
-    }
-
-    const res = await fetch(`/api/onboarding?tenant=${tenantId}`);
-    const data = await res.json();
-
-    if (!data.onboardingCompleted) {
-      router.push(`/onboarding?tenant=${tenantId}`); // ✅ 문자열
-    }
-  };
-
-  // 2. 프로필 탭을 마이페이지로 변경
-  const handleTabClick = (tab) => {
-    if (tab === 'profile') {
-      const tenantId = typeof currentTenant === 'string'
-        ? currentTenant
-        : (currentTenant?.id || currentTenant?.tenantId || '');
-      router.push(`/mypage?tenant=${tenantId}`);
-    } else {
-      setActiveTab(tab);
     }
   };
 
@@ -841,13 +847,28 @@ export default function TenantPortal() {
 
       <div className="relative">
 
-        {showOnboarding && !onboardingCompleted && (
+        {showOnboarding && (
           <OnboardingModal
-            tenant={currentTenant}
-            onComplete={() => {
+            open={showOnboarding}
+            initial={{
+              email: obEmail,
+              slackUserId: obSlackId,
+              industry: "study_cafe",   // 기본 업종
+              facilities: obFacilities, // 있으면 유지, 없으면 []
+              passes: obPasses,
+              menu: obMenu,
+            }}
+            onClose={() => setShowOnboarding(false)}
+            onComplete={async (payload) => {
+              // 저장 로직
+              await saveProfileBasic(payload); // 네가 쓰던 함수에 맞춰 전달
+              // 로컬 상태 업데이트
+              setObEmail(payload.contactEmail || "");
+              setObSlackId(payload.slackUserId || "");
+              setObFacilities((payload.dictionaries?.facilities || []).map((x) => x.name));
+              setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
+              setObMenu((payload.dictionaries?.menu || []).map((x) => x.name));
               setShowOnboarding(false);
-              setOnboardingCompleted(true);
-              fetchProfile();
             }}
           />
         )}
@@ -993,101 +1014,42 @@ export default function TenantPortal() {
           {/* mypage */}
           {activeTab === 'mypage' && (
             <div className="space-y-6 py-4">
-              {/* 기본 정보 (선택 - 필요하면 유지) */}
-              <div className="bg-white rounded-xl border p-6 max-w-5xl mx-auto">
-                <h2 className="text-lg font-bold mb-4">기본 정보</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* 헤더 */}
+              <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-white/30 p-6 max-w-7xl mx-auto">
+                <div className="flex items-center justify-between">
                   <div>
-                    <label className="block text-sm font-medium mb-1">이메일</label>
-                    <input
-                      value={obEmail}
-                      onChange={(e) => setObEmail(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
+                    <h2 className="text-2xl font-bold text-gray-900">데이터 관리</h2>
+                    <p className="text-sm text-gray-600 mt-1">셀을 클릭하면 옵션이 나타납니다</p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Slack ID</label>
-                    <input
-                      value={obSlackId}
-                      onChange={(e) => setObSlackId(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
-                  </div>
-                </div>
-
-                {/* 저장 버튼 */}
-                <div className="flex justify-end gap-2 mt-4">
                   <button
-                    onClick={saveProfileBasic}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    onClick={() => setShowTemplateManager(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-300 rounded-xl hover:border-yellow-400 transition-all"
                   >
-                    기본 정보 저장
+                    <Settings className="w-4 h-4" />
+                    템플릿 관리
                   </button>
                 </div>
               </div>
 
-              {/* 데이터 에디터 */}
-              <CriteriaSheetEditor
-                tenantId={currentTenant?.id}
-                initialData={null}
-                onSave={async (data) => {
-                  try {
-                    const res = await fetch('/api/profile', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        tenantId: currentTenant?.id,
-                        criteriaData: data
-                      })
-                    });
-
-                    if (!res.ok) throw new Error('저장 실패');
-
-                    // 성공 시 프로필 새로고침
-                    await fetchProfile();
-                  } catch (err) {
-                    console.error('저장 실패:', err);
-                    throw err; // alert는 CriteriaSheetEditor에서 처리
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          {/* ✅ 여기에 새 profile 탭 추가 */}
-          {activeTab === 'profile' && (
-            <div className="space-y-6">
-              {/* 템플릿 관리 버튼 */}
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setShowTemplateManager(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-300 rounded-xl hover:border-yellow-400"
-                >
-                  <Settings className="w-4 h-4" />
-                  템플릿 관리
-                </button>
-              </div>
-
-              {/* CriteriaSheetEditor */}
-              <CriteriaSheetEditor tenantId={currentTenant} />
-
-              {/* 템플릿 관리 모달 */}
-              {showTemplateManager && templates && (
-                <TemplateManager
-                  initialTemplates={templates}
-                  onSave={async (newTemplates) => {
-                    const success = await saveTemplates(newTemplates);
-                    if (success) {
-                      mutate();
-                      setShowTemplateManager(false);
-                      alert('템플릿 저장 완료!');
-                    }
-                  }}
-                  onClose={() => setShowTemplateManager(false)}
+              {/* 에디터 */}
+              {matrixLoading ? (
+                <div>로딩중...</div>
+              ) : (
+                <CriteriaSheetEditor
+                  tenantId={currentTenant?.id}
+                  initialData={criteriaData}
+                  onSave={handleCriteriaSave}
                 />
               )}
             </div>
           )}
+          {/* 템플릿 매니저 모달 */}
+          {showTemplateManager && (
+            <TemplateManager
+              onClose={() => setShowTemplateManager(false)}
+            />
+          )}
+
 
           {/* FAQ 탭 */}
           {activeTab === 'faq' && (

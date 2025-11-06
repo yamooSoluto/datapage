@@ -1,14 +1,7 @@
 // components/onboarding/OnboardingModal.jsx
-// 📊 실제 CS 데이터 525개 분석 기반으로 개선됨
 import React from "react";
-import { X, ChevronLeft, Info, Sparkles } from "lucide-react";
-import {
-    INDUSTRY_OPTIONS,
-    getPresetsForIndustry,
-    getPresetStats,
-    getIndustryTip,
-    industryEmoji,
-} from "./config";
+import { X, ChevronLeft } from "lucide-react";
+import { INDUSTRY_OPTIONS, getPresetsForIndustry } from "./config";
 
 // 칩
 function Chip({ selected, children, onClick }) {
@@ -53,7 +46,7 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
             <div className="text-xs font-semibold text-gray-900">{label}</div>
 
             {/* 프리셋(선택은 사용자 클릭) */}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-8 gap-y-2">
                 {options.map((opt) => (
                     <Chip key={opt} selected={value.includes(opt)} onClick={() => toggle(opt)}>
                         {opt}
@@ -104,7 +97,7 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
 
 export default function OnboardingModal({
     open,
-    initial = {},           // { email, slackUserId, industry, facilities[], passes[], menu[], policies[], links[] }
+    initial = {},           // { email, slackUserId, industry, facilities[], passes[], menu[] }
     onClose,
     onComplete,             // (payload) => Promise<void> | void
 }) {
@@ -127,12 +120,6 @@ export default function OnboardingModal({
     const [menu, setMenu] = React.useState(
         Array.isArray(initial.menu) ? initial.menu : []
     );
-    const [policies, setPolicies] = React.useState(
-        Array.isArray(initial.policies) ? initial.policies : []
-    );
-    const [links, setLinks] = React.useState(
-        Array.isArray(initial.links) ? initial.links : []
-    );
 
     const finish = async () => {
         const payload = {
@@ -143,8 +130,6 @@ export default function OnboardingModal({
                 facilities: (facilities || []).map((name) => ({ name })),
                 passes: (passes || []).map((name) => ({ name })),
                 menu: (menu || []).map((name) => ({ name })),
-                policies: (policies || []).map((name) => ({ name })),
-                links: (links || []).map((name) => ({ name })),
             },
             updatedAt: Date.now(),
         };
@@ -185,7 +170,7 @@ export default function OnboardingModal({
                             </ul>
                             <button
                                 onClick={() => setStep(2)}
-                                className="w-full px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-2xl font-bold hover:shadow-lg transition-shadow"
+                                className="w-full px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-2xl font-bold"
                             >
                                 다음
                             </button>
@@ -194,74 +179,27 @@ export default function OnboardingModal({
 
                     {step === 2 && (
                         <div className="space-y-6">
-                            {/* 업종 선택 섹션 (개선됨) */}
-                            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-200 rounded-2xl p-4">
-                                <div className="flex items-start gap-3">
-                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-400/20 flex items-center justify-center">
-                                        <Sparkles className="w-4 h-4 text-yellow-600" />
-                                    </div>
-                                    <div className="flex-1 space-y-3">
-                                        <div>
-                                            <div className="text-sm font-semibold text-gray-900 mb-1">
-                                                업종 선택
-                                            </div>
-                                            <div className="text-xs text-gray-600">
-                                                업종에 맞는 프리셋이 자동으로 제공돼요 (이 모달에서만 변경 가능)
-                                            </div>
-                                        </div>
-
-                                        <select
-                                            value={industry}
-                                            onChange={(e) => setIndustry(e.target.value)}
-                                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm font-medium hover:border-gray-300 focus:ring-2 focus:ring-yellow-400/20 focus:border-yellow-400 outline-none transition-all"
-                                        >
-                                            {INDUSTRY_OPTIONS.map((opt) => (
+                            {/* 업종 드롭다운 (모달에서만 노출) */}
+                            <div className="flex items-center justify-between">
+                                <div className="text-sm text-gray-600">
+                                    업종 프리셋은 <b>이 모달에서만</b> 변경됩니다.
+                                </div>
+                                <label className="flex items-center gap-2 text-sm">
+                                    <span className="text-gray-700">업종</span>
+                                    <select
+                                        value={industry}
+                                        onChange={(e) => setIndustry(e.target.value)}
+                                        className="px-3 py-2 border border-gray-300 rounded-lg bg-white"
+                                    >
+                                        {(INDUSTRY_OPTIONS || [{ code: "study_cafe", label: "스터디카페 / 독서실" }]).map(
+                                            (opt) => (
                                                 <option key={opt.code} value={opt.code}>
                                                     {opt.label}
                                                 </option>
-                                            ))}
-                                        </select>
-
-                                        {/* 업종별 통계 및 팁 */}
-                                        <div className="bg-white/60 backdrop-blur-sm rounded-xl p-3 space-y-2">
-                                            <div className="flex items-center gap-2 text-xs text-gray-600">
-                                                <Info className="w-3.5 h-3.5" />
-                                                <span className="font-semibold">이 업종 프리셋 정보</span>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2 text-xs">
-                                                {(() => {
-                                                    const stats = getPresetStats(industry);
-                                                    return (
-                                                        <>
-                                                            <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-md font-medium">
-                                                                시설 {stats.facilities}개
-                                                            </span>
-                                                            <span className="px-2 py-1 bg-green-50 text-green-700 rounded-md font-medium">
-                                                                이용권 {stats.passes}개
-                                                            </span>
-                                                            <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded-md font-medium">
-                                                                메뉴 {stats.menu}개
-                                                            </span>
-                                                            {stats.policies > 0 && (
-                                                                <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-md font-medium">
-                                                                    규정 {stats.policies}개
-                                                                </span>
-                                                            )}
-                                                            {stats.links > 0 && (
-                                                                <span className="px-2 py-1 bg-pink-50 text-pink-700 rounded-md font-medium">
-                                                                    링크 {stats.links}개
-                                                                </span>
-                                                            )}
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                            <div className="text-xs text-gray-600 leading-relaxed">
-                                                💡 {getIndustryTip(industry)}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                            )
+                                        )}
+                                    </select>
+                                </label>
                             </div>
 
                             {/* 연락 정보 */}
@@ -290,52 +228,31 @@ export default function OnboardingModal({
 
                             {/* 멀티셀렉(프리셋 + 직접추가) */}
                             <MultiSelectWithAdd
-                                label="🏗️ 시설"
+                                label="시설"
                                 options={presets.facilities}
                                 value={facilities}
                                 onChange={setFacilities}
                                 placeholder="프린터, 냉장고, 휴게존…"
                             />
                             <MultiSelectWithAdd
-                                label="🎫 이용권"
+                                label="이용권"
                                 options={presets.passes}
                                 value={passes}
                                 onChange={setPasses}
                                 placeholder="자유석 1일권, 전용석 1개월…"
                             />
                             <MultiSelectWithAdd
-                                label="🍽️ 메뉴"
+                                label="메뉴"
                                 options={presets.menu}
                                 value={menu}
                                 onChange={setMenu}
                                 placeholder="아메리카노, 라떼…"
                             />
-
-                            {/* 추가 모듈 (선택사항) */}
-                            {presets.policies && presets.policies.length > 0 && (
-                                <MultiSelectWithAdd
-                                    label="📋 규정 (선택사항)"
-                                    options={presets.policies}
-                                    value={policies}
-                                    onChange={setPolicies}
-                                    placeholder="연령 제한, 환불 규정…"
-                                />
-                            )}
-
-                            {presets.links && presets.links.length > 0 && (
-                                <MultiSelectWithAdd
-                                    label="🔗 링크 (선택사항)"
-                                    options={presets.links}
-                                    value={links}
-                                    onChange={setLinks}
-                                    placeholder="홈페이지, 예약 링크…"
-                                />
-                            )}
                         </div>
                     )}
                 </div>
 
-                {/* 푸터 */}
+                {/* 풋터 */}
                 <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-white">
                     {step === 2 ? (
                         <button

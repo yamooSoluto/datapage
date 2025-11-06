@@ -1,6 +1,6 @@
 // pages/auth/magic.js
 // ════════════════════════════════════════
-// 포탈 매직링크 검증 → 메인 페이지로 리다이렉트
+// 포탈 매직링크 검증 (보안 개선)
 // ════════════════════════════════════════
 
 import { useEffect, useState } from 'react';
@@ -9,16 +9,17 @@ import { useRouter } from 'next/router';
 export default function MagicLogin() {
   const router = useRouter();
   const { token } = router.query;
-  const [status, setStatus] = useState('verifying');
+  const [status, setStatus] = useState('verifying');  // verifying, success, expired, error
 
   useEffect(() => {
     if (!token) return;
     verifyMagicLink(token);
   }, [token]);
 
+  // ✅ 수정: 서버에서 검증하도록 변경
   async function verifyMagicLink(token) {
     try {
-      // ✅ 서버에서 JWT 검증
+      // ✅ API 호출 (서버에서 JWT 검증)
       const response = await fetch('/api/auth/verify-magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -27,6 +28,7 @@ export default function MagicLogin() {
 
       const data = await response.json();
 
+      // ✅ 검증 실패 처리
       if (!data.success) {
         if (data.error === 'expired') {
           setStatus('expired');
@@ -44,10 +46,10 @@ export default function MagicLogin() {
 
       setStatus('success');
 
-      // ✅ 메인 페이지로 리다이렉트 (토큰 없이)
+      // ✅ 포탈로 리다이렉트 (2초 후)
       setTimeout(() => {
-        router.push('/');  // ← 이메일 로그인 페이지가 아닌 포탈 메인으로!
-      }, 1500);
+        router.push('/');
+      }, 2000);
 
     } catch (error) {
       console.error('[Magic Link] Verification failed:', error);

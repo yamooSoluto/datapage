@@ -1,5 +1,4 @@
 // components/onboarding/config.js
-
 export const INDUSTRY_OPTIONS = [
     { code: "study_cafe", label: "스터디카페 / 독서실" },
     { code: "self_store", label: "무인매장 / 셀프운영 매장" },
@@ -12,334 +11,232 @@ export const INDUSTRY_OPTIONS = [
     { code: "other", label: "기타" },
 ];
 
-// 🆕 모든 업종 공통 필수 아이템 (삭제 불가)
-export const COMMON_REQUIRED = {
-    facilities: [
-        { name: "화장실", existence: true, required: true },
-        { name: "냉난방기", existence: false, required: true },
-    ]
-};
-
-// 🆕 모든 업종 공통 선택 아이템 (삭제 가능)
-export const COMMON_OPTIONAL = {
-    facilities: [
-        { name: "정수기", existence: false, required: false },
-        { name: "공기청정기", existence: false, required: false },
-        { name: "CCTV", existence: false, required: false },
-    ]
-};
-
-// 🆕 업종별 기본 아이템 (온보딩 완료 시 자동 생성)
-export const INDUSTRY_DEFAULTS = {
-    study_cafe: {
-        // 공간 - 실제 스터디카페 공간 명칭
-        spaces: [
-            // 필수 (삭제 불가)
-            { name: "현관", existence: true, required: true },
-            { name: "로비", existence: true, required: true },
-            { name: "복도", existence: true, required: true },
-            // 선택 (삭제 가능)
-            { name: "스터디룸", existence: false, required: false },
-            { name: "스터디존", existence: false, required: false },
-            { name: "포커스존", existence: false, required: false },
-            { name: "카페존", existence: false, required: false },
-            { name: "푸드존", existence: false, required: false },
-            { name: "식사공간", existence: false, required: false },
-            { name: "휴게존", existence: false, required: false },
-            { name: "빈백존", existence: false, required: false },
-            { name: "강의실", existence: false, required: false },
-            { name: "회의실", existence: false, required: false },
-            { name: "매장 내 화장실", existence: false, required: false },
-            { name: "상가 공동 화장실", existence: false, required: false },
+// 업종별 프리셋 (FAQ 데이터 분석 기반)
+const PRESETS = {
+    facilities: {
+        default: [
+            // 기본 인프라
+            "에어컨/히터", "공기청정기", "CCTV", "정수기", "얼음정수기",
+            // 사무 장비
+            "프린터", "스캐너", "컴퓨터",
+            // 보관 시설
+            "사물함", "락커", "냉장고", "짐보관소",
+            // 공용 공간
+            "휴게실", "테라스", "카페테리아", "통화부스",
         ],
-
-        // 시설 - 실제 스터디카페 시설
-        facilities: [
-            // 필수
-            { name: "냉난방기", existence: true, required: true },
-            // 선택
-            { name: "보일러", existence: false, required: false },
-            { name: "공기청정기", existence: false, required: false },
-            { name: "커피머신", existence: false, required: false },
-            { name: "일반정수기", existence: false, required: false },
-            { name: "얼음정수기", existence: false, required: false },
-            { name: "제빙기", existence: false, required: false },
-            { name: "전자레인지", existence: false, required: false },
-            { name: "싱크대", existence: false, required: false },
-            { name: "라면조리기", existence: false, required: false },
+        study_cafe: [
+            // 학습 공간
+            "오픈석", "칸막이석", "1인실", "스터디룸", "세미나실", "토킹존", "집중존",
+            // 학습 시설
+            "독서대", "스탠드", "콘센트", "USB 충전", "무선충전기",
+            // 식음료
+            "커피머신", "전자레인지", "라면조리기", "제빙기",
+            // 편의
+            "흡음룸", "수면실", "백색소음기", "간식바", "매점",
         ],
-
-        // 좌석 - 실제 스터디카페 좌석 타입
-        seats: [
-            // 필수
-            { name: "일반좌석", existence: true, required: true },
-            // 선택
-            { name: "1인실", existence: false, required: false },
-            { name: "2인실", existence: false, required: false },
-            { name: "단체실", existence: false, required: false },
-            { name: "스터디룸", existence: false, required: false },
-            { name: "칸막이", existence: false, required: false },
-            { name: "폐쇄형", existence: false, required: false },
-            { name: "반폐쇄형", existence: false, required: false },
-            { name: "오픈데스크", existence: false, required: false },
+        self_store: [
+            "키오스크", "무인결제기", "디지털도어락", "스마트락커", "QR스캐너",
+            "원격관리시스템", "자동문", "셀프체크인", "무인안내판",
         ],
-
-        // 🆕 이용권 - 스터디카페 이용권 타입
-        passes: [
-            // 필수 (최소한의 이용권은 있어야 함)
-            { name: "시간권", existence: false, required: true },
-            { name: "종일권", existence: false, required: true },
-            // 선택
-            { name: "1회권", existence: false, required: false },
-            { name: "충전권", existence: false, required: false },
-            { name: "기간권", existence: false, required: false },
-            { name: "자유권", existence: false, required: false },
-            { name: "전용석", existence: false, required: false },
-            { name: "당일권", existence: false, required: false },
-            { name: "야간권", existence: false, required: false },
-            { name: "주말권", existence: false, required: false },
-            { name: "정기권", existence: false, required: false },
-            { name: "회원권", existence: false, required: false },
-            { name: "비회원권", existence: false, required: false },
-            { name: "멤버십 이용권", existence: false, required: false },
-            { name: "VIP권", existence: false, required: false },
-            { name: "프리미엄권", existence: false, required: false },
-            { name: "연간권", existence: false, required: false },
+        cafe_restaurant: [
+            // 주방 시설
+            "커피머신", "그라인더", "에스프레소머신", "싱크대", "개수대", "식기세척기",
+            // 고객 시설
+            "음수대", "셀프바", "조미료바", "쓰레기분리대",
+            // 공간
+            "테라스석", "룸좌석", "바테이블", "단체석", "키즈존",
         ],
-
-        // 🆕 기능 - 스터디카페 제공 기능
-        features: [
-            // 필수
-            { name: "퇴실", existence: true, required: true },
-            { name: "연장", existence: true, required: true },
-            // 선택
-            { name: "자리이동", existence: false, required: false },
-            { name: "일시정지", existence: false, required: false },
-            { name: "중복구매", existence: false, required: false },
-            { name: "시간복구", existence: false, required: false },
+        fitness: [
+            // 운동 기구
+            "러닝머신", "사이클", "웨이트기구", "프리웨이트존", "요가매트", "TRX",
+            // 편의 시설
+            "샤워실", "탈의실", "개인락커", "체성분측정기", "체중계",
+            "음수대", "운동복대여", "수건대여", "드라이기",
+            // 공간
+            "그룹운동실", "PT룸", "스트레칭존", "휴게라운지",
         ],
-
-        // 🆕 이용규정 - 스터디카페 규정
-        policies: [
-            // 필수
-            { name: "연령규정", existence: false, required: true },
-            { name: "소음규정", existence: true, required: true },
-            { name: "취식규정", existence: true, required: true },
-            // 선택
-            { name: "외출규정", existence: false, required: false },
-            { name: "청소규정", existence: false, required: false },
-            { name: "환기규정", existence: false, required: false },
-            { name: "냉난방규정", existence: false, required: false },
-            { name: "흡연규정", existence: false, required: false },
-            { name: "성별규정", existence: false, required: false },
-            { name: "분실물규정", existence: false, required: false },
-            { name: "보관규정", existence: false, required: false },
-            { name: "폐기규정", existence: false, required: false },
+        beauty: [
+            // 시술 공간
+            "VIP룸", "일반시술석", "파우더룸", "대기공간",
+            // 시설
+            "거울존", "드라이기", "고데기", "헤어롤", "수건", "가운",
+            "샴푸대", "염색실", "네일테이블", "왁싱룸",
+            // 편의
+            "음료바", "잡지", "충전기", "와이파이",
+        ],
+        education: [
+            // 강의 공간
+            "일반교실", "소그룹실", "1:1상담실", "자습실", "독서실",
+            // 시설
+            "화이트보드", "빔프로젝터", "스크린", "마이크", "스피커", "태블릿",
+            "개인사물함", "책상", "의자", "에어컨",
+            // 편의
+            "대기실", "상담실", "휴게실", "정수기", "간식코너",
+        ],
+        rental_space: [
+            // 공간 유형
+            "회의실", "세미나실", "파티룸", "촬영스튜디오", "연습실", "공유오피스",
+            // 시설
+            "빔프로젝터", "스크린", "화이트보드", "플립차트", "마이크", "음향시스템",
+            "조명장비", "배경천", "테이블", "의자", "소파",
+            // 편의
+            "주방", "냉장고", "전자레인지", "커피머신", "정수기",
+            "화장실", "탈의실", "샤워실", "주차장",
+        ],
+        retail_business: [
+            // 판매 시설
+            "진열대", "쇼케이스", "냉장쇼케이스", "계산대", "포스기", "카드단말기",
+            // 보관
+            "창고", "냉장고", "냉동고", "진열장", "보관함",
+            // 편의
+            "포장대", "시식코너", "대기의자", "우산꽂이",
         ],
     },
-
-    cafe_restaurant: {
-        spaces: [
-            { name: "홀", existence: true, required: true },
-            { name: "주방", existence: true, required: true },
-            { name: "바", existence: false, required: false },
-            { name: "테라스", existence: false, required: false },
-            { name: "프라이빗룸", existence: false, required: false },
+    passes: {
+        default: [
+            // 시간권
+            "2시간권", "4시간권", "6시간권", "종일권",
+            // 기간권  
+            "1일권", "1주권", "4주권", "8주권", "1개월권", "2개월권", "3개월권",
         ],
-        facilities: [
-            { name: "커피머신", existence: true, required: true },
-            { name: "싱크대", existence: true, required: true },
-            { name: "그라인더", existence: false, required: false },
-            { name: "에스프레소머신", existence: false, required: false },
-            { name: "식기세척기", existence: false, required: false },
+        study_cafe: [
+            // 시간대별
+            "모닝권", "데이권", "나이트권", "올나잇권", "심야권",
+            // 좌석별
+            "자유석권", "지정석권", "1인실권", "스터디룸권",
+            // 특수
+            "주말권", "평일권", "공휴일권", "시험기간권",
         ],
-        seats: [
-            { name: "2인테이블", existence: true, required: true },
-            { name: "4인테이블", existence: false, required: false },
-            { name: "바테이블", existence: false, required: false },
-            { name: "소파석", existence: false, required: false },
+        self_store: [
+            "1회이용권", "10회권", "20회권", "30회권",
+            "정기권", "멤버십", "시간충전권",
         ],
-        passes: [], // 카페는 이용권 개념 없음
-        features: [],
-        policies: [
-            { name: "취식규정", existence: true, required: true },
-            { name: "소음규정", existence: false, required: false },
+        cafe_restaurant: [
+            // 식사권
+            "조식권", "중식권", "석식권", "브런치권",
+            // 음료권
+            "음료쿠폰", "커피 10잔", "음료무제한권",
+            // 정기
+            "월정액", "주 3회권", "주 5회권",
+        ],
+        fitness: [
+            // 기간
+            "1개월", "3개월", "6개월", "12개월",
+            // 횟수
+            "10회권", "20회권", "30회권", "50회권",
+            // 특수
+            "PT 10회", "PT 20회", "그룹수업권", "올데이권", "주간권", "야간권",
+        ],
+        beauty: [
+            // 횟수권
+            "1회권", "5회권", "10회권", "20회권",
+            // 정기권
+            "4주권", "8주권", "3개월권", "6개월권",
+            // 시술별
+            "커트권", "펌권", "염색권", "케어권", "패키지권",
+        ],
+        education: [
+            // 수업권
+            "1:1 과외권", "그룹수업권", "자습실이용권",
+            // 기간
+            "1개월권", "3개월권", "6개월권", "학기권", "연간권",
+            // 횟수
+            "주 1회", "주 2회", "주 3회", "주 5회", "무제한권",
+        ],
+        rental_space: [
+            // 시간 단위
+            "1시간권", "2시간권", "4시간권", "하루권", "반일권", "종일권",
+            // 정기
+            "주 1회권", "월 4회권", "월정액", "연간권",
+            // 공간별
+            "회의실권", "세미나실권", "파티룸권", "스튜디오권",
+        ],
+        retail_business: [
+            "멤버십", "VIP카드", "포인트권", "할인쿠폰",
+            "정기배송권", "구독권", "이용권",
         ],
     },
-
-    // 다른 업종도 동일한 구조로...
+    menu: {
+        default: [
+            // 커피
+            "아메리카노", "카페라떼", "카푸치노", "바닐라라떼", "카라멜마끼아또",
+            // 음료
+            "아이스티", "레몬에이드", "유자차", "생과일주스",
+            // 간식
+            "쿠키", "케이크", "샌드위치", "토스트",
+        ],
+        study_cafe: [
+            // 음료
+            "아메리카노", "라떼", "디카페인", "핫초코", "밀크티",
+            // 간식
+            "라면", "김밥", "삼각김밥", "컵라면", "토스트", "샌드위치",
+            "과자", "초콜릿", "사탕", "젤리", "에너지바",
+        ],
+        self_store: [
+            "도시락", "샐러드", "김밥", "샌드위치", "삼각김밥",
+            "음료수", "커피", "우유", "주스",
+            "과자", "컵라면", "간편식",
+        ],
+        cafe_restaurant: [
+            // 커피
+            "에스프레소", "아메리카노", "카페라떼", "카푸치노", "플랫화이트",
+            "콜드브루", "디카페인", "바닐라라떼", "카라멜마끼아또", "모카",
+            // 논커피
+            "녹차라떼", "흑당라떼", "밀크티", "핫초코", "아이스티",
+            // 에이드/주스
+            "레몬에이드", "자몽에이드", "유자에이드", "오렌지주스", "토마토주스",
+            // 디저트
+            "케이크", "마카롱", "쿠키", "마들렌", "스콘", "와플", "크로와상",
+            // 브런치
+            "샌드위치", "샐러드", "파니니", "베이글", "토스트", "파스타", "리조또",
+        ],
+        fitness: [
+            // 음료
+            "생과일주스", "야채주스", "단백질쉐이크", "이온음료", "물",
+            // 간식
+            "프로틴바", "에너지바", "닭가슴살", "샐러드", "과일",
+        ],
+        beauty: [
+            // 음료
+            "커피", "차", "음료수", "생수",
+            // 간식
+            "쿠키", "초콜릿", "캔디",
+        ],
+        education: [
+            // 음료
+            "물", "이온음료", "주스", "커피", "차",
+            // 간식  
+            "과자", "초콜릿", "사탕", "과일",
+        ],
+        rental_space: [
+            // 케이터링
+            "샌드위치", "피자", "치킨", "도시락", "핑거푸드",
+            // 음료
+            "커피", "차", "생수", "탄산음료", "주스",
+            // 다과
+            "케이크", "쿠키", "과일", "과자",
+        ],
+        retail_business: [
+            // 판매 상품 예시
+            "음료", "과자", "도시락", "즉석식품", "생활용품",
+        ],
+    },
 };
 
-// 🆕 업종별 예시 데이터 (useExampleData=true일 때)
-export const EXAMPLE_DATA = {
-    study_cafe: {
-        spaces: {
-            "로비": {
-                existence: true,
-                location: ["1층"],
-                noise: ["보통"],
-                access: ["자유 이용"],
-                hours: ["24시간"]
-            },
-            "스터디존": {
-                existence: true,
-                location: ["2층"],
-                noise: ["조용"],
-                access: ["자유 이용"],
-                hours: ["24시간"]
-            },
-            "포커스존": {
-                existence: true,
-                location: ["2층"],
-                noise: ["매우 조용"],
-                access: ["자유 이용"],
-                features: ["통화금지", "대화금지"]
-            }
-        },
-        facilities: {
-            "커피머신": {
-                existence: true,
-                location: ["로비"],
-                cost: ["무료"],
-                hours: ["24시간"],
-                quantity: ["1개"]
-            },
-            "일반정수기": {
-                existence: true,
-                location: ["로비", "2층"],
-                cost: ["무료"],
-                hours: ["24시간"],
-                quantity: ["층별 1개"]
-            },
-            "전자레인지": {
-                existence: true,
-                location: ["푸드존"],
-                cost: ["무료"],
-                hours: ["24시간"],
-                quantity: ["2개"]
-            }
-        },
-        seats: {
-            "오픈데스크": {
-                existence: true,
-                capacity: ["1인"],
-                type: ["오픈"],
-                features: ["콘센트", "스탠드"],
-                quantity: ["50석"]
-            },
-            "칸막이": {
-                existence: true,
-                capacity: ["1인"],
-                type: ["칸막이"],
-                features: ["콘센트", "스탠드", "조용"],
-                quantity: ["30석"]
-            },
-            "1인실": {
-                existence: true,
-                capacity: ["1인"],
-                type: ["폐쇄형"],
-                features: ["콘센트", "스탠드", "매우 조용", "프라이빗"],
-                quantity: ["10실"]
-            }
-        },
-        passes: {
-            "시간권": {
-                existence: true,
-                price: ["2시간 3,000원", "4시간 5,000원", "6시간 7,000원"],
-                features: ["자유석", "연장 가능"],
-                restrictions: ["당일만 사용"]
-            },
-            "종일권": {
-                existence: true,
-                price: ["평일 10,000원", "주말 12,000원"],
-                features: ["자유석", "출입 자유"],
-                restrictions: ["당일만 사용"]
-            },
-            "정기권": {
-                existence: true,
-                price: ["4주 150,000원", "8주 280,000원"],
-                features: ["자유석", "매일 사용"],
-                restrictions: ["기간 내 자유"]
-            }
-        },
-        features: {
-            "퇴실": {
-                existence: true,
-                description: ["키오스크에서 직접 퇴실", "자동 정산"],
-                hours: ["24시간"]
-            },
-            "연장": {
-                existence: true,
-                description: ["시간권 연장 가능", "1시간 단위"],
-                cost: ["1시간 1,500원"]
-            },
-            "자리이동": {
-                existence: true,
-                description: ["당일 1회 무료", "2회부터 1,000원"],
-                restrictions: ["동일 존 내에서만"]
-            }
-        },
-        policies: {
-            "연령규정": {
-                existence: true,
-                rule: ["중학생 이상 이용 가능"],
-                exception: ["초등학생은 보호자 동반 시 가능"]
-            },
-            "소음규정": {
-                existence: true,
-                rule: ["조용한 대화 가능", "포커스존 통화 금지"],
-                penalty: ["3회 경고 시 퇴실"]
-            },
-            "취식규정": {
-                existence: true,
-                rule: ["뚜껑있는 음료 가능", "간단한 간식 가능"],
-                allowed: ["빵", "과자", "초콜릿"],
-                prohibited: ["냄새나는 음식", "배달음식"],
-                location: ["푸드존에서만 식사 가능"]
-            },
-            "외출규정": {
-                existence: true,
-                rule: ["일시정지 후 외출 가능"],
-                duration: ["최대 1시간"],
-                penalty: ["무단 외출 시 자동 퇴실"]
-            }
-        }
-    }
-};
-
-// 업종별 기본 아이템 + 공통 아이템 합치기
-export function getDefaultItemsForIndustry(industryCode = "other") {
-    const industryDefaults = INDUSTRY_DEFAULTS[industryCode] || {};
-
+// default + 업종 프리셋을 합쳐서 중복 제거
+export function getPresetsForIndustry(industryCode = "other") {
+    const pick = (cat) => {
+        const base = PRESETS[cat]?.default || [];
+        const more = PRESETS[cat]?.[industryCode] || [];
+        return Array.from(new Set([...base, ...more]));
+    };
     return {
-        spaces: industryDefaults.spaces || [],
-        facilities: [
-            ...COMMON_REQUIRED.facilities,
-            ...COMMON_OPTIONAL.facilities,
-            ...(industryDefaults.facilities || [])
-        ],
-        seats: industryDefaults.seats || [],
-        passes: industryDefaults.passes || [],
-        features: industryDefaults.features || [],
-        policies: industryDefaults.policies || [],
+        facilities: pick("facilities"),
+        passes: pick("passes"),
+        menu: pick("menu"),
     };
 }
 
-// 업종별 예시 데이터 가져오기
-export function getExampleDataForIndustry(industryCode = "other") {
-    return EXAMPLE_DATA[industryCode] || {};
-}
-
-// 업종 코드 → 라벨 변환
+// (선택) 업종 코드 → 라벨 변환
 export const industryLabel = (code) =>
     INDUSTRY_OPTIONS.find((i) => i.code === code)?.label || "기타";
-
-// 🆕 필수 아이템만 필터링
-export function getRequiredItems(items) {
-    return items.filter(item => item.required);
-}
-
-// 🆕 선택 아이템만 필터링
-export function getOptionalItems(items) {
-    return items.filter(item => !item.required);
-}

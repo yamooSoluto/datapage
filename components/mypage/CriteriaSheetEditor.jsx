@@ -3,13 +3,10 @@
 
 import React from "react";
 import { X, Type, Clock, Calendar, ChevronDown, ChevronRight } from "lucide-react";
-import { useMatrixData } from '@/hooks/useMatrixData';
-import { useTemplates } from '@/hooks/useTemplates';
 
 // ═══════════════════════════════════════════════════════════
 // 1) 유틸 & 데이터
 // ═══════════════════════════════════════════════════════════
-
 
 const pack = (arr) => Array.isArray(arr) ? arr.join(" / ") : "";
 const unpack = (str) => String(str || "").split(" / ").filter(Boolean);
@@ -60,7 +57,6 @@ function normalizeHM(token) {
     }
     return null;
 }
-
 
 // 계층형 옵션 구조
 const SHEET_TEMPLATES = {
@@ -1151,81 +1147,34 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
 // 4) 메인 컴포넌트
 // ═══════════════════════════════════════════════════════════
 
-export default function CriteriaSheetEditor({ tenantId }) {
-    const [activeSheet, setActiveSheet] = React.useState("facility");
-
-    // Firestore 훅 연결
-    const { templates, loading: templatesLoading } = useTemplates(tenantId);
-
-    const {
-        matrixData: facilityData,
-        loading: facilityLoading,
-        saveMatrixData: saveFacilities,
-    } = useMatrixData(tenantId, "facility");
-
-    const {
-        matrixData: roomData,
-        loading: roomLoading,
-        saveMatrixData: saveRooms,
-    } = useMatrixData(tenantId, "room");
-
-    const {
-        matrixData: productData,
-        loading: productLoading,
-        saveMatrixData: saveProducts,
-    } = useMatrixData(tenantId, "product");
-
-    const {
-        matrixData: rulesData,
-        loading: rulesLoading,
-        saveMatrixData: saveRules,
-    } = useMatrixData(tenantId, "rules");
-
-    // 시트별 데이터 매핑
-    const sheetMap = {
-        facility: facilityData,
-        room: roomData,
-        product: productData,
-        rules: rulesData,
-    };
-
-    const activeTemplate =
-        templates?.[activeSheet] || SHEET_TEMPLATES[activeSheet];
-    const activeItems = sheetMap[activeSheet] || [];
-
-    // 로딩 상태 통합
-    const isLoading =
-        templatesLoading ||
-        facilityLoading ||
-        roomLoading ||
-        productLoading ||
-        rulesLoading;
-
-    // 저장 함수
-    const handleSave = async () => {
-        try {
-            if (activeSheet === "facility") await saveFacilities(facilityData);
-            if (activeSheet === "room") await saveRooms(roomData);
-            if (activeSheet === "product") await saveProducts(productData);
-            if (activeSheet === "rules") await saveRules(rulesData);
-            alert("✅ 저장 완료!");
-        } catch (err) {
-            alert("❌ 저장 실패: " + err.message);
+export default function CriteriaSheetEditor({ tenantId, initialData, onSave }) {
+    const [data, setData] = React.useState(() => {
+        const defaultData = {
+            sheets: ["facility", "room", "product", "rules"],
+            activeSheet: "facility",
+            items: { facility: [], room: [], product: [], rules: [] },
+            customOptions: {}
+        };
+        if (!initialData) return defaultData;
+        if (initialData.sheets && Array.isArray(initialData.sheets)) {
+            return { ...defaultData, ...initialData, items: { ...defaultData.items, ...(initialData.items || {}) } };
         }
-    };
+        return {
+            ...defaultData, items: {
+                facility: initialData.items?.facility || [],
+                room: initialData.items?.room || [],
+                product: initialData.items?.product || [],
+                rules: initialData.items?.rules || []
+            }
+        };
+    });
 
-    const switchSheet = (sheetId) => setActiveSheet(sheetId);
-
-    if (isLoading)
-        return (
-            <div className="p-10 text-center text-gray-500">
-                불러오는 중입니다...
-            </div>
-        );
-
+    const activeTemplate = SHEET_TEMPLATES[data.activeSheet];
+    const activeItems = data.items[data.activeSheet] || [];
 
     const [openDropdown, setOpenDropdown] = React.useState(null);
 
+    const switchSheet = (sheetId) => setData({ ...data, activeSheet: sheetId });
 
     const addRow = () => {
         const newRow = { id: `row_${Date.now()}`, name: "", facets: {}, createdAt: Date.now() };
@@ -1285,6 +1234,14 @@ export default function CriteriaSheetEditor({ tenantId }) {
         }));
     };
 
+    const handleSave = async () => {
+        try {
+            await onSave?.(data);
+            alert("✅ 저장 완료!");
+        } catch (err) {
+            alert("❌ 저장 실패: " + err.message);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gray-50 p-4 md:p-6">
