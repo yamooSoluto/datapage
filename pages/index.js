@@ -114,7 +114,11 @@ export default function TenantPortal() {
   }, [items]);
 
   // ========== 저장 함수 ==========
+  const [savingCriteria, setSavingCriteria] = useState(false);
+
   const handleCriteriaSave = async (updatedData) => {
+    if (savingCriteria) return;
+    setSavingCriteria(true);
     const allItems = [
       ...updatedData.items.facility,
       ...updatedData.items.room,
@@ -153,6 +157,7 @@ export default function TenantPortal() {
 
     await refresh();
     alert('저장 완료!');
+    setSavingCriteria(false);
   };
 
   const handleTemplateSave = async (newTemplates) => {
@@ -1090,12 +1095,11 @@ export default function TenantPortal() {
           {/* 템플릿 매니저 모달 */}
           {showTemplateManager && (
             <TemplateManager
-              initialTemplates={templates}
+              initialTemplates={templates || {}}
               onSave={handleTemplateSave}
               onClose={() => setShowTemplateManager(false)}
             />
           )}
-
 
           {/* FAQ 탭 */}
           {activeTab === 'faq' && (

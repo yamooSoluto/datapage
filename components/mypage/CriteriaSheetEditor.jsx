@@ -1157,8 +1157,15 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             customOptions: {}
         };
         if (!initialData) return defaultData;
-        if (initialData.sheets && Array.isArray(initialData.sheets)) {
-            return { ...defaultData, ...initialData, items: { ...defaultData.items, ...(initialData.items || {}) } };
+        if (Array.isArray(initialData.sheets)) {
+            return {
+                ...defaultData,
+                ...initialData,
+                items: {
+                    ...defaultData.items,
+                    ...(initialData.items || {})
+                }
+            };
         }
         return {
             ...defaultData, items: {
@@ -1170,7 +1177,8 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         };
     });
 
-    const activeTemplate = templates?.[data.activeSheet] || SHEET_TEMPLATES[data.activeSheet];
+    const activeTemplate = templates?.[data.activeSheet] || SHEET_TEMPLATES[data.activeSheet] || { facets: [] };
+    const facets = activeTemplate?.facets ?? [];
     const activeItems = data.items[data.activeSheet] || [];
 
     const [openDropdown, setOpenDropdown] = React.useState(null);
@@ -1300,7 +1308,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                             <thead className="bg-gray-50 border-b sticky top-0">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[250px]">이름</th>
-                                    {activeTemplate.facets.map(facet => (
+                                    {facets.map(facet => (
                                         <th key={facet.key} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
                                             {facet.label}
                                         </th>
@@ -1311,7 +1319,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                             <tbody className="divide-y divide-gray-100">
                                 {activeItems.length === 0 ? (
                                     <tr>
-                                        <td colSpan={activeTemplate.facets.length + 2} className="px-4 py-12 text-center text-gray-400">
+                                        <td colSpan={facets.length + 2} className="px-4 py-12 text-center text-gray-400">
                                             <p className="text-lg mb-2">📝 데이터가 없습니다</p>
                                             <p className="text-sm">아래 버튼을 눌러 항목을 추가하세요</p>
                                         </td>

@@ -45,12 +45,12 @@ const DEFAULT_TEMPLATES = {
     }
 };
 
-export default function TemplateManager({ initialTemplates, onSave, onClose }) {
-    const [templates, setTemplates] = React.useState(initialTemplates || DEFAULT_TEMPLATES);
+export default function TemplateManager({ initialTemplates = DEFAULT_TEMPLATES, onSave = () => { }, onClose }) {
+    const [templates, setTemplates] = React.useState(initialTemplates);
     const [activeSheet, setActiveSheet] = React.useState("facility");
     const [expandedFacets, setExpandedFacets] = React.useState({});
 
-    const activeTemplate = templates[activeSheet];
+    const activeTemplate = templates?.[activeSheet] ?? { facets: [], icon: '', title: '' };
 
     // Facet 펼치기/접기
     const toggleFacet = (facetKey) => {
