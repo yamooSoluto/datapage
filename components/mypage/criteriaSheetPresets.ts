@@ -6,7 +6,7 @@
 // ────────────────────────────────────────────────────────────
 // 프리셋 아이템 (온보딩에서 선택)
 // ────────────────────────────────────────────────────────────
-export const PRESET_ITEMS: Record<string, Array<{ name: string; icon?: string; required?: boolean }>> = {
+export const PRESET_ITEMS: Record<string, Array<{ name: string; icon?: string; required?: boolean; facets?: Record<string, string | string[]> }>> = {
     // 공간
     space: [
         { name: "현관", icon: "🚪", required: false },

@@ -8,7 +8,6 @@ import OnboardingModal from "../components/onboarding/OnboardingModal";
 import CriteriaSheetEditor from '@/components/mypage/CriteriaSheetEditor';
 import { useMatrixData } from '@/hooks/useMatrixData';
 import { useTemplates } from '@/hooks/useTemplates';
-import TemplateManager from '@/components/mypage/TemplateManager';
 
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
 
@@ -91,6 +90,7 @@ export default function TenantPortal() {
   // CRITERIA 기반 데이터 (SimpleCriteriaInput용)
   const [tenantData, setTenantData] = useState({
     industry: 'studycafe', // 기본값
+    criteriaSheet: null,
     criteriaData: {},      // 일반 정책용
     items: {               // 시설/상품용 (신규)
       facility: [],        // [{ id: 1, name: '프린터', data: { ... } }]
@@ -110,9 +110,6 @@ export default function TenantPortal() {
     data: templates,
     refresh: refreshTemplates  // ← 이거만 추가!
   } = useTemplates(currentTenant?.id);
-
-  // 템플릿 매니저 상태
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
 
   // 템플릿과 실데이터로 동적 시트 목록 만들기
   const criteriaData = useMemo(() => {
@@ -215,16 +212,6 @@ export default function TenantPortal() {
     await refresh();
     alert('저장 완료!');
     setSavingCriteria(false);
-  };
-
-  const handleTemplateSave = async (newTemplates) => {
-    const res = await fetch(`/api/templates?tenant=${currentTenant?.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ templates: newTemplates }),
-    });
-    if (!res.ok) throw new Error('템플릿 저장 실패');
-    await refreshTemplates?.();
   };
 
   // FAQ / 통계 데이터
@@ -568,6 +555,7 @@ export default function TenantPortal() {
       // CRITERIA 데이터 로드
       setTenantData({
         industry: p?.industry || 'studycafe',
+        criteriaSheet: p?.criteriaSheet || null,
         criteriaData: p?.criteriaData || {},
         items: p?.items || { facility: [], product: [] }
       });
@@ -605,6 +593,7 @@ export default function TenantPortal() {
           menu: menuPayload,
           // ✅ CRITERIA 기반 데이터 추가
           industry: overrides.industry ?? tenantData.industry,
+          criteriaSheet: overrides.criteriaSheet ?? tenantData.criteriaSheet,
           criteriaData: overrides.criteriaData ?? tenantData.criteriaData,
           items: overrides.items ?? tenantData.items,  // 시설/상품 데이터 추가
           links: overrides.links ?? {},
@@ -981,7 +970,14 @@ export default function TenantPortal() {
                 await saveProfileBasic({
                   slackUserId: payload.slackUserId,
                   facilities,
+                  criteriaSheet: payload.criteriaSheet,
+                  industry: payload.industry,
                 });
+                setTenantData(prev => ({
+                  ...prev,
+                  industry: payload.industry || prev.industry,
+                  criteriaSheet: payload.criteriaSheet || prev.criteriaSheet,
+                }));
                 await refresh();
                 await refreshTemplates?.();
                 setShowOnboarding(false);
@@ -1141,13 +1137,6 @@ export default function TenantPortal() {
                     <h2 className="text-2xl font-bold text-gray-900">데이터 관리</h2>
                     <p className="text-sm text-gray-600 mt-1">셀을 클릭하면 옵션이 나타납니다</p>
                   </div>
-                  <button
-                    onClick={() => setShowTemplateManager(true)}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-300 rounded-xl hover:border-yellow-400 transition-all"
-                  >
-                    <Settings className="w-4 h-4" />
-                    템플릿 관리
-                  </button>
                 </div>
               </div>
 
@@ -1157,23 +1146,13 @@ export default function TenantPortal() {
               ) : (
                 <CriteriaSheetEditor
                   tenantId={currentTenant?.id}
-                  initialData={criteriaData}
+                  initialData={tenantData.criteriaSheet || criteriaData}
                   templates={templates}
                   onSave={handleCriteriaSave}
                 />
               )}
             </div>
           )}
-          {/* 템플릿 매니저 모달 */}
-          {showTemplateManager && (
-            <TemplateManager
-              initialTemplates={(templates && Object.keys(templates).length) ? templates
-                : buildTemplatesFromItems(items)}
-              onSave={handleTemplateSave}
-              onClose={() => setShowTemplateManager(false)}
-            />
-          )}
-
           {/* FAQ 탭 */}
           {activeTab === 'faq' && (
             <div className="space-y-4 pt-4">
