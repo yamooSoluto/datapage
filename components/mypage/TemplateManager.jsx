@@ -45,12 +45,15 @@ const DEFAULT_TEMPLATES = {
     }
 };
 
-export default function TemplateManager({ initialTemplates = DEFAULT_TEMPLATES, onSave = () => { }, onClose }) {
-    const [templates, setTemplates] = React.useState(initialTemplates);
+export default function TemplateManager({ initialTemplates = {}, onSave = () => { }, onClose }) {
+    const [templates, setTemplates] = React.useState(() => {
+        const hasAny = initialTemplates && Object.keys(initialTemplates).length > 0;
+        return hasAny ? initialTemplates : DEFAULT_TEMPLATES;
+    });
     const [activeSheet, setActiveSheet] = React.useState("facility");
     const [expandedFacets, setExpandedFacets] = React.useState({});
 
-    const activeTemplate = templates?.[activeSheet] ?? { facets: [], icon: '', title: '' };
+    const activeTemplate = templates?.[activeSheet] ?? { facets: [], icon: "", title: "" };
 
     // Facet 펼치기/접기
     const toggleFacet = (facetKey) => {
@@ -64,13 +67,12 @@ export default function TemplateManager({ initialTemplates = DEFAULT_TEMPLATES, 
     const addOption = (facetKey) => {
         const newOption = prompt("새 옵션을 입력하세요:");
         if (!newOption || !newOption.trim()) return;
-
         setTemplates(prev => {
             const updated = { ...prev };
-            const facet = updated[activeSheet].facets.find(f => f.key === facetKey);
-            if (facet) {
-                facet.options = [...facet.options, newOption.trim()];
-            }
+            const sheet = updated[activeSheet] ||= { id: activeSheet, title: activeSheet, icon: "", facets: [] };
+            const facet = sheet.facets.find(f => f.key === facetKey);
+            if (!facet) return updated;
+            facet.options = Array.from(new Set([...(facet.options || []), newOption.trim()]));
             return updated;
         });
     };
@@ -159,7 +161,7 @@ export default function TemplateManager({ initialTemplates = DEFAULT_TEMPLATES, 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                     <div className="space-y-4">
                         {/* Facet 목록 */}
-                        {activeTemplate.facets.map((facet, facetIndex) => (
+                        {(activeTemplate?.facets ?? []).map((facet, i) => (
                             <div
                                 key={facet.key}
                                 className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden"
@@ -208,6 +210,44 @@ export default function TemplateManager({ initialTemplates = DEFAULT_TEMPLATES, 
                                                 </button>
                                             </div>
                                         ))}
+
+                                        {/* 시트 탭 오른쪽 */}
+                                        <button
+                                            onClick={() => {
+                                                const id = prompt("새 시트 ID(영문/숫자/underscore):", "custom");
+                                                if (!id) return;
+                                                const title = prompt("시트 제목:", id) || id;
+                                                const icon = prompt("아이콘(이모지):", "🧩") || "🧩";
+                                                setTemplates(prev => ({ ...prev, [id]: { id, title, icon, facets: [] } }));
+                                                setActiveSheet(id);
+                                            }}
+                                            className="flex-shrink-0 px-3 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-600"
+                                        > + 시트 </button>
+
+                                        {/* 시트 편집 */}
+                                        <div className="flex gap-2 px-4 py-2">
+                                            <button onClick={() => {
+                                                const title = prompt("새 제목:", (templates[activeSheet]?.title || activeSheet));
+                                                if (!title) return;
+                                                setTemplates(prev => ({ ...prev, [activeSheet]: { ...prev[activeSheet], title } }));
+                                            }} className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm">제목변경</button>
+
+                                            <button onClick={() => {
+                                                const icon = prompt("새 아이콘(이모지):", (templates[activeSheet]?.icon || "🧩"));
+                                                if (!icon) return;
+                                                setTemplates(prev => ({ ...prev, [activeSheet]: { ...prev[activeSheet], icon } }));
+                                            }} className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm">아이콘변경</button>
+
+                                            <button onClick={() => {
+                                                if (!confirm("이 시트를 삭제할까요? (데이터는 삭제되지 않습니다)")) return;
+                                                setTemplates(prev => {
+                                                    const copy = { ...prev }; delete copy[activeSheet];
+                                                    const keys = Object.keys(copy); setActiveSheet(keys[0] || "facility");
+                                                    return copy;
+                                                });
+                                            }} className="px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-sm">시트삭제</button>
+                                        </div>
+
 
                                         {/* 옵션 추가 버튼 */}
                                         <button

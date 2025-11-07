@@ -65,6 +65,29 @@ export default function TenantPortal() {
   const [obPasses, setObPasses] = useState([]);
   const [obMenu, setObMenu] = useState([]);
 
+  // 시트 동적화 + 템플릿/데이터 병합 - 아이템에서 Facet 스키마 자동 추론 유틸 추가
+  function deriveTemplateFromItems(items = [], sheetId = 'custom', seed = {}) {
+    const labelMap = {
+      existence: "존재", cost: "비용", location: "위치", hours: "이용시간",
+      quantity: "수량", access: "이용", noise: "소음", capacity: "정원", rule: "규정", penalty: "패널티"
+    };
+
+    const buckets = {};
+    for (const it of items) {
+      const f = it?.facets || {};
+      for (const k of Object.keys(f)) {
+        const arr = Array.isArray(f[k]) ? f[k] : (f[k] != null ? [f[k]] : []);
+        (buckets[k] ||= new Set());
+        arr.forEach(v => String(v).trim() && buckets[k].add(String(v)));
+      }
+    }
+    const facets = Object.entries(buckets).map(([k, set]) => ({
+      key: k, label: labelMap[k] || k, type: "multi", options: Array.from(set)
+    }));
+    return { id: sheetId, title: seed?.title || sheetId, icon: seed?.icon || "📦", facets };
+  }
+
+
   // CRITERIA 기반 데이터 (SimpleCriteriaInput용)
   const [tenantData, setTenantData] = useState({
     industry: 'studycafe', // 기본값
@@ -91,27 +114,38 @@ export default function TenantPortal() {
   // 템플릿 매니저 상태
   const [showTemplateManager, setShowTemplateManager] = useState(false);
 
-  // ========== 데이터 변환 ==========
+  // 템플릿과 실데이터로 동적 시트 목록 만들기
   const criteriaData = useMemo(() => {
-    if (!items || items.length === 0) {
-      return {
-        sheets: ["facility", "room", "product", "rules"],
-        activeSheet: "facility",
-        items: { facility: [], room: [], product: [], rules: [] }
-      };
-    }
-
+    const arr = Array.isArray(items) ? items : [];
+    // 1) 현재 템플릿에 등록된 시트
+    const templateSheets = Object.keys(templates || {});
+    // 2) 실데이터에 등장한 type(=sheetId)
+    const dataSheets = Array.from(new Set(arr.map(i => i?.type).filter(Boolean)));
+    // 3) 합집합
+    const sheets = Array.from(new Set([...(templateSheets.length ? templateSheets : []), ...dataSheets]));
+    const itemsBy = Object.fromEntries(sheets.map(s => [s, arr.filter(i => i.type === s)]));
     return {
-      sheets: ["facility", "room", "product", "rules"],
-      activeSheet: "facility",
-      items: {
-        facility: items.filter(i => i.type === 'facility'),
-        room: items.filter(i => i.type === 'room'),
-        product: items.filter(i => i.type === 'product'),
-        rules: items.filter(i => i.type === 'rules')
-      }
+      sheets: sheets.length ? sheets : ["facility"],
+      activeSheet: sheets[0] || "facility",
+      items: itemsBy
     };
-  }, [items]);
+  }, [items, templates]);
+
+  // 템플릿 비어도 안전하도록 초기 템플릿 생성
+  function buildTemplatesFromItems(allItems = [], seedTemplates = {}) {
+    const bySheet = allItems.reduce((m, it) => {
+      const k = it?.type || 'facility';
+      (m[k] ||= []).push(it);
+      return m;
+    }, {});
+    const out = {};
+    for (const [sheetId, list] of Object.entries(bySheet)) {
+      out[sheetId] = seedTemplates[sheetId]
+        || deriveTemplateFromItems(list, sheetId, seedTemplates[sheetId]);
+    }
+    return out;
+  }
+
 
   // ========== 저장 함수 ==========
   const [savingCriteria, setSavingCriteria] = useState(false);
@@ -119,12 +153,10 @@ export default function TenantPortal() {
   const handleCriteriaSave = async (updatedData) => {
     if (savingCriteria) return;
     setSavingCriteria(true);
-    const allItems = [
-      ...updatedData.items.facility,
-      ...updatedData.items.room,
-      ...updatedData.items.product,
-      ...updatedData.items.rules
-    ];
+    const allItems = Object.values(updatedData.items || {})
+      .flat()
+      // 새 시트에서도 item.type에 sheetId를 심어 저장
+      .map(row => (row?.type ? row : { ...row, type: updatedData.activeSheet }));
 
     for (const item of allItems) {
       if (item.id.startsWith('row_')) {
@@ -134,11 +166,36 @@ export default function TenantPortal() {
       }
     }
 
+    // index.js (handleCriteriaSave 내부, allItems 만든 뒤)
+    const slug = (s) =>
+      String(s || "")
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "") // 악센트 제거
+        .replace(/[^a-zA-Z0-9가-힣]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .toLowerCase();
+
+    const itemsWithKeys = allItems.map(item => {
+      const facetKeys = {};
+      const f = item.facets || {};
+      Object.keys(f).forEach(k => {
+        const arr = Array.isArray(f[k]) ? f[k] : (f[k] != null ? [f[k]] : []);
+        facetKeys[k] = arr.map(v => slug(v));
+      });
+      return { ...item, facetKeys };
+    });
+
+    // 이후 addItem/updateItem에 itemsWithKeys를 사용
+    for (const item of itemsWithKeys) {
+      if (item.id?.startsWith('row_')) await addItem(currentTenant?.id, item);
+      else await updateItem(currentTenant?.id, item.id, item);
+    }
+
     // 2) 커스텀 드롭다운 옵션을 템플릿에 병합
     if (updatedData.customOptions && templates) {
       const merged = JSON.parse(JSON.stringify(templates));
       Object.entries(updatedData.customOptions).forEach(([compoundKey, opts]) => {
-        const [sheetKey, facetKey] = String(compoundKey).split('.');
+        const [sheetKey, facetKey] = String(compoundKey).split(/[_\.]/);
         const sheet = merged?.[sheetKey];
         if (!sheet) return;
         const facet = sheet.facets?.find(f => f.key === facetKey);
@@ -161,21 +218,13 @@ export default function TenantPortal() {
   };
 
   const handleTemplateSave = async (newTemplates) => {
-    try {
-      const res = await fetch(`/api/templates?tenant=${currentTenant?.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ templates: newTemplates })
-      });
-
-      if (!res.ok) throw new Error('템플릿 저장 실패');
-
-      await refreshTemplates();
-      setShowTemplateManager(false);
-      alert('✅ 템플릿 저장 완료!');
-    } catch (error) {
-      alert('❌ 저장 실패: ' + error.message);
-    }
+    const res = await fetch(`/api/templates?tenant=${currentTenant?.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ templates: newTemplates }),
+    });
+    if (!res.ok) throw new Error('템플릿 저장 실패');
+    await refreshTemplates?.();
   };
 
   // FAQ / 통계 데이터
@@ -531,25 +580,35 @@ export default function TenantPortal() {
 
   // ✅ 기존 index 페이지에서 saveProfileBasic 함수를 이렇게 수정
 
-  const saveProfileBasic = async () => {
+  const saveProfileBasic = async (overrides = {}) => {
     try {
+      const tenantId = currentTenant?.id;
+      if (!tenantId) {
+        console.warn('테넌트 정보가 없습니다.');
+        return;
+      }
+
+      const facilitiesPayload = overrides.facilities ?? obFacilities;
+      const passesPayload = overrides.passes ?? obPasses;
+      const menuPayload = overrides.menu ?? obMenu;
+
       // ✅ tenant 파라미터로 호출 (tenantId 아님!)
       const response = await fetch(`/api/profile?tenant=${tenantId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          brandName: obBrandName || '',  // 브랜드명이 있다면
-          slackUserId: obSlackId || '',
+          brandName: overrides.brandName ?? obBrandName ?? '',
+          slackUserId: overrides.slackUserId ?? obSlackId ?? '',
           // ✅ 배열을 그대로 전송 (API가 자동으로 정규화)
-          facilities: obFacilities,  // ['헬스장', 'VIP룸'] 형태
-          passes: obPasses,
-          menu: obMenu,
+          facilities: facilitiesPayload,  // ['헬스장', 'VIP룸'] 형태
+          passes: passesPayload,
+          menu: menuPayload,
           // ✅ CRITERIA 기반 데이터 추가
-          industry: tenantData.industry,
-          criteriaData: tenantData.criteriaData,
-          items: tenantData.items,  // 시설/상품 데이터 추가
-          links: {},
-          policies: {}
+          industry: overrides.industry ?? tenantData.industry,
+          criteriaData: overrides.criteriaData ?? tenantData.criteriaData,
+          items: overrides.items ?? tenantData.items,  // 시설/상품 데이터 추가
+          links: overrides.links ?? {},
+          policies: overrides.policies ?? {}
         })
       });
 
@@ -906,17 +965,30 @@ export default function TenantPortal() {
               passes: obPasses,
               menu: obMenu,
             }}
+            tenantId={currentTenant?.id}
             onClose={() => setShowOnboarding(false)}
             onComplete={async (payload) => {
-              // 저장 로직
-              await saveProfileBasic(payload); // 네가 쓰던 함수에 맞춰 전달
-              // 로컬 상태 업데이트
-              setObEmail(payload.contactEmail || "");
-              setObSlackId(payload.slackUserId || "");
-              setObFacilities((payload.dictionaries?.facilities || []).map((x) => x.name));
-              setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
-              setObMenu((payload.dictionaries?.menu || []).map((x) => x.name));
-              setShowOnboarding(false);
+              try {
+                const facilities = (payload.dictionaries?.facilities || []).map((x) => x.name);
+
+                // 로컬 상태 업데이트
+                setObEmail(payload.contactEmail || "");
+                setObSlackId(payload.slackUserId || "");
+                setObFacilities(facilities);
+                setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
+                setObMenu((payload.dictionaries?.menu || []).map((x) => x.name));
+
+                await saveProfileBasic({
+                  slackUserId: payload.slackUserId,
+                  facilities,
+                });
+                await refresh();
+                await refreshTemplates?.();
+                setShowOnboarding(false);
+              } catch (error) {
+                console.error('온보딩 완료 처리 실패', error);
+                alert('온보딩 완료 처리 중 오류가 발생했습니다.');
+              }
             }}
           />
         )}
@@ -1095,7 +1167,8 @@ export default function TenantPortal() {
           {/* 템플릿 매니저 모달 */}
           {showTemplateManager && (
             <TemplateManager
-              initialTemplates={templates || {}}
+              initialTemplates={(templates && Object.keys(templates).length) ? templates
+                : buildTemplatesFromItems(items)}
               onSave={handleTemplateSave}
               onClose={() => setShowTemplateManager(false)}
             />

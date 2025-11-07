@@ -1,7 +1,7 @@
 // components/onboarding/OnboardingModal.jsx
 import React from "react";
 import { X, ChevronLeft } from "lucide-react";
-import { INDUSTRY_OPTIONS, getPresetsForIndustry } from "./config";
+import { INDUSTRY_OPTIONS, getSheetPresetsForIndustry, generateInitialSheetData } from "./config";
 
 // 칩
 function Chip({ selected, children, onClick }) {
@@ -46,10 +46,11 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
             <div className="text-xs font-semibold text-gray-900">{label}</div>
 
             {/* 프리셋(선택은 사용자 클릭) */}
-            <div className="flex flex-wrap gap-8 gap-y-2">
+            <div className="flex flex-wrap gap-2">
                 {options.map((opt) => (
-                    <Chip key={opt} selected={value.includes(opt)} onClick={() => toggle(opt)}>
-                        {opt}
+                    <Chip key={opt.name} selected={value.includes(opt.name)} onClick={() => toggle(opt.name)}>
+                        <span className="mr-1">{opt.icon}</span>
+                        {opt.name}
                     </Chip>
                 ))}
             </div>
@@ -97,43 +98,83 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
 
 export default function OnboardingModal({
     open,
-    initial = {},           // { email, slackUserId, industry, facilities[], passes[], menu[] }
+    initial = {},           // { email, slackUserId, industry }
     onClose,
     onComplete,             // (payload) => Promise<void> | void
+    tenantId,
 }) {
     const [step, setStep] = React.useState(1);
     if (!open) return null;
 
     // 업종은 모달에서만 수정 가능 (기본값: study_cafe)
     const [industry, setIndustry] = React.useState(initial.industry || "study_cafe");
-    const presets = React.useMemo(() => getPresetsForIndustry(industry), [industry]);
+    const presets = React.useMemo(() => getSheetPresetsForIndustry(industry), [industry]);
 
     // 초기 선택은 항상 빈 배열(자동 선택 없음)
     const [email, setEmail] = React.useState(initial.email || "");
     const [slackId, setSlackId] = React.useState(initial.slackUserId || "");
-    const [facilities, setFacilities] = React.useState(
-        Array.isArray(initial.facilities) ? initial.facilities : []
-    );
-    const [passes, setPasses] = React.useState(
-        Array.isArray(initial.passes) ? initial.passes : []
-    );
-    const [menu, setMenu] = React.useState(
-        Array.isArray(initial.menu) ? initial.menu : []
-    );
+
+    // 시트별 선택된 항목들
+    const [spaceItems, setSpaceItems] = React.useState([]);
+    const [facilityItems, setFacilityItems] = React.useState([]);
+    const [seatItems, setSeatItems] = React.useState([]);
+
+    const [submitting, setSubmitting] = React.useState(false);
 
     const finish = async () => {
-        const payload = {
-            contactEmail: email || "",
-            slackUserId: slackId || "",
-            industry, // 모달에서만 변경 허용
-            dictionaries: {
-                facilities: (facilities || []).map((name) => ({ name })),
-                passes: (passes || []).map((name) => ({ name })),
-                menu: (menu || []).map((name) => ({ name })),
-            },
-            updatedAt: Date.now(),
+        if (submitting) return;
+        setSubmitting(true);
+        // CriteriaSheet 초기 데이터 생성
+        const selections = {
+            space: spaceItems,
+            facility: facilityItems,
+            seat: seatItems,
         };
-        await Promise.resolve(onComplete?.(payload));
+        const sheetData = generateInitialSheetData(industry, selections);
+
+        try {
+            if (tenantId) {
+                const res = await fetch("/api/onboarding/initialize", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        tenantId,
+                        industry,
+                        selections,
+                        sheetData,
+                    }),
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err?.message || "failed_to_initialize");
+                }
+            }
+
+            const payload = {
+                contactEmail: email || "",
+                slackUserId: slackId || "",
+                industry,
+                selections,
+                // CriteriaSheet 데이터
+                criteriaSheet: sheetData,
+                // 기존 구조 유지 (필요시)
+                dictionaries: {
+                    facilities: facilityItems.map((name) => ({ name })),
+                    passes: [],
+                    menu: [],
+                    space: spaceItems.map((name) => ({ name })),
+                    seat: seatItems.map((name) => ({ name })),
+                },
+                updatedAt: Date.now(),
+            };
+
+            await Promise.resolve(onComplete?.(payload));
+        } catch (err) {
+            console.error("[OnboardingModal] finish error", err);
+            alert("초기 데이터 생성 중 오류가 발생했습니다.");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -165,7 +206,7 @@ export default function OnboardingModal({
                             </p>
                             <ul className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-2 text-sm text-gray-700">
                                 <li>• 슬랙 가입 후 <strong>본인 이메일</strong>을 입력하면 실시간 메시지 카드를 받을 수 있어요.</li>
-                                <li>• <strong>시설/이용권/메뉴</strong>는 나중에 FAQ 모듈에서 자동 추천에 쓰입니다.</li>
+                                <li>• <strong>공간/시설/좌석</strong>은 FAQ 모듈과 안내 기준 관리에 사용돼요.</li>
                                 <li>• 추가 채널(네이버·카카오) 연동 설명은 마이페이지에서 자세히 볼 수 있어요.</li>
                             </ul>
                             <button
@@ -191,13 +232,11 @@ export default function OnboardingModal({
                                         onChange={(e) => setIndustry(e.target.value)}
                                         className="px-3 py-2 border border-gray-300 rounded-lg bg-white"
                                     >
-                                        {(INDUSTRY_OPTIONS || [{ code: "study_cafe", label: "스터디카페 / 독서실" }]).map(
-                                            (opt) => (
-                                                <option key={opt.code} value={opt.code}>
-                                                    {opt.label}
-                                                </option>
-                                            )
-                                        )}
+                                        {INDUSTRY_OPTIONS.map((opt) => (
+                                            <option key={opt.code} value={opt.code}>
+                                                {opt.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </label>
                             </div>
@@ -228,25 +267,25 @@ export default function OnboardingModal({
 
                             {/* 멀티셀렉(프리셋 + 직접추가) */}
                             <MultiSelectWithAdd
-                                label="시설"
-                                options={presets.facilities}
-                                value={facilities}
-                                onChange={setFacilities}
+                                label="🏠 공간"
+                                options={presets.space}
+                                value={spaceItems}
+                                onChange={setSpaceItems}
+                                placeholder="현관, 로비, 복도…"
+                            />
+                            <MultiSelectWithAdd
+                                label="⚙️ 시설"
+                                options={presets.facility}
+                                value={facilityItems}
+                                onChange={setFacilityItems}
                                 placeholder="프린터, 냉장고, 휴게존…"
                             />
                             <MultiSelectWithAdd
-                                label="이용권"
-                                options={presets.passes}
-                                value={passes}
-                                onChange={setPasses}
-                                placeholder="자유석 1일권, 전용석 1개월…"
-                            />
-                            <MultiSelectWithAdd
-                                label="메뉴"
-                                options={presets.menu}
-                                value={menu}
-                                onChange={setMenu}
-                                placeholder="아메리카노, 라떼…"
+                                label="💺 좌석"
+                                options={presets.seat}
+                                value={seatItems}
+                                onChange={setSeatItems}
+                                placeholder="1인실, 칸막이석…"
                             />
                         </div>
                     )}
@@ -269,9 +308,10 @@ export default function OnboardingModal({
                     {step === 2 ? (
                         <button
                             onClick={finish}
-                            className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:opacity-90"
+                            disabled={submitting}
+                            className={`px-5 py-2 rounded-xl text-sm font-semibold ${submitting ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-gray-900 text-white hover:opacity-90"}`}
                         >
-                            완료하고 시작하기 🚀
+                            {submitting ? "설정 중..." : "완료하고 시작하기 🚀"}
                         </button>
                     ) : (
                         <button
