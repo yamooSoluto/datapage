@@ -1,6 +1,8 @@
 // presets/industryPresets.js
 // 업종별 초기 프리셋 (자주 수정/추가 가능)
 
+import React from "react";
+
 export const SCHEMA_VERSION = 1;
 export const DEFAULT_INDUSTRY = "studycafe";
 
@@ -606,4 +608,44 @@ function getSheetTitle(sheetId) {
         rules: "규정"
     };
     return titles[sheetId] || sheetId;
+}
+
+/**
+ * Next.js는 pages/ 디렉터리의 모든 파일에서 기본 React 컴포넌트를 요구한다.
+ * 이 페이지는 프리셋 JSON을 빠르게 확인하기 위한 뷰를 제공하면서 빌드 오류를 방지한다.
+ */
+export default function IndustryPresetsPage() {
+    return (
+        <main
+            style={{
+                padding: "2rem",
+                fontFamily: `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`,
+            }}
+        >
+            <h1 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>Industry Presets</h1>
+            <p style={{ marginBottom: "1.5rem", color: "#555" }}>
+                이 페이지는 개발 편의를 위해 업종별 프리셋 JSON을 노출합니다.
+            </p>
+            <pre
+                style={{
+                    padding: "1.5rem",
+                    borderRadius: "0.75rem",
+                    background: "#0f172a",
+                    color: "#f8fafc",
+                    overflowX: "auto",
+                    fontSize: "0.85rem",
+                }}
+            >
+                {JSON.stringify(
+                    {
+                        schemaVersion: SCHEMA_VERSION,
+                        defaultIndustry: DEFAULT_INDUSTRY,
+                        presets: INDUSTRY_PRESETS,
+                    },
+                    null,
+                    2
+                )}
+            </pre>
+        </main>
+    );
 }
