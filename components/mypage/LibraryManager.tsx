@@ -341,7 +341,7 @@ export default function LibraryManager({ initialData, onSave }: LibraryManagerPr
         setActiveTab("links");
     };
 
-    const currentItems = Object.entries(data[activeTab] || {}).map(([key, item]) => ({
+    const currentItems: LibraryItem[] = Object.entries(data[activeTab] || {}).map(([key, item]) => ({
         key,
         ...item,
     }));
