@@ -8,7 +8,7 @@
 
 import React from "react";
 import {
-    Plus, X, GripVertical, ChevronDown, Calendar, Clock, Type, Settings, Columns, Eye, EyeOff, Save
+    Plus, X, GripVertical, ChevronDown, Calendar, Clock, Type, Settings, Columns, Eye, EyeOff, Save, Edit3, Check
 } from "lucide-react";
 import {
     DndContext,
@@ -57,6 +57,9 @@ const apiUpdateItem = async (tenantId: string, itemId: string, updates: any) => 
 // ────────────────────────────────────────────────────────────
 // 유틸 (기존 유지)
 // ────────────────────────────────────────────────────────────
+const AUTO_SAVE_DEBOUNCE_MS = 2200;
+const MIN_REMOTE_SAVE_INTERVAL_MS = 8000;
+
 const pad2 = (n: number | string) => String(n).padStart(2, "0");
 const pack = (arr?: string[] | string) => (Array.isArray(arr) ? arr.join(" / ") : String(arr || ""));
 const unpack = (str?: string) => String(str || "").split(" / ").filter(Boolean);
@@ -324,6 +327,56 @@ function SegmentedControl({ value, onChange, options }: any) {
 }
 
 // ────────────────────────────────────────────────────────────
+// SortableOptionButton (편집모드용 정렬 가능한 옵션 버튼)
+// ────────────────────────────────────────────────────────────
+function SortableOptionButton({
+    label,
+    active,
+    isSelected,
+    onToggleSelection
+}: {
+    label: string;
+    active: boolean;
+    isSelected: boolean;
+    onToggleSelection: () => void;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: label });
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`relative rounded-lg ${isDragging ? "ring-2 ring-blue-200" : ""}`}
+        >
+            <button
+                onClick={onToggleSelection}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${active
+                    ? "bg-blue-600 text-white shadow"
+                    : isSelected
+                        ? "bg-red-100 text-red-700 ring-1 ring-red-300"
+                        : "bg-white text-slate-700 hover:bg-slate-100"
+                    }`}
+            >
+                <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => { }}
+                    className="w-3 h-3 accent-blue-600"
+                />
+                <span>{label}</span>
+                <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+                    <GripVertical className="w-3 h-3 text-slate-400" />
+                </span>
+            </button>
+        </div>
+    );
+}
+
+// ────────────────────────────────────────────────────────────
 // InlineDropdown (기존 유지 - 모바일에서는 바텀시트로 자동 전환)
 // ────────────────────────────────────────────────────────────
 function InlineDropdown({
@@ -334,11 +387,15 @@ function InlineDropdown({
     onClose,
     customOptions,
     onDeleteCustomOption,
+    onUpdateFacetOptions,  // 새로 추가: facet.options 수정용
 }: any) {
     const dropdownRef = React.useRef<HTMLDivElement | null>(null);
     const [selected, setSelected] = React.useState<string[]>(unpack(value));
     const [mode, setMode] = React.useState<null | "text" | "time" | "date">(null);
     const [textInput, setTextInput] = React.useState("");
+
+    // 하단 옵션 편집 모드
+    const [optionEditMode, setOptionEditMode] = React.useState(false);
 
     const [times, setTimes] = React.useState<string[]>([]);
     const [startInput, setStartInput] = React.useState("09:00");
@@ -348,51 +405,55 @@ function InlineDropdown({
     const [dates, setDates] = React.useState<string[]>([]);
     const [customDate, setCustomDate] = React.useState("");
 
-    // 모바일 감지
     const [isMobile, setIsMobile] = React.useState(false);
     React.useEffect(() => {
         const checkMobile = () => setIsMobile(window.innerWidth < 768);
         checkMobile();
-        window.addEventListener('resize', checkMobile);
-        return () => window.removeEventListener('resize', checkMobile);
+        window.addEventListener("resize", checkMobile);
+        return () => window.removeEventListener("resize", checkMobile);
     }, []);
 
-    // 위치 계산 (데스크톱용)
     const [position, setPosition] = React.useState({ top: 0, left: 0 });
     React.useEffect(() => {
-        if (isMobile) return; // 모바일에서는 위치 계산 불필요
+        if (isMobile) return;
         if (!cellRef.current || !dropdownRef.current) return;
         const updatePosition = () => {
-            const cellRect = cellRef.current.getBoundingClientRect();
-            const dropdownHeight = 520, dropdownWidth = 320, pad = 8;
-            const vh = window.innerHeight, vw = window.innerWidth;
+            const cellRect = cellRef.current!.getBoundingClientRect();
+            const dropdownHeight = 560;
+            const dropdownWidth = 420;
+            const pad = 12;
+            const vh = window.innerHeight;
+            const vw = window.innerWidth;
             let left = cellRect.right + pad;
             if (left + dropdownWidth > vw - pad) left = cellRect.left - dropdownWidth - pad;
             left = Math.max(pad, Math.min(left, vw - dropdownWidth - pad));
-            const spaceBelow = vh - cellRect.bottom, spaceAbove = cellRect.top;
+            const spaceBelow = vh - cellRect.bottom;
+            const spaceAbove = cellRect.top;
             let top;
-            if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) top = Math.max(pad, cellRect.top - dropdownHeight);
-            else top = Math.min(cellRect.top, vh - dropdownHeight - pad);
+            if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+                top = Math.max(pad, cellRect.top - dropdownHeight);
+            } else {
+                top = Math.min(cellRect.top, vh - dropdownHeight - pad);
+            }
             setPosition({ top, left });
         };
         updatePosition();
-        const onScroll = () => updatePosition();
-        window.addEventListener("scroll", onScroll, true);
-        window.addEventListener("resize", onScroll);
+        const handleScroll = () => updatePosition();
+        window.addEventListener("scroll", handleScroll, true);
+        window.addEventListener("resize", handleScroll);
         return () => {
-            window.removeEventListener("scroll", onScroll, true);
-            window.removeEventListener("resize", onScroll);
+            window.removeEventListener("scroll", handleScroll, true);
+            window.removeEventListener("resize", handleScroll);
         };
     }, [cellRef, isMobile]);
 
-    // 외부 클릭 닫기
     React.useEffect(() => {
-        const handleClickOutside = (e: any) => {
+        const handleClickOutside = (e: MouseEvent) => {
             if (
                 dropdownRef.current &&
-                !dropdownRef.current.contains(e.target) &&
+                !dropdownRef.current.contains(e.target as Node) &&
                 cellRef.current &&
-                !cellRef.current.contains(e.target)
+                !cellRef.current.contains(e.target as Node)
             ) {
                 onChange(pack(selected));
                 onClose();
@@ -403,7 +464,13 @@ function InlineDropdown({
     }, [selected, onChange, onClose, cellRef]);
 
     const toggleOption = (opt: string) => {
-        setSelected((prev) => (prev.includes(opt) ? prev.filter((v) => v !== opt) : [...prev, opt]));
+        if (facet.type === "single") {
+            // single 타입: 단일 선택만 허용
+            setSelected([opt]);
+        } else {
+            // multi 타입: 다중 선택 허용
+            setSelected((prev) => (prev.includes(opt) ? prev.filter((v) => v !== opt) : [...prev, opt]));
+        }
     };
 
     const addTextInput = () => {
@@ -419,6 +486,7 @@ function InlineDropdown({
         const val = norm || token;
         setTimes((t) => (t.includes(val) ? t : [...t, val]));
     };
+
     const addTimeRange = () => {
         const s = normalizeHM(startInput);
         if (!s) return;
@@ -428,6 +496,7 @@ function InlineDropdown({
         setStartInput("09:00");
         setEndInput("");
     };
+
     const commitTimes = () => {
         if (!times.length) return setMode(null);
         setSelected((prev) => uniqNormPush(prev, times.join(" / ")));
@@ -435,8 +504,11 @@ function InlineDropdown({
         setMode(null);
     };
 
-    const toggleDate = (d: string) => setDates((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+    const toggleDate = (d: string) =>
+        setDates((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+
     const addIsoDate = (iso: string) => iso && setDates((prev) => (prev.includes(iso) ? prev : [...prev, iso]));
+
     const commitDates = () => {
         if (!dates.length) return setMode(null);
         setSelected((prev) => uniqNormPush(prev, dates.join(" / ")));
@@ -445,18 +517,24 @@ function InlineDropdown({
     };
 
     const structuredOptions = React.useMemo(() => {
-        const groups: Array<{ type: 'single' | 'group'; label?: string; items: string[] }> = [];
+        const groups: Array<{ type: "single" | "group"; label?: string; items: string[] }> = [];
         const allFlat: string[] = [];
+        const singles: string[] = []; // 개별 옵션들을 모아서 하나의 그룹으로
 
         (facet.options || []).forEach((opt: any) => {
             if (typeof opt === "string") {
-                groups.push({ type: 'single', items: [opt] });
+                singles.push(opt);
                 allFlat.push(opt);
             } else if (opt?.group && Array.isArray(opt.items)) {
-                groups.push({ type: 'group', label: opt.group, items: opt.items });
+                groups.push({ type: "group", label: opt.group, items: opt.items });
                 opt.items.forEach((i: string) => allFlat.push(i));
             }
         });
+
+        // 개별 옵션들이 있으면 하나의 그룹으로 추가
+        if (singles.length > 0) {
+            groups.unshift({ type: "single", items: singles });
+        }
 
         const customs = (customOptions || []).filter(
             (c: string) => !allFlat.some((b) => normalize(b) === normalize(c))
@@ -465,538 +543,572 @@ function InlineDropdown({
         return { groups, customs };
     }, [facet.options, customOptions]);
 
-    // 모바일 버전 (바텀시트)
-    if (isMobile) {
+    const handleApply = () => {
+        onChange(pack(selected));
+        onClose();
+    };
+
+    const handleCancel = () => {
+        setSelected(unpack(value));
+        setMode(null);
+        setTextInput("");
+        setTimes([]);
+        setDates([]);
+        onClose();
+    };
+
+    const handleChipRemove = (chip: string) => {
+        setSelected((prev) => prev.filter((item) => item !== chip));
+    };
+
+    // 하단 옵션 편집 핸들러들
+    const handleDeleteOption = (optionToDelete: string) => {
+        if (!onUpdateFacetOptions) return;
+
+        // facet.options에서 해당 옵션 제거
+        const newOptions = (facet.options || [])
+            .map((opt: any) => {
+                if (typeof opt === 'string') {
+                    return opt !== optionToDelete ? opt : null;
+                } else if (opt?.group && Array.isArray(opt.items)) {
+                    // 그룹 내에서 항목 제거
+                    const filteredItems = opt.items.filter((item: string) => item !== optionToDelete);
+                    // 그룹 내 항목이 없으면 null 반환 (그룹 제거)
+                    return filteredItems.length > 0 ? { ...opt, items: filteredItems } : null;
+                }
+                return opt;
+            })
+            .filter((opt: any) => opt !== null); // null 제거
+
+        onUpdateFacetOptions(facet.key, newOptions);
+    };
+
+    const handleReorderOptions = (newOrder: any[]) => {
+        if (!onUpdateFacetOptions) return;
+        onUpdateFacetOptions(facet.key, newOrder);
+    };
+
+    const handleOptionDragEnd = (event: DragEndEvent, groupIndex: number) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const group = structuredOptions.groups[groupIndex];
+        const oldIndex = group.items.indexOf(active.id as string);
+        const newIndex = group.items.indexOf(over.id as string);
+
+        if (oldIndex === -1 || newIndex === -1) return;
+
+        const newItems = arrayMove(group.items, oldIndex, newIndex);
+
+        // facet.options 업데이트
+        const newOptions = (facet.options || []).map((opt: any, idx: number) => {
+            if (idx === groupIndex) {
+                if (typeof opt === 'string') {
+                    return opt;
+                } else if (opt?.group) {
+                    return { ...opt, items: newItems };
+                }
+            }
+            return opt;
+        });
+
+        onUpdateFacetOptions?.(facet.key, newOptions);
+    };
+
+    // Sortable 옵션 아이템 컴포넌트
+    const SortableOptionItem = ({ label, groupIdx }: { label: string; groupIdx: number }) => {
+        const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+            id: label,
+            disabled: !optionEditMode
+        });
+
+        const style: React.CSSProperties = {
+            transform: CSS.Transform.toString(transform),
+            transition,
+            opacity: isDragging ? 0.5 : 1,
+        };
+
+        const active = selected.includes(label);
+
         return (
-            <MobileBottomSheet
-                isOpen={true}
-                onClose={() => {
-                    onChange(pack(selected));
-                    onClose();
-                }}
-                title={facet.label}
+            <div
+                ref={setNodeRef}
+                style={style}
+                className="relative"
             >
-                {/* 모드 선택 */}
-                <div className="flex gap-2 mb-4">
+                <button
+                    onClick={() => !optionEditMode && toggleOption(label)}
+                    disabled={optionEditMode}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${optionEditMode
+                        ? "bg-white text-slate-700 cursor-default"
+                        : active
+                            ? "bg-blue-600 text-white shadow"
+                            : "bg-white text-slate-700 hover:bg-slate-100"
+                        }`}
+                >
+                    {optionEditMode && (
+                        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+                            <GripVertical className="w-3 h-3 text-slate-400" />
+                        </div>
+                    )}
+                    <span>{label}</span>
+                </button>
+                {optionEditMode && (
                     <button
-                        onClick={() => setMode("text")}
-                        className="flex-1 h-11 rounded-xl flex items-center justify-center gap-2 text-sm font-medium bg-slate-600 text-white"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`"${label}" 옵션을 삭제하시겠습니까?`)) {
+                                handleDeleteOption(label);
+                            }
+                        }}
+                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center shadow"
                     >
-                        <Type className="w-4 h-4" /> 텍스트
+                        ×
                     </button>
-                    <button
-                        onClick={() => setMode("time")}
-                        className="h-11 px-4 rounded-xl flex items-center justify-center bg-blue-100 text-blue-600"
+                )}
+            </div>
+        );
+    };
+
+    const handleBulkDeleteOptions = () => {
+        if (!optionBulkSelection.length || !onUpdateFacetOptions) return;
+
+        const newOptions = (facet.options || [])
+            .map((opt: any) => {
+                if (typeof opt === 'string') {
+                    return !optionBulkSelection.includes(opt) ? opt : null;
+                } else if (opt?.group && Array.isArray(opt.items)) {
+                    // 그룹 내에서 선택된 항목들 제거
+                    const filteredItems = opt.items.filter((item: string) => !optionBulkSelection.includes(item));
+                    // 그룹 내 항목이 없으면 null 반환 (그룹 제거)
+                    return filteredItems.length > 0 ? { ...opt, items: filteredItems } : null;
+                }
+                return opt;
+            })
+            .filter((opt: any) => opt !== null); // null 제거
+
+        onUpdateFacetOptions(facet.key, newOptions);
+        setOptionBulkSelection([]);
+    };
+
+    const containerClass = isMobile
+        ? "fixed inset-x-0 bottom-0 z-[1000] px-3 pb-4"
+        : "absolute z-[1000]";
+
+    const containerStyle = isMobile ? undefined : { top: position.top, left: position.left };
+
+    return (
+        <>
+            <div className={containerClass} style={containerStyle}>
+                <div className={`w-full ${isMobile ? "max-h-[85vh]" : "w-[420px]"} inline-dropdown-anim`}>
+                    <div
+                        ref={dropdownRef}
+                        className="relative bg-white border border-slate-200 rounded-3xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
                     >
-                        <Clock className="w-5 h-5" />
-                    </button>
-                    <button
-                        onClick={() => setMode("date")}
-                        className="h-11 px-4 rounded-xl flex items-center justify-center bg-purple-100 text-purple-600"
-                    >
-                        <Calendar className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* 텍스트 모드 */}
-                {mode === "text" && (
-                    <div className="space-y-3 mb-4 p-4 bg-gray-50 rounded-xl">
-                        <div className="flex gap-2">
-                            <input
-                                autoFocus
-                                type="text"
-                                value={textInput}
-                                onChange={(e) => setTextInput(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && addTextInput()}
-                                placeholder="직접 입력"
-                                className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm"
-                            />
-                            <button onClick={addTextInput} className="px-5 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold">
-                                추가
-                            </button>
-                        </div>
-                        <button onClick={() => setMode(null)} className="w-full h-11 rounded-xl border bg-white text-sm">
-                            취소
-                        </button>
-                    </div>
-                )}
-
-                {/* 시간 모드 */}
-                {mode === "time" && (
-                    <div className="space-y-3 mb-4 p-4 bg-gray-50 rounded-xl">
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={startInput}
-                                onChange={(e) => setStartInput(e.target.value)}
-                                placeholder="시작"
-                                className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm"
-                            />
-                            <span className="flex items-center">~</span>
-                            <input
-                                type="text"
-                                value={endInput}
-                                onChange={(e) => setEndInput(e.target.value)}
-                                placeholder="종료"
-                                className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm"
-                            />
-                            <button onClick={addTimeRange} className="px-5 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold">
-                                추가
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                            {quickRanges.map((qr) => (
-                                <button
-                                    key={qr}
-                                    onClick={() => addTimeToken(qr)}
-                                    className="h-10 text-xs rounded-xl bg-blue-100 text-blue-700 font-medium"
-                                >
-                                    {qr}
-                                </button>
-                            ))}
-                        </div>
-                        {times.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                                {times.map((t) => (
-                                    <div key={t} className="inline-flex items-center gap-1 px-3 h-9 bg-blue-100 text-blue-900 text-xs font-medium rounded-xl">
-                                        {t}
-                                        <button onClick={() => setTimes((prev) => prev.filter((x) => x !== t))}>
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        <div className="flex gap-2">
-                            <button onClick={() => setMode(null)} className="flex-1 h-11 rounded-xl border bg-white text-sm">
-                                취소
-                            </button>
-                            <button onClick={commitTimes} className="flex-1 h-11 rounded-xl bg-blue-600 text-white text-sm font-semibold">
-                                완료
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* 날짜 모드 */}
-                {mode === "date" && (
-                    <div className="space-y-3 mb-4 p-4 bg-gray-50 rounded-xl">
-                        <div className="flex gap-2">
-                            <input
-                                type="date"
-                                value={customDate}
-                                onChange={(e) => setCustomDate(e.target.value)}
-                                className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm"
-                            />
-                            <button
-                                onClick={() => {
-                                    addIsoDate(customDate);
-                                    setCustomDate("");
-                                }}
-                                className="px-5 py-3 bg-purple-600 text-white text-sm font-semibold rounded-xl"
-                            >
-                                추가
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-4 gap-2">
-                            {["월", "화", "수", "목", "금", "토", "일", "평일", "주말", "매일", "공휴일", "명절", "설날", "추석", "연중무휴"].map((p) => (
-                                <button
-                                    key={p}
-                                    onClick={() => toggleDate(p)}
-                                    className={`h-10 text-xs font-medium rounded-xl ${dates.includes(p) ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-700"}`}
-                                >
-                                    {p}
-                                </button>
-                            ))}
-                        </div>
-                        {dates.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                                {dates.map((d) => (
-                                    <div key={d} className="inline-flex items-center gap-1 px-3 h-9 bg-purple-100 text-purple-900 text-xs font-medium rounded-xl">
-                                        {d}
-                                        <button onClick={() => toggleDate(d)}>
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        <div className="flex gap-2">
-                            <button onClick={() => setMode(null)} className="flex-1 h-11 rounded-xl border bg-white text-sm">
-                                취소
-                            </button>
-                            <button onClick={commitDates} className="flex-1 h-11 rounded-xl bg-purple-600 text-white text-sm font-semibold">
-                                완료
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* 옵션 리스트 */}
-                <div className="space-y-3">
-                    {structuredOptions.groups.map((group, groupIdx) => (
-                        <div key={`group-${groupIdx}`}>
-                            {group.type === 'group' && group.label && (
-                                <div className="text-xs font-semibold text-gray-600 mb-2">
-                                    📂 {group.label}
+                        <div className="p-4 border-b border-slate-100 relative">
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-wide text-slate-400">{facet.key}</p>
+                                    <h3 className="text-lg font-semibold text-slate-900">{facet.label}</h3>
                                 </div>
-                            )}
-                            <div className="flex flex-wrap gap-2">
-                                {group.items.map((label) => {
-                                    const active = selected.includes(label);
-                                    return (
+                                <button
+                                    onClick={handleCancel}
+                                    className="w-8 h-8 rounded-full border border-slate-200 text-slate-400 hover:text-slate-600 flex items-center justify-center flex-shrink-0"
+                                    aria-label="닫기"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="rounded-2xl p-3 bg-slate-50">
+                                <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                                    <span className="font-medium">{selected.length}개 선택됨</span>
+                                    <div className="flex items-center gap-1.5">
                                         <button
-                                            key={`opt-${label}`}
-                                            onClick={() => toggleOption(label)}
-                                            className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${active
-                                                ? "bg-blue-600 text-white"
-                                                : "bg-gray-100 text-gray-700"
-                                                }`}
+                                            onClick={() => setMode((prev) => (prev === "text" ? null : "text"))}
+                                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${mode === "text" ? "bg-slate-200 text-slate-700" : "text-slate-500 hover:bg-slate-200"}`}
+                                            aria-label="직접 추가"
                                         >
-                                            {label}
+                                            <Plus className="w-3.5 h-3.5" />
                                         </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    ))}
-
-                    {/* 커스텀 옵션 */}
-                    {(structuredOptions.customs || []).length > 0 && (
-                        <>
-                            <div className="border-t pt-3" />
-                            <div>
-                                <div className="text-xs font-semibold text-gray-600 mb-2">
-                                    ✏️ 직접 추가한 옵션
+                                        <button
+                                            onClick={() => setMode((prev) => (prev === "time" ? null : "time"))}
+                                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${mode === "time" ? "bg-blue-100 text-blue-700" : "text-slate-500 hover:bg-slate-200"}`}
+                                            aria-label="시간 선택"
+                                        >
+                                            <Clock className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                            onClick={() => setMode((prev) => (prev === "date" ? null : "date"))}
+                                            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${mode === "date" ? "bg-purple-100 text-purple-700" : "text-slate-500 hover:bg-slate-200"}`}
+                                            aria-label="날짜 선택"
+                                        >
+                                            <Calendar className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {(structuredOptions.customs || []).map((label) => {
-                                        const active = selected.includes(label);
-                                        return (
-                                            <div key={`custom-${label}`} className="relative">
-                                                <button
-                                                    onClick={() => toggleOption(label)}
-                                                    className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${active
-                                                        ? "bg-blue-600 text-white"
-                                                        : "bg-gray-100 text-gray-700"
-                                                        }`}
-                                                >
-                                                    {label}
-                                                </button>
-                                                {onDeleteCustomOption && (
+
+                                <div className="min-h-[48px]">
+                                    {selected.length === 0 ? (
+                                        <p className="text-sm text-slate-400">아직 선택된 값이 없습니다.</p>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {selected.map((chip) => (
+                                                <div key={chip} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-sm font-medium border border-slate-200 bg-white text-slate-700">
+                                                    <span className="text-slate-800">{chip}</span>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            if (confirm(`"${label}" 옵션을 삭제할까요?`)) onDeleteCustomOption(label);
+                                                            handleChipRemove(chip);
                                                         }}
-                                                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs"
+                                                        className="text-slate-400 hover:text-red-500 transition-colors"
                                                     >
-                                                        ×
+                                                        <X className="w-3 h-3" />
                                                     </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {mode === "text" && (
+                                    <form
+                                        className="flex gap-2 pt-2 mt-2 border-t border-slate-200"
+                                        onSubmit={(e) => {
+                                            e.preventDefault();
+                                            addTextInput();
+                                        }}
+                                    >
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            value={textInput}
+                                            onChange={(e) => setTextInput(e.target.value)}
+                                            placeholder="직접 입력"
+                                            className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm"
+                                        />
+                                        <button
+                                            type="submit"
+                                            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold"
+                                        >
+                                            추가
+                                        </button>
+                                    </form>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4">
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-semibold text-slate-500">🍭 사용 가능 옵션</p>
+                                    <button
+                                        onClick={() => setOptionEditMode((prev) => !prev)}
+                                        className={`text-xs font-medium px-2.5 py-1 rounded-md transition-colors ${optionEditMode
+                                            ? "bg-red-100 text-red-700 hover:bg-red-200"
+                                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                            }`}
+                                    >
+                                        {optionEditMode ? "완료" : "편집"}
+                                    </button>
+                                </div>
+
+                                {/* 모든 옵션을 한 영역에 표시 */}
+                                <div className="rounded-xl bg-slate-50 p-2.5">
+                                    {structuredOptions.groups.map((group, groupIdx) => {
+                                        const sensors = useSensors(
+                                            useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+                                        );
+
+                                        return (
+                                            <div key={`group-${groupIdx}`} className="mb-2 last:mb-0">
+                                                {group.type === "group" && group.label && (
+                                                    <div className="text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                                                        <span role="img" aria-hidden="true">📂</span> {group.label}
+                                                    </div>
                                                 )}
+                                                <DndContext
+                                                    sensors={sensors}
+                                                    collisionDetection={closestCenter}
+                                                    onDragEnd={(event) => handleOptionDragEnd(event, groupIdx)}
+                                                >
+                                                    <SortableContext
+                                                        items={group.items}
+                                                        strategy={horizontalListSortingStrategy}
+                                                    >
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {group.items.map((label) => (
+                                                                <SortableOptionItem
+                                                                    key={label}
+                                                                    label={label}
+                                                                    groupIdx={groupIdx}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </SortableContext>
+                                                </DndContext>
                                             </div>
                                         );
                                     })}
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
 
-                {/* 완료 버튼 */}
-                <div className="mt-6 sticky bottom-0 bg-white pt-4 pb-2 border-t">
-                    <button
-                        onClick={() => {
-                            onChange(pack(selected));
-                            onClose();
-                        }}
-                        className="w-full h-12 rounded-xl bg-blue-600 text-white text-base font-semibold"
-                    >
-                        완료
-                    </button>
-                </div>
-            </MobileBottomSheet>
-        );
-    }
-
-    // 데스크톱 버전 (기존 드롭다운 유지)
-    return (
-        <div
-            ref={dropdownRef}
-            className="fixed bg-white rounded-xl shadow-2xl border-2 border-gray-200 w-[320px] flex flex-col z-50 overflow-hidden"
-            style={{ top: `${position.top}px`, left: `${position.left}px`, maxHeight: "min(600px, calc(100vh - 64px))" }}
-        >
-            {/* 헤더 */}
-            <div className="px-4 py-3 border-b bg-gray-50 flex items-center gap-2">
-                <div className="font-semibold text-sm flex-1 truncate">{facet.label}</div>
-                <button
-                    onClick={() => {
-                        onChange(pack(selected));
-                        onClose();
-                    }}
-                    className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700"
-                >
-                    완료
-                </button>
-            </div>
-
-            {/* 모드 선택 */}
-            <div className="p-3 border-b">
-                <div className="mt-1 flex gap-2">
-                    <button
-                        onClick={() => setMode("text")}
-                        className="flex-1 h-8 rounded-lg flex items-center justify-center gap-1.5 text-xs font-medium bg-slate-600 text-white hover:bg-slate-700"
-                    >
-                        <Type className="w-3.5 h-3.5" /> 텍스트
-                    </button>
-                    <button
-                        onClick={() => setMode("time")}
-                        className="w-9 h-8 rounded-lg flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200"
-                        title="시간"
-                    >
-                        <Clock className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={() => setMode("date")}
-                        className="w-9 h-8 rounded-lg flex items-center justify-center bg-purple-100 text-purple-600 hover:bg-purple-200"
-                        title="날짜"
-                    >
-                        <Calendar className="w-4 h-4" />
-                    </button>
-                </div>
-            </div>
-
-            {/* 컨텐츠 영역 */}
-            <div className="flex-1 overflow-y-auto p-3">
-                {/* 텍스트 모드 */}
-                {mode === "text" && (
-                    <div className="space-y-3 p-3 bg-gray-50 rounded-lg">
-                        <div className="flex gap-2">
-                            <input
-                                autoFocus
-                                type="text"
-                                value={textInput}
-                                onChange={(e) => setTextInput(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && addTextInput()}
-                                placeholder="직접 입력"
-                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            />
-                            <button onClick={addTextInput} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700">
-                                추가
-                            </button>
-                        </div>
-                        <button onClick={() => setMode(null)} className="w-full h-9 rounded-lg border bg-white hover:bg-gray-50 text-sm">
-                            취소
-                        </button>
-                    </div>
-                )}
-
-                {/* 시간 모드 */}
-                {mode === "time" && (
-                    <div className="space-y-3 p-3 bg-gray-50 rounded-lg">
-                        <div className="text-xs font-semibold text-gray-700 mb-2">시간 범위</div>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={startInput}
-                                onChange={(e) => setStartInput(e.target.value)}
-                                placeholder="시작"
-                                className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
-                            />
-                            <span className="flex items-center text-gray-400">~</span>
-                            <input
-                                type="text"
-                                value={endInput}
-                                onChange={(e) => setEndInput(e.target.value)}
-                                placeholder="종료"
-                                className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs"
-                            />
-                            <button onClick={addTimeRange} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 whitespace-nowrap">
-                                추가
-                            </button>
-                        </div>
-                        <div>
-                            <div className="text-xs font-semibold text-gray-700 mb-2">프리셋 (다중)</div>
-                            <div className="flex flex-wrap gap-1.5">
-                                {quickRanges.map((qr) => (
-                                    <button
-                                        key={qr}
-                                        onClick={() => addTimeToken(qr)}
-                                        className="px-2.5 h-7 text-xs font-medium rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
-                                    >
-                                        {qr}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        {times.length > 0 && (
-                            <div>
-                                <div className="text-xs font-semibold text-gray-700 mb-2">선택된 시간</div>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {times.map((t) => (
-                                        <div key={t} className="inline-flex items-center gap-1 px-2.5 h-7 bg-blue-100 text-blue-900 text-xs font-medium rounded-lg">
-                                            {t}
-                                            <button onClick={() => setTimes((prev) => prev.filter((x) => x !== t))} className="hover:text-red-600">
-                                                <X className="w-3 h-3" />
-                                            </button>
+                                    {/* 커스텀 옵션도 같은 영역에 표시 */}
+                                    {(structuredOptions.customs || []).length > 0 && (
+                                        <div className="pt-2 border-t border-slate-200">
+                                            <div className="text-[10px] font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
+                                                <span role="img" aria-hidden="true">✏️</span> 직접 추가한 옵션
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {(structuredOptions.customs || []).map((label) => {
+                                                    const active = selected.includes(label);
+                                                    return (
+                                                        <div key={`custom-${label}`} className="relative group">
+                                                            <button
+                                                                onClick={() => toggleOption(label)}
+                                                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${active
+                                                                    ? "bg-emerald-600 text-white"
+                                                                    : "bg-white text-slate-700 hover:bg-slate-100"}`}
+                                                            >
+                                                                {label}
+                                                            </button>
+                                                            {onDeleteCustomOption && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (confirm(`"${label}" 옵션을 삭제할까요?`)) onDeleteCustomOption(label);
+                                                                    }}
+                                                                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             </div>
-                        )}
-                        <div className="flex gap-2 justify-end">
-                            <button onClick={() => setMode(null)} className="h-9 px-4 rounded-lg border bg-white hover:bg-gray-50 text-sm">
-                                취소
-                            </button>
-                            <button onClick={commitTimes} className="h-9 px-4 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm">
-                                완료
-                            </button>
                         </div>
-                    </div>
-                )}
 
-                {/* 날짜 모드 */}
-                {mode === "date" && (
-                    <div className="space-y-3 p-3 bg-gray-50 rounded-lg">
-                        <div className="text-xs font-semibold text-gray-700 mb-2">날짜 직접 입력</div>
-                        <div className="flex gap-2">
-                            <input
-                                type="date"
-                                value={customDate}
-                                onChange={(e) => setCustomDate(e.target.value)}
-                                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs"
-                            />
+                        <div className="p-3 border-t border-slate-100 bg-white flex gap-2 sticky bottom-0">
                             <button
-                                onClick={() => {
-                                    addIsoDate(customDate);
-                                    setCustomDate("");
-                                }}
-                                className="px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold rounded-lg hover:bg-purple-700 whitespace-nowrap"
+                                onClick={handleCancel}
+                                className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50"
                             >
-                                추가
+                                취소
+                            </button>
+                            <button
+                                onClick={handleApply}
+                                className="flex-1 h-10 rounded-xl bg-blue-600 text-white font-semibold shadow text-sm hover:bg-blue-700"
+                            >
+                                적용
                             </button>
                         </div>
-                        <div>
-                            <div className="text-xs font-semibold text-gray-700 mb-2">프리셋 (다중)</div>
-                            <div className="flex flex-wrap gap-1.5">
-                                {["월", "화", "수", "목", "금", "토", "일", "평일", "주말", "매일", "공휴일", "명절", "설날", "추석", "연중무휴"].map((p) => (
-                                    <button
-                                        key={p}
-                                        onClick={() => toggleDate(p)}
-                                        className={`px-2.5 h-7 text-xs font-medium rounded-lg ${dates.includes(p) ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
-                                    >
-                                        {p}
+
+                        {mode === "time" && (
+                            <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[1001] max-w-sm mx-auto rounded-2xl border border-blue-100 bg-white shadow-2xl overflow-hidden">
+                                <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                                    <span className="text-sm font-semibold text-blue-700">⏰ 시간 선택</span>
+                                    <button onClick={() => setMode(null)} className="text-slate-400 hover:text-slate-600">
+                                        <X className="w-4 h-4" />
                                     </button>
-                                ))}
-                            </div>
-                        </div>
-                        {dates.length > 0 && (
-                            <div>
-                                <div className="text-xs font-semibold text-gray-700 mb-2">선택된 날짜</div>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {dates.map((d) => (
-                                        <div key={d} className="inline-flex items-center gap-1 px-2.5 h-7 bg-purple-100 text-purple-900 text-xs font-medium rounded-lg">
-                                            {d}
-                                            <button onClick={() => toggleDate(d)} className="hover:text-red-600">
-                                                <X className="w-3 h-3" />
+                                </div>
+
+                                <div className="p-4 max-h-[60vh] overflow-y-auto">
+                                    {/* 퀵 선택 버튼 */}
+                                    <div className="mb-4">
+                                        <div className="text-[11px] text-slate-500 font-medium mb-2">빠른 선택</div>
+                                        <div className="grid grid-cols-4 gap-1.5">
+                                            {quickRanges.map((qr) => (
+                                                <button
+                                                    key={qr}
+                                                    onClick={() => addTimeToken(qr)}
+                                                    className="px-2 py-2 rounded-lg text-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium transition-colors"
+                                                >
+                                                    {qr}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* 시간 입력 */}
+                                    <div className="mb-4">
+                                        <div className="text-[11px] text-slate-500 font-medium mb-2">시간 설정</div>
+
+                                        <div className="flex items-center gap-2 mb-3">
+                                            {/* 시작 시간 */}
+                                            <input
+                                                type="time"
+                                                value={startInput}
+                                                onChange={(e) => setStartInput(e.target.value)}
+                                                className="flex-1 h-11 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            />
+
+                                            <span className="text-slate-400">~</span>
+
+                                            {/* 종료 시간 */}
+                                            <div className="flex-1 relative">
+                                                <input
+                                                    type="time"
+                                                    value={endInput}
+                                                    onChange={(e) => setEndInput(e.target.value)}
+                                                    className="w-full h-11 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-400 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:text-slate-700"
+                                                    placeholder="선택"
+                                                />
+                                                {endInput && (
+                                                    <button
+                                                        onClick={() => setEndInput('')}
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* 추가 버튼 */}
+                                            <button
+                                                onClick={() => {
+                                                    addTimeRange();
+                                                    setStartInput('09:00');
+                                                    setEndInput('');
+                                                }}
+                                                className="h-11 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shadow-sm transition-colors flex-shrink-0"
+                                            >
+                                                +
                                             </button>
                                         </div>
-                                    ))}
+                                        <div className="text-[10px] text-slate-400 px-1">종료 시간은 선택사항입니다</div>
+                                    </div>
+
+                                    {/* 선택된 시간 표시 */}
+                                    {times.length > 0 && (
+                                        <div className="pt-4 border-t border-slate-100">
+                                            <div className="text-[11px] text-slate-500 font-medium mb-2">선택된 시간</div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {times.map((t) => (
+                                                    <span key={t} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-100 text-blue-800 text-xs font-medium">
+                                                        {t}
+                                                        <button
+                                                            onClick={() => setTimes((prev) => prev.filter((x) => x !== t))}
+                                                            className="hover:text-red-600 transition-colors"
+                                                        >
+                                                            <X className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 하단 버튼 */}
+                                <div className="p-3 border-t border-slate-100 bg-white flex gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setTimes([]);
+                                            setMode(null);
+                                        }}
+                                        className="flex-1 h-11 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors"
+                                    >
+                                        취소
+                                    </button>
+                                    <button
+                                        onClick={commitTimes}
+                                        className="flex-1 h-11 rounded-xl bg-blue-600 text-white font-semibold shadow text-sm hover:bg-blue-700 transition-colors"
+                                    >
+                                        적용
+                                    </button>
                                 </div>
                             </div>
                         )}
-                        <div className="flex gap-2 justify-end">
-                            <button onClick={() => setMode(null)} className="h-9 px-4 rounded-lg border bg-white hover:bg-gray-50 text-sm">
-                                취소
-                            </button>
-                            <button onClick={commitDates} className="h-9 px-4 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm">
-                                완료
-                            </button>
-                        </div>
-                    </div>
-                )}
 
-                {/* 옵션 리스트 - 계층형 구조 */}
-                <div className="space-y-2 pt-2 border-t">
-                    <div className="text-xs font-semibold text-gray-500">옵션</div>
-                    <div className="space-y-3">
-                        {structuredOptions.groups.map((group, groupIdx) => (
-                            <div key={`group-${groupIdx}`}>
-                                {group.type === 'group' && group.label && (
-                                    <div className="text-[11px] font-semibold text-gray-600 mb-1.5 px-1">
-                                        📂 {group.label}
-                                    </div>
-                                )}
-                                <div className="flex flex-wrap gap-1.5">
-                                    {group.items.map((label) => {
-                                        const active = selected.includes(label);
-                                        return (
+                        {mode === "date" && (
+                            <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-[1001] max-w-sm mx-auto rounded-2xl border border-purple-100 bg-white shadow-2xl">
+                                <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                                    <span className="text-sm font-semibold text-purple-700">📅 날짜 선택</span>
+                                    <button onClick={() => setMode(null)} className="text-slate-400 hover:text-slate-600">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                <div className="p-4">
+                                    <input
+                                        type="date"
+                                        value={customDate}
+                                        onChange={(e) => {
+                                            setCustomDate(e.target.value);
+                                            addIsoDate(e.target.value);
+                                        }}
+                                        className="w-full h-11 rounded-xl border border-slate-200 px-3 text-sm mb-3"
+                                    />
+                                    <div className="flex flex-wrap gap-1.5 mb-3">
+                                        {["월", "화", "수", "목", "금", "토", "일", "평일", "주말", "매일", "공휴일", "명절"].map((p) => (
                                             <button
-                                                key={`opt-${label}`}
-                                                onClick={() => toggleOption(label)}
-                                                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${active
-                                                    ? "bg-blue-600 text-white"
-                                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                    }`}
+                                                key={p}
+                                                onClick={() => toggleDate(p)}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-medium ${dates.includes(p)
+                                                    ? "bg-purple-600 text-white"
+                                                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
                                             >
-                                                {label}
+                                                {p}
                                             </button>
-                                        );
-                                    })}
+                                        ))}
+                                    </div>
+                                    {dates.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 pt-3 border-t border-slate-100 mb-3">
+                                            {dates.map((d) => (
+                                                <span key={d} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-100 text-purple-800 text-xs font-medium">
+                                                    {d}
+                                                    <button onClick={() => toggleDate(d)} className="hover:text-red-500">
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div className="flex gap-2 text-sm">
+                                        <button
+                                            onClick={() => setMode(null)}
+                                            className="flex-1 h-11 rounded-xl border border-slate-200 hover:bg-slate-50 font-medium"
+                                        >
+                                            취소
+                                        </button>
+                                        <button
+                                            onClick={commitDates}
+                                            className="flex-1 h-11 rounded-xl bg-purple-600 text-white hover:bg-purple-700 font-semibold shadow-sm"
+                                        >
+                                            완료
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                        ))}
-
-                        {/* 커스텀 옵션 */}
-                        {(structuredOptions.customs || []).length > 0 && (
-                            <>
-                                <div className="w-full border-t border-gray-300 my-2" />
-                                <div>
-                                    <div className="text-[11px] font-semibold text-gray-600 mb-1.5 px-1">
-                                        ✏️ 직접 추가한 옵션
-                                    </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {(structuredOptions.customs || []).map((label) => {
-                                            const active = selected.includes(label);
-                                            return (
-                                                <div key={`custom-${label}`} className="relative group">
-                                                    <button
-                                                        onClick={() => toggleOption(label)}
-                                                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${active
-                                                            ? "bg-blue-600 text-white"
-                                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                            }`}
-                                                    >
-                                                        {label}
-                                                    </button>
-                                                    {onDeleteCustomOption && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (confirm(`"${label}" 옵션을 삭제할까요?`)) onDeleteCustomOption(label);
-                                                            }}
-                                                            className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-[10px]"
-                                                            title="커스텀 옵션 삭제"
-                                                        >
-                                                            ×
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            </>
                         )}
                     </div>
                 </div>
             </div>
-        </div>
+
+            <style jsx>{`
+                @keyframes inlineDropdownFade {
+                    from {
+                        opacity: 0;
+                        transform: translateY(12px) scale(0.98);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0) scale(1);
+                    }
+                }
+                .inline-dropdown-anim {
+                    animation: inlineDropdownFade 0.18s ease-out;
+                }
+            `}</style>
+        </>
     );
 }
 
 // ────────────────────────────────────────────────────────────
-// QuickAddBottomSheet (모바일 UI)
+// QuickAddBottomSheet - 미니멀 & 모던 디자인
 // ────────────────────────────────────────────────────────────
 function QuickAddBottomSheet({ isOpen, onClose, sheetId, onAdd, onAddAll }: any) {
     const [customName, setCustomName] = React.useState("");
@@ -1011,59 +1123,54 @@ function QuickAddBottomSheet({ isOpen, onClose, sheetId, onAdd, onAddAll }: any)
 
     return (
         <MobileBottomSheet isOpen={isOpen} onClose={onClose} title="항목 추가">
-            <div className="space-y-4">
+            <div className="space-y-5">
                 {/* 직접 입력 */}
-                <div>
-                    <div className="text-sm font-semibold text-gray-700 mb-2">직접 입력</div>
-                    <div className="flex gap-2">
-                        <input
-                            value={customName}
-                            onChange={(e) => setCustomName(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && add(customName)}
-                            placeholder="항목명을 입력하세요"
-                            className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm"
-                        />
-                        <button
-                            onClick={() => add(customName)}
-                            className="px-6 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold"
-                        >
-                            추가
-                        </button>
-                    </div>
+                <div className="flex gap-2">
+                    <input
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && add(customName)}
+                        placeholder="항목명 입력..."
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        autoFocus
+                    />
+                    <button
+                        onClick={() => add(customName)}
+                        disabled={!customName.trim()}
+                        className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                    >
+                        추가
+                    </button>
                 </div>
 
                 {/* 프리셋 */}
                 {presets.length > 0 && (
-                    <>
-                        <div className="border-t pt-4">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="text-sm font-semibold text-gray-700">프리셋에서 선택</div>
-                                <button
-                                    onClick={() => {
-                                        onAddAll(presets.map((p: any) => p.name));
-                                        onClose();
-                                    }}
-                                    className="text-xs text-blue-600 font-medium"
-                                >
-                                    전체 추가
-                                </button>
-                            </div>
-                            <div className="space-y-2">
-                                {presets.map((p: any) => (
-                                    <button
-                                        key={p.name}
-                                        onClick={() => add(p.name)}
-                                        className="w-full text-left px-4 py-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xl">{p.icon || "📌"}</span>
-                                            <span className="font-medium text-gray-900">{p.name}</span>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
+                    <div className="pt-3 border-t border-gray-100">
+                        <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs text-gray-500">프리셋에서 선택</span>
+                            <button
+                                onClick={() => {
+                                    onAddAll(presets.map((p: any) => p.name));
+                                    onClose();
+                                }}
+                                className="text-xs text-blue-600 font-medium hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                            >
+                                전체 추가
+                            </button>
                         </div>
-                    </>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {presets.map((p: any) => (
+                                <button
+                                    key={p.name}
+                                    onClick={() => add(p.name)}
+                                    className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left group"
+                                >
+                                    <span className="text-xl group-hover:scale-110 transition-transform">{p.icon || "📌"}</span>
+                                    <span className="font-medium text-gray-900 text-sm truncate">{p.name}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
         </MobileBottomSheet>
@@ -1071,16 +1178,59 @@ function QuickAddBottomSheet({ isOpen, onClose, sheetId, onAdd, onAddAll }: any)
 }
 
 // ────────────────────────────────────────────────────────────
-// ColumnManageBottomSheet (모바일 UI)
+// ColumnManageBottomSheet - 미니멀 & 모던 디자인
 // ────────────────────────────────────────────────────────────
-function ColumnManageBottomSheet({ isOpen, onClose, sheetId, allFacets, visibleKeys, onToggle, onCreate, onReorder }: any) {
+function ColumnManageBottomSheet({ isOpen, onClose, sheetId, allFacets, visibleKeys, onToggle, onCreate, onReorder, onDelete }: any) {
     const [newFacetName, setNewFacetName] = React.useState("");
+    const [localOrder, setLocalOrder] = React.useState<string[]>([]);
+
+    React.useEffect(() => {
+        if (isOpen) {
+            // 표시 중인 것 먼저, 숨겨진 것 나중에
+            const visible = allFacets.filter((f: any) => visibleKeys.includes(f.key)).map((f: any) => f.key);
+            const hidden = allFacets.filter((f: any) => !visibleKeys.includes(f.key)).map((f: any) => f.key);
+            setLocalOrder([...visible, ...hidden]);
+        }
+    }, [isOpen, allFacets, visibleKeys]);
+
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        setLocalOrder((items) => {
+            const oldIndex = items.indexOf(active.id as string);
+            const newIndex = items.indexOf(over.id as string);
+            const newOrder = arrayMove(items, oldIndex, newIndex);
+
+            // 표시 중인 항목들의 순서만 업데이트
+            const visibleInNewOrder = newOrder.filter(key => visibleKeys.includes(key));
+            onReorder(visibleInNewOrder);
+
+            return newOrder;
+        });
+    };
 
     const addNewFacet = () => {
         const name = newFacetName.trim();
         if (!name) return;
+
+        // key 생성 - 전체 문자열을 하나의 key로 변환
+        // 공백을 언더스코어로, 특수문자 제거
+        const key = name
+            .toLowerCase()
+            .replace(/\s+/g, "_")  // 공백을 언더스코어로
+            .replace(/[^\w가-힣]/g, "");  // 특수문자 제거, 한글/영문/숫자만
+
+        // 중복 체크
+        if (allFacets.some((f: any) => f.key === key)) {
+            alert("이미 존재하는 열입니다.");
+            return;
+        }
+
         onCreate({
-            key: name.toLowerCase().replace(/\s+/g, "_"),
+            key: key,
             label: name,
             type: "multi",
             options: [],
@@ -1094,36 +1244,57 @@ function ColumnManageBottomSheet({ isOpen, onClose, sheetId, allFacets, visibleK
     );
 
     return (
-        <MobileBottomSheet isOpen={isOpen} onClose={onClose} title="기준 관리">
-            <div className="space-y-6">
-                {/* 새 기준 추가 */}
+        <MobileBottomSheet isOpen={isOpen} onClose={onClose} title="열 관리">
+            <div className="space-y-5">
+                {/* 통합된 열 관리 */}
                 <div>
-                    <div className="text-sm font-semibold text-gray-700 mb-2">새 기준 추가</div>
-                    <div className="flex gap-2">
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                        <SortableContext items={localOrder} strategy={verticalListSortingStrategy}>
+                            <div className="space-y-1.5">
+                                {localOrder.map((key) => {
+                                    const facet = allFacets.find((f: any) => f.key === key);
+                                    if (!facet) return null;
+                                    const isVisible = visibleKeys.includes(key);
+
+                                    return (
+                                        <SortableColumnItem
+                                            key={key}
+                                            id={key}
+                                            facet={facet}
+                                            isVisible={isVisible}
+                                            onToggle={() => onToggle(key, !isVisible)}
+                                            onDelete={() => onDelete(key)}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        </SortableContext>
+                    </DndContext>
+                </div>
+
+                {/* 새 열 추가 */}
+                <div className="pt-3 border-t border-gray-100">
+                    <div className="flex gap-2 mb-2">
                         <input
                             type="text"
                             value={newFacetName}
                             onChange={(e) => setNewFacetName(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter") addNewFacet();
-                            }}
-                            placeholder="기준 이름 (예: 가격대)"
-                            className="flex-1 px-4 py-3 text-sm border border-gray-200 rounded-xl"
+                            onKeyDown={(e) => e.key === "Enter" && addNewFacet()}
+                            placeholder="새 열 추가..."
+                            className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                         <button
                             onClick={addNewFacet}
-                            className="px-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold"
+                            disabled={!newFacetName.trim()}
+                            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
                         >
                             추가
                         </button>
                     </div>
-                </div>
 
-                {/* 프리셋에서 추가 */}
-                {availablePresets.length > 0 && (
-                    <div>
-                        <div className="text-sm font-semibold text-gray-700 mb-2">프리셋에서 추가</div>
-                        <div className="flex flex-wrap gap-2">
+                    {/* 프리셋 */}
+                    {availablePresets.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
                             {availablePresets.map((pf: any) => (
                                 <button
                                     key={pf.key}
@@ -1131,61 +1302,111 @@ function ColumnManageBottomSheet({ isOpen, onClose, sheetId, allFacets, visibleK
                                         onCreate(pf);
                                         onToggle(pf.key, true);
                                     }}
-                                    className="px-4 py-2 text-sm rounded-xl bg-blue-50 text-blue-700 border border-blue-200"
+                                    className="px-2.5 py-1 text-xs rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors font-medium"
                                 >
-                                    + {pf.label}
+                                    {pf.label}
                                 </button>
                             ))}
                         </div>
-                    </div>
-                )}
-
-                {/* 기준 목록 */}
-                <div>
-                    <div className="text-sm font-semibold text-gray-700 mb-2">기준 목록</div>
-                    <div className="space-y-2">
-                        {allFacets.map((facet: any) => {
-                            const isVisible = visibleKeys.includes(facet.key);
-                            return (
-                                <div
-                                    key={facet.key}
-                                    className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <GripVertical className="w-5 h-5 text-gray-400" />
-                                        <div>
-                                            <div className="font-medium text-gray-900">{facet.label}</div>
-                                            <div className="text-xs text-gray-500">{facet.key}</div>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={() => onToggle(facet.key, !isVisible)}
-                                        className={`w-14 h-7 rounded-full transition-colors relative ${isVisible ? 'bg-blue-600' : 'bg-gray-300'
-                                            }`}
-                                    >
-                                        <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${isVisible ? 'translate-x-7' : 'translate-x-0.5'
-                                            }`} />
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
+                    )}
                 </div>
             </div>
         </MobileBottomSheet>
     );
 }
 
+// 미니멀한 Sortable 열 아이템
+function SortableColumnItem({ id, facet, isVisible, onToggle, onDelete }: any) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    const [isHovered, setIsHovered] = React.useState(false);
+
+    const style: React.CSSProperties = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+    };
+
+    // 핵심 facet만 삭제 불가 (필수 기준)
+    const coreRequiredFacets = ['existence', 'handover', 'notes'];
+    const isDeletable = !coreRequiredFacets.includes(facet.key);
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${isVisible
+                ? 'bg-white hover:bg-gray-50'
+                : 'bg-gray-50 hover:bg-gray-100 opacity-60'
+                }`}
+        >
+            {/* 드래그 핸들 - hover 시에만 표시 */}
+            <div
+                {...attributes}
+                {...listeners}
+                className={`cursor-grab active:cursor-grabbing transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'
+                    }`}
+            >
+                <GripVertical className="w-4 h-4 text-gray-400" />
+            </div>
+
+            {/* 열 정보 */}
+            <div className="flex-1 min-w-0">
+                <div className={`text-sm font-medium truncate ${isVisible ? 'text-gray-900' : 'text-gray-500'
+                    }`}>
+                    {facet.label}
+                </div>
+                <div className="text-xs text-gray-400 truncate">{facet.key}</div>
+            </div>
+
+            {/* 삭제 버튼 - hover 시에만 표시 (커스텀 열만) */}
+            {isDeletable && isHovered && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`"${facet.label}" 열을 삭제하시겠습니까?\n\n해당 열의 모든 데이터가 삭제됩니다.`)) {
+                            onDelete();
+                        }
+                    }}
+                    className="w-6 h-6 rounded flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    title="삭제"
+                >
+                    <X className="w-4 h-4" />
+                </button>
+            )}
+
+            {/* 미니멀 토글 */}
+            <button
+                onClick={onToggle}
+                className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${isVisible ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
+            >
+                <div
+                    className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${isVisible ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
+                />
+            </button>
+        </div>
+    );
+}
+
 // ────────────────────────────────────────────────────────────
 // Row 컴포넌트 (기존 유지)
 // ────────────────────────────────────────────────────────────
-function Row({ row, children }: any) {
+function Row({ row, children, isEditMode = false }: any) {
     const { attributes, listeners, setNodeRef, style, isDragging } = useSortableRow(row.id);
     return (
         <tr ref={setNodeRef} style={style} className={`hover:bg-gray-50 transition-colors ${isDragging ? "opacity-50" : ""}`}>
-            <td {...attributes} {...listeners} className="px-2 cursor-grab active:cursor-grabbing align-top">
+            <td className="px-2 align-top">
                 <div className="flex items-center justify-center h-10">
-                    <GripVertical className="w-4 h-4 text-gray-400" />
+                    {isEditMode ? (
+                        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+                            <GripVertical className="w-4 h-4 text-gray-400" />
+                        </div>
+                    ) : (
+                        <div className="w-4 h-4" />
+                    )}
                 </div>
             </td>
             {children}
@@ -1196,8 +1417,8 @@ function Row({ row, children }: any) {
 // ────────────────────────────────────────────────────────────
 // CellEditor (기존 유지)
 // ────────────────────────────────────────────────────────────
-function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, updateCell, addCustomOption, deleteCustomOption, customOptions }: any) {
-    const cellRef = React.useRef<HTMLButtonElement | null>(null);
+function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, updateCell, addCustomOption, deleteCustomOption, customOptions, isEditMode = false, onUpdateFacetOptions }: any) {
+    const cellRef = React.useRef<HTMLButtonElement | HTMLTextAreaElement | null>(null);
     const value = row.facets[facet.key] || "";
     const values = unpack(value);
     const displayText =
@@ -1205,40 +1426,416 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
     const isOpen = openDropdown?.rowId === row.id && openDropdown?.facetKey === facet.key;
     const customKey = `${sheetId}::${facet.key}`;
 
+    // existence 체크박스 확인 - 체크되지 않으면 다른 필드 비활성화
+    const existenceValue = row.facets["existence"];
+    const isExistenceChecked = existenceValue === "true" || existenceValue === true;
+    const isDisabled = facet.key !== "existence" && facet.key !== "notes" && facet.key !== "handover" && !isExistenceChecked;
+
+    // 체크박스 타입 처리
+    if (facet.type === "checkbox") {
+        const isChecked = value === "true" || value === true;
+        return (
+            <td className="px-3 py-2 align-top">
+                <div className="flex items-center justify-center">
+                    {isEditMode ? (
+                        <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => updateCell(row.id, facet.key, String(e.target.checked))}
+                            className="w-5 h-5 accent-blue-600 rounded cursor-pointer"
+                        />
+                    ) : (
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isChecked ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>
+                            {isChecked && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                    )}
+                </div>
+            </td>
+        );
+    }
+
+    // 텍스트에어리어 타입 처리 (비고는 항상 활성화, 다른 셀과 동일한 높이)
+    if (facet.type === "textarea") {
+        return (
+            <td className="px-3 py-2 align-top">
+                {isEditMode ? (
+                    <input
+                        type="text"
+                        value={value}
+                        onChange={(e) => updateCell(row.id, facet.key, e.target.value)}
+                        placeholder="비고 입력..."
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                ) : (
+                    <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] flex items-center">
+                        {value || <span className="text-gray-400">-</span>}
+                    </div>
+                )}
+            </td>
+        );
+    }
+
+    // single 타입 처리 - 단일 선택 (담당자 전달용)
+    if (facet.type === "single") {
+        return (
+            <td className="px-3 py-2 align-top">
+                {isEditMode ? (
+                    <>
+                        <button
+                            ref={cellRef as any}
+                            onClick={() => !isDisabled && setOpenDropdown({ rowId: row.id, facetKey: facet.key, cellRef })}
+                            disabled={isDisabled}
+                            className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center justify-between ${isDisabled
+                                ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                                : value
+                                    ? "border-gray-300 bg-blue-50 text-blue-900 hover:border-blue-400"
+                                    : "border-gray-200 text-gray-400 hover:border-gray-300"
+                                }`}
+                        >
+                            <span className="block truncate text-sm">{isDisabled ? "-" : (value || "선택")}</span>
+                            {!isDisabled && <ChevronDown className="w-4 h-4 flex-shrink-0 ml-2" />}
+                        </button>
+
+                        {isOpen && !isDisabled && (
+                            <InlineDropdown
+                                cellRef={cellRef}
+                                facet={facet}
+                                value={value}
+                                onChange={(newValue: string) => {
+                                    updateCell(row.id, facet.key, newValue);
+                                }}
+                                onClose={() => setOpenDropdown(null)}
+                                customOptions={[]}
+                                onDeleteCustomOption={() => { }}
+                                onUpdateFacetOptions={onUpdateFacetOptions}
+                            />
+                        )}
+                    </>
+                ) : (
+                    <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] flex items-center">
+                        {isDisabled ? "-" : (value || <span className="text-gray-400">-</span>)}
+                    </div>
+                )}
+            </td>
+        );
+    }
+
+    // 기본 multi 타입 처리 - existence 비활성화 로직 적용
     return (
         <td className="px-3 py-2 align-top">
-            <button
-                ref={cellRef as any}
-                onClick={() => setOpenDropdown({ rowId: row.id, facetKey: facet.key, cellRef })}
-                className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center justify-between ${values.length > 0 ? "border-gray-300 bg-blue-50 text-blue-900 hover:border-blue-400" : "border-gray-200 text-gray-400 hover:border-gray-300"
-                    }`}
-            >
-                <span className="block truncate text-sm">{displayText}</span>
-                <ChevronDown className="w-4 h-4 flex-shrink-0 ml-2" />
-            </button>
+            {isEditMode ? (
+                <>
+                    <button
+                        ref={cellRef as any}
+                        onClick={() => !isDisabled && setOpenDropdown({ rowId: row.id, facetKey: facet.key, cellRef })}
+                        disabled={isDisabled}
+                        className={`w-full text-left px-3 py-2 rounded-lg border transition-colors flex items-center justify-between ${isDisabled
+                            ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                            : values.length > 0
+                                ? "border-gray-300 bg-blue-50 text-blue-900 hover:border-blue-400"
+                                : "border-gray-200 text-gray-400 hover:border-gray-300"
+                            }`}
+                    >
+                        <span className="block truncate text-sm">{isDisabled ? "-" : displayText}</span>
+                        {!isDisabled && <ChevronDown className="w-4 h-4 flex-shrink-0 ml-2" />}
+                    </button>
 
-            {isOpen && (
-                <InlineDropdown
-                    cellRef={cellRef}
-                    facet={facet}
-                    value={value}
-                    onChange={(newValue: string) => {
-                        updateCell(row.id, facet.key, newValue);
-                        const added = unpack(newValue).filter((v) => !unpack(value).includes(v));
-                        added.forEach((opt) => addCustomOption(customKey, opt));
-                    }}
-                    onClose={() => setOpenDropdown(null)}
-                    customOptions={customOptions[customKey] || []}
-                    onDeleteCustomOption={(opt: string) => deleteCustomOption(customKey, opt)}
-                />
+                    {isOpen && !isDisabled && (
+                        <InlineDropdown
+                            cellRef={cellRef}
+                            facet={facet}
+                            value={value}
+                            onChange={(newValue: string) => {
+                                updateCell(row.id, facet.key, newValue);
+                                const added = unpack(newValue).filter((v) => !unpack(value).includes(v));
+                                added.forEach((opt) => addCustomOption(customKey, opt));
+                            }}
+                            onClose={() => setOpenDropdown(null)}
+                            customOptions={customOptions[customKey] || []}
+                            onDeleteCustomOption={(opt: string) => deleteCustomOption(customKey, opt)}
+                            onUpdateFacetOptions={onUpdateFacetOptions}
+                        />
+                    )}
+                </>
+            ) : (
+                <div className="px-3 py-2 text-sm min-h-[40px] flex items-center">
+                    {isDisabled ? (
+                        <span className="text-gray-400">-</span>
+                    ) : values.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                            {values.map((v: string, idx: number) => (
+                                <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-xs font-medium">
+                                    {v}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <span className="text-gray-400">-</span>
+                    )}
+                </div>
             )}
         </td>
     );
 }
 
-// 이하 FacetPivotView, FacetListItem, ColumnManagerDropdown, QuickAddDropdown 등은 
-// 기존 코드와 동일하므로 원본 파일의 내용을 그대로 사용하면 됩니다.
-// 여기서는 메인 컴포넌트만 UI 개선합니다.
+// ────────────────────────────────────────────────────────────
+// FacetPivotView (기준 보기)
+// ────────────────────────────────────────────────────────────
+function FacetListItem({ facet, items, onToggle, customOptions, addCustomOption }: any) {
+    const customKey = `pivot::${facet.key}`;
+
+    const grouped = React.useMemo(() => {
+        const map: Record<string, any[]> = {};
+
+        const flatOptions: string[] = [];
+        (facet.options || []).forEach((opt: any) => {
+            if (typeof opt === "string") {
+                flatOptions.push(opt);
+            } else if (opt?.group && Array.isArray(opt.items)) {
+                opt.items.forEach((item: string) => flatOptions.push(item));
+            }
+        });
+
+        const customs = customOptions || [];
+        [...flatOptions, ...customs].forEach((opt) => {
+            map[opt] = [];
+        });
+
+        items.forEach((item: any) => {
+            const values = unpack(item.facetRefs?.[facet.key] || item.facets?.[facet.key]);
+            if (values.length === 0) {
+                if (!map["미지정"]) map["미지정"] = [];
+                map["미지정"].push(item);
+            } else {
+                values.forEach((val) => {
+                    if (!map[val]) map[val] = [];
+                    map[val].push(item);
+                });
+            }
+        });
+
+        return map;
+    }, [facet, items, customOptions]);
+
+    return (
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
+            <div className="px-5 py-4 bg-gray-50 border-b">
+                <h3 className="text-lg font-semibold text-gray-900">{facet.label}</h3>
+                <p className="text-sm text-gray-500 mt-1">{facet.key}</p>
+            </div>
+
+            <div className="divide-y divide-gray-100">
+                {Object.entries(grouped).map(([option, optionItems]: [string, any]) => (
+                    <div key={option} className="px-5 py-4">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <span className="text-base font-medium text-gray-900">{option}</span>
+                                <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                    {optionItems.length}
+                                </span>
+                            </div>
+                        </div>
+
+                        {optionItems.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {optionItems.map((item: any) => {
+                                    const hasThisOption = unpack(
+                                        item.facetRefs?.[facet.key] || item.facets?.[facet.key]
+                                    ).includes(option);
+
+                                    return (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => onToggle(item.id, facet.key, option, !hasThisOption)}
+                                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${hasThisOption
+                                                ? "bg-blue-600 text-white"
+                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                }`}
+                                        >
+                                            {item.icon && <span className="mr-1">{item.icon}</span>}
+                                            {item.name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-400">해당하는 항목이 없습니다</p>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function FacetPivotView({ sheetId, template, items, onToggleMembership, customOptions, addCustomOption }: any) {
+    // 체크박스 타입 제외한 facet만 사용
+    const availableFacets = React.useMemo(() =>
+        template.facets.filter((f: any) => f.type !== 'checkbox'),
+        [template.facets]
+    );
+
+    const [facetKey, setFacetKey] = React.useState(() => (availableFacets?.[0]?.key || ""));
+    const facet = React.useMemo(() =>
+        availableFacets.find((f: any) => f.key === facetKey) || availableFacets[0] || null,
+        [facetKey, availableFacets]
+    );
+
+    const options: string[] = React.useMemo(() => {
+        if (!facet) return [];
+        const base: string[] = [];
+        (facet.options || []).forEach((opt: any) => {
+            if (typeof opt === "string") base.push(opt);
+            else if (opt?.group) (opt.items || []).forEach((i: string) => base.push(i));
+        });
+        const customKey = `${sheetId}::${facet.key}`;
+        const customs = (customOptions[customKey] || []).filter((c: string) => !base.some((b) => normalize(b) === normalize(c)));
+        return [...base, ...customs];
+    }, [facet, sheetId, customOptions]);
+
+    const [newOpt, setNewOpt] = React.useState("");
+    const [optionError, setOptionError] = React.useState("");
+
+    const addOpt = () => {
+        // 공백 제거하고 trimmed 값만 사용
+        const v = newOpt.trim();
+
+        // 유효성 검사
+        if (!v) {
+            setOptionError("옵션 이름을 입력하세요");
+            return;
+        }
+
+        if (!facet) {
+            setOptionError("기준을 선택하세요");
+            return;
+        }
+
+        // 이미 존재하는 옵션인지 확인
+        const customKey = `${sheetId}::${facet.key}`;
+        const existingOptions = [...(facet.options || []), ...(customOptions[customKey] || [])];
+        const allOptions = existingOptions.map(opt =>
+            typeof opt === 'string' ? opt : opt?.items || []
+        ).flat();
+
+        if (allOptions.some((opt: string) => normalize(opt) === normalize(v))) {
+            setOptionError("이미 존재하는 옵션입니다");
+            return;
+        }
+
+        addCustomOption(customKey, v);
+        setNewOpt("");
+        setOptionError("");
+    };
+
+    if (!facet || items.length === 0) {
+        return (
+            <div className="bg-white rounded-2xl shadow-sm p-12 text-center">
+                <p className="text-gray-400">기준 중심 보기를 사용하려면 먼저 항목을 추가하세요.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b bg-gray-50">
+                <div className="flex flex-col gap-4">
+                    {/* 헤더와 기준 선택 */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Columns className="w-5 h-5 text-gray-600" />
+                            <span className="font-semibold text-gray-900">기준 중심 보기</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">보기 기준:</label>
+                            <select
+                                value={facet?.key || ""}
+                                onChange={(e) => setFacetKey(e.target.value)}
+                                className="h-10 px-3 pr-8 rounded-lg border border-gray-300 bg-white text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[150px]"
+                            >
+                                {availableFacets.map((f: any) => (
+                                    <option key={f.key} value={f.key}>
+                                        {f.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* 새 옵션 추가 */}
+                    <div className="pt-2 border-t">
+                        <div className="flex items-center gap-2">
+                            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">새 옵션:</label>
+                            <div className="flex-1">
+                                <input
+                                    value={newOpt}
+                                    onChange={(e) => {
+                                        setNewOpt(e.target.value);
+                                        setOptionError("");
+                                    }}
+                                    onKeyDown={(e) => e.key === "Enter" && addOpt()}
+                                    placeholder={`${facet?.label || '기준'} 옵션 입력 (예: 빈백)`}
+                                    className={`w-full h-10 px-3 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
+                                        }`}
+                                />
+                                {optionError && (
+                                    <p className="text-xs text-red-600 mt-1">{optionError}</p>
+                                )}
+                            </div>
+                            <button
+                                onClick={addOpt}
+                                disabled={!newOpt.trim()}
+                                className="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            >
+                                <Plus className="w-4 h-4 inline mr-1" />
+                                추가
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px]">
+                    <thead className="bg-gray-50 border-b sticky top-0">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[220px]">{facet?.label || "기준"}</th>
+                            {items.map((it: any) => (
+                                <th key={it.id} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[160px]">
+                                    {it.name || "(이름 없음)"}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {options.map((opt) => (
+                            <tr key={opt} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 text-sm font-medium text-gray-900">{opt}</td>
+                                {items.map((it: any) => {
+                                    const values = unpack(it.facets[facet.key] || "");
+                                    const active = values.some((v) => normalize(v) === normalize(opt));
+                                    return (
+                                        <td key={it.id + opt} className="px-4 py-2">
+                                            <button
+                                                onClick={() => onToggleMembership(it.id, facet.key, opt, !active)}
+                                                className={`w-full h-9 rounded-lg border text-sm font-medium transition-colors ${active
+                                                    ? "bg-blue-600 text-white border-blue-600"
+                                                    : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                                                    }`}
+                                            >
+                                                {active ? "✔ 배정됨" : "+ 추가"}
+                                            </button>
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // 🚀 메인 컴포넌트 (UI만 개선, 로직은 기존 유지)
@@ -1316,11 +1913,25 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         }
 
         // 완전 초기 상태일 때는 빈 시트
+
         const initialItems: any = {};
         defaults.sheets.forEach((sheetId: string) => {
-            initialItems[sheetId] = [];
-        });
+            const presets = PRESET_ITEMS[sheetId] || [];
 
+            // required 항목만 자동 추가
+            const requiredItems = presets
+                .filter((p: any) => p.required === true)
+                .map((p: any, idx: number) => ({
+                    id: `init_${sheetId}_${Date.now()}_${idx}`,
+                    name: p.name,
+                    icon: p.icon,
+                    facetRefs: { existence: ["없음"] },
+                    order: idx,
+                    createdAt: Date.now(),
+                }));
+
+            initialItems[sheetId] = requiredItems;
+        });
         return {
             ...defaults,
             items: initialItems,
@@ -1329,6 +1940,10 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
     const [viewMode, setViewMode] = React.useState<"item" | "facet">("item");
     const [openDropdown, setOpenDropdown] = React.useState<any>(null);
+
+    // 편집 모드 상태
+    const [isEditMode, setIsEditMode] = React.useState(false);
+    const [draftData, setDraftData] = React.useState<any>(null);
 
     // 모바일 UI 상태
     const [quickAddOpen, setQuickAddOpen] = React.useState(false);
@@ -1367,9 +1982,11 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     const visibleFacetKeys: string[] = data.visibleFacets?.[activeSheetId] || template.facets.map((f: any) => f.key);
     const visibleFacets = template.facets.filter((f: any) => visibleFacetKeys.includes(f.key));
 
-    // 행 정렬 (기존 로직 유지)
+    // 행 정렬 - 편집 모드에서는 draftData 사용
     const activeItems = React.useMemo(() => {
-        const arr = Array.isArray(data?.items?.[activeSheetId]) ? data.items[activeSheetId] : [];
+        const currentData = isEditMode ? draftData : data;
+        if (!currentData) return [];
+        const arr = Array.isArray(currentData?.items?.[activeSheetId]) ? currentData.items[activeSheetId] : [];
         const sorted = [...arr].sort((a, b) => {
             const ao = a?.order ?? 1e9;
             const bo = b?.order ?? 1e9;
@@ -1377,15 +1994,80 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             return (a?.name || "").localeCompare(b?.name || "", "ko");
         });
         return sorted;
-    }, [data.items, activeSheetId]);
+    }, [data.items, draftData, activeSheetId, isEditMode]);
 
-    // 저장 디바운스 (기존 로직 유지)
-    const saveTimer = React.useRef<any>(null);
-    const scheduleAutoSave = React.useCallback(() => {
-        if (saveTimer.current) clearTimeout(saveTimer.current);
-        saveTimer.current = setTimeout(() => handleSave(true), 900);
+    // 저장 디바운스 (편집 모드에서는 비활성화)
+    const saveTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const lastAutoSaveAt = React.useRef<number>(0);
+    const pendingAutoSave = React.useRef(false);
+
+    // 편집 모드 핸들러
+    const handleEnterEditMode = React.useCallback(() => {
+        setDraftData(JSON.parse(JSON.stringify(data))); // 깊은 복사
+        setIsEditMode(true);
+    }, [data]);
+
+    const handleSaveEdits = React.useCallback(async () => {
+        if (!draftData) return;
+
+        try {
+            const cleanSheets = draftData.sheets.filter((s: string) =>
+                s !== 'templates' &&
+                s !== 'updatedAt'
+            );
+
+            const payload = {
+                schemaVersion: draftData.schemaVersion,
+                sheets: cleanSheets,
+                activeSheet: draftData.activeSheet,
+                items: draftData.items,
+                customOptions: draftData.customOptions,
+                visibleFacets: draftData.visibleFacets,
+            };
+
+            if (onSave) {
+                await onSave(payload);
+            } else {
+                console.log("📦 저장 (로컬)", payload);
+            }
+
+            // 저장 성공 후 실제 데이터에 반영
+            setData(draftData);
+            setIsEditMode(false);
+            setDraftData(null);
+            lastAutoSaveAt.current = Date.now();
+        } catch (err) {
+            console.error("Save error:", err);
+            alert("❌ 저장 실패");
+        }
+    }, [draftData, onSave]);
+
+    const handleCancelEdits = React.useCallback(() => {
+        setIsEditMode(false);
+        setDraftData(null);
     }, []);
+
+    const scheduleAutoSave = React.useCallback(() => {
+        // 편집 모드에서는 자동저장 비활성화
+        if (isEditMode) return;
+
+        pendingAutoSave.current = true;
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+
+        const elapsed = Date.now() - lastAutoSaveAt.current;
+        const wait = Math.max(AUTO_SAVE_DEBOUNCE_MS, MIN_REMOTE_SAVE_INTERVAL_MS - elapsed);
+
+        saveTimer.current = setTimeout(() => {
+            pendingAutoSave.current = false;
+            handleSave(true);
+        }, wait);
+    }, [isEditMode]);
     async function handleSave(silent = false) {
+        if (saveTimer.current) {
+            clearTimeout(saveTimer.current);
+            saveTimer.current = null;
+        }
+
         try {
             const cleanSheets = data.sheets.filter((s: string) =>
                 s !== 'templates' &&
@@ -1401,58 +2083,6 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 visibleFacets: data.visibleFacets,
             };
 
-            const createdIdMap: Record<string, string> = {};
-
-            // 각 항목별 API 호출 (그대로 유지)
-            for (const [sheetId, rows] of Object.entries(payload.items)) {
-                if (!Array.isArray(rows)) continue;
-                for (const row of rows as any[]) {
-                    const safeId = String(row.id || "");
-                    const perRowPayload = { sheetId, name: row.name, facetRefs: row.facetRefs || {} };
-                    const looksPersisted = /^itm/i.test(safeId);
-
-                    if (!looksPersisted) {
-                        const created = await apiCreateItem(tenantId, perRowPayload);
-                        const newId = created?.item?.id;
-                        if (safeId && newId) {
-                            createdIdMap[safeId] = newId;
-                        }
-                        continue;
-                    }
-
-                    try {
-                        await apiUpdateItem(tenantId, safeId, { facetRefs: row.facetRefs || {} });
-                    } catch (err) {
-                        console.warn(`update failed for ${safeId}, retrying with create`, err);
-                        const created = await apiCreateItem(tenantId, perRowPayload);
-                        const newId = created?.item?.id;
-                        if (safeId && newId) {
-                            createdIdMap[safeId] = newId;
-                        }
-                    }
-                }
-            }
-
-            if (Object.keys(createdIdMap).length) {
-                const remapRows = (rows: any[]) =>
-                    rows.map((row) => {
-                        const remappedId = createdIdMap[row.id];
-                        return remappedId ? { ...row, id: remappedId } : row;
-                    });
-
-                payload.items = Object.fromEntries(
-                    Object.entries(payload.items).map(([sheetId, rows]: any) => [sheetId, remapRows(rows || [])])
-                );
-
-                setData((prev: any) => {
-                    const nextItems: Record<string, any[]> = {};
-                    Object.entries(prev.items || {}).forEach(([sheetId, rows]) => {
-                        nextItems[sheetId] = remapRows(rows as any[]);
-                    });
-                    return { ...prev, items: nextItems };
-                });
-            }
-
             // ✅ onSave prop이 있으면 사용, 없으면 기본 동작
             if (onSave) {
                 await onSave(payload);
@@ -1461,70 +2091,103 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 console.log("📦 저장 (로컬)", payload);
             }
 
-            if (!silent) alert("✅ 저장 완료");
+            lastAutoSaveAt.current = Date.now();
+            pendingAutoSave.current = false;
         } catch (err) {
             console.error("Save error:", err);
             alert("❌ 저장 실패");
+            pendingAutoSave.current = false;
+        } finally {
+            if (saveTimer.current) {
+                clearTimeout(saveTimer.current);
+                saveTimer.current = null;
+            }
         }
     }
 
-    // 행 관리 함수들 (기존 로직 유지)
+    React.useEffect(() => {
+        return () => {
+            if (saveTimer.current) {
+                clearTimeout(saveTimer.current);
+            }
+        };
+    }, []);
+
+    // 행 관리 함수들 - 편집 모드에서는 draftData 수정
+    const getCurrentData = () => isEditMode ? draftData : data;
+    const setCurrentData = (updater: any) => {
+        if (isEditMode) {
+            setDraftData(updater);
+        } else {
+            setData(updater);
+            scheduleAutoSave();
+        }
+    };
+
     const addRow = (presetName?: string) => {
         const preset = (PRESET_ITEMS[activeSheetId] || []).find((p: any) => p.name === presetName);
         const newId = `row_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const currentItems = getCurrentData().items[activeSheetId] || [];
         const newRow: any = {
             id: newId,
             name: presetName || "",
             facets: {},
-            order: activeItems.length,
+            order: currentItems.length,
         };
         if (preset?.facets) {
             newRow.facets = { ...preset.facets };
         }
-        setData((prev: any) => ({
+        setCurrentData((prev: any) => ({
             ...prev,
             items: {
                 ...prev.items,
                 [activeSheetId]: [...(prev.items[activeSheetId] || []), newRow],
             },
         }));
-        scheduleAutoSave();
     };
 
     const addRowsBulk = (names: string[]) => {
         const presets = PRESET_ITEMS[activeSheetId] || [];
+        const currentItems = getCurrentData().items[activeSheetId] || [];
         const newRows = names.map((name, idx) => {
             const preset = presets.find((p: any) => p.name === name);
             return {
                 id: `row_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 9)}`,
                 name,
                 facets: preset?.facets || {},
-                order: activeItems.length + idx,
+                order: currentItems.length + idx,
             };
         });
-        setData((prev: any) => ({
+        setCurrentData((prev: any) => ({
             ...prev,
             items: {
                 ...prev.items,
                 [activeSheetId]: [...(prev.items[activeSheetId] || []), ...newRows],
             },
         }));
-        scheduleAutoSave();
     };
 
-    const removeRow = (rowId: string) => {
-        setData((prev: any) => ({
+    const removeRow = (rowId: string, rowName: string) => {
+        // 프리셋에서 required 체크
+        const presets = PRESET_ITEMS[activeSheetId] || [];
+        const preset = presets.find((p: any) => p.name === rowName);
+
+        if (preset?.required === true) {
+            alert(`"${rowName}"은(는) 필수 항목이라 삭제할 수 없습니다.`);
+            return;
+        }
+
+        setCurrentData((prev: any) => ({
             ...prev,
             items: {
                 ...prev.items,
                 [activeSheetId]: prev.items[activeSheetId].filter((r: any) => r.id !== rowId),
             },
         }));
-        scheduleAutoSave();
     };
 
     const updateRowName = (rowId: string, name: string) => {
-        setData((prev: any) => ({
+        setCurrentData((prev: any) => ({
             ...prev,
             items: {
                 ...prev.items,
@@ -1533,11 +2196,10 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 ),
             },
         }));
-        scheduleAutoSave();
     };
 
     const updateCell = (rowId: string, facetKey: string, value: any) => {
-        setData((prev: any) => ({
+        setCurrentData((prev: any) => ({
             ...prev,
             items: {
                 ...prev.items,
@@ -1546,14 +2208,62 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 ),
             },
         }));
-        scheduleAutoSave();
+    };
+
+    const toggleFacetMembership = (
+        sheetId: string,
+        rowId: string,
+        facetKey: string,
+        option: string,
+        enable: boolean
+    ) => {
+        if (!sheetId || !facetKey || !rowId || !option) return;
+
+        setCurrentData((prev: any) => {
+            const sheetItems = prev.items?.[sheetId] || [];
+            const updatedSheet = sheetItems.map((item: any) => {
+                if (item.id !== rowId) return item;
+
+                const currentValues = unpack(item.facets?.[facetKey]);
+                let nextValues: string[];
+
+                if (enable) {
+                    nextValues = uniqNormPush(currentValues, option);
+                } else {
+                    nextValues = currentValues.filter((val) => normalize(val) !== normalize(option));
+                }
+
+                const packed = pack(nextValues);
+                const nextFacets = {
+                    ...(item.facets || {}),
+                    [facetKey]: packed,
+                };
+
+                if (!packed) {
+                    delete nextFacets[facetKey];
+                }
+
+                return {
+                    ...item,
+                    facets: nextFacets,
+                };
+            });
+
+            return {
+                ...prev,
+                items: {
+                    ...prev.items,
+                    [sheetId]: updatedSheet,
+                },
+            };
+        });
     };
 
     const handleRowDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over || active.id === over.id) return;
 
-        setData((prev: any) => {
+        setCurrentData((prev: any) => {
             const oldItems = prev.items[activeSheetId] || [];
             const oldIndex = oldItems.findIndex((r: any) => r.id === active.id);
             const newIndex = oldItems.findIndex((r: any) => r.id === over.id);
@@ -1610,6 +2320,58 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         scheduleAutoSave();
     };
 
+    const deleteFacet = (facetKey: string) => {
+        setData((prev: any) => {
+            const updated = { ...allTemplates };
+            // facet 제거
+            updated[activeSheetId].facets = updated[activeSheetId].facets.filter((f: any) => f.key !== facetKey);
+
+            // visibleFacets에서도 제거
+            const visibleKeys = (prev.visibleFacets?.[activeSheetId] || []).filter((k: string) => k !== facetKey);
+
+            // 모든 항목에서 해당 facet 데이터 제거
+            const updatedItems = { ...prev.items };
+            if (updatedItems[activeSheetId]) {
+                updatedItems[activeSheetId] = updatedItems[activeSheetId].map((item: any) => {
+                    const newFacets = { ...item.facets };
+                    delete newFacets[facetKey];
+                    return { ...item, facets: newFacets };
+                });
+            }
+
+            return {
+                ...prev,
+                templates: updated,
+                visibleFacets: {
+                    ...prev.visibleFacets,
+                    [activeSheetId]: visibleKeys,
+                },
+                items: updatedItems,
+            };
+        });
+        scheduleAutoSave();
+    };
+
+    const updateFacetOptions = (facetKey: string, newOptions: any[]) => {
+        setData((prev: any) => {
+            const updated = { ...allTemplates };
+            const facetIndex = updated[activeSheetId].facets.findIndex((f: any) => f.key === facetKey);
+
+            if (facetIndex !== -1) {
+                updated[activeSheetId].facets[facetIndex] = {
+                    ...updated[activeSheetId].facets[facetIndex],
+                    options: newOptions,
+                };
+            }
+
+            return {
+                ...prev,
+                templates: updated,
+            };
+        });
+        scheduleAutoSave();
+    };
+
     // 커스텀 옵션 함수들 (기존 로직 유지)
     const addCustomOption = (customKey: string, option: string) => {
         setData((prev: any) => {
@@ -1655,15 +2417,38 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                     <div className="flex items-center justify-between">
                         <div>
                             <h1 className="text-xl sm:text-2xl font-bold text-gray-900">데이터 관리</h1>
-                            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">자동 저장됨</p>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+                                {isEditMode ? "편집 중..." : "자동 저장됨"}
+                            </p>
                         </div>
-                        <button
-                            onClick={() => handleSave(false)}
-                            className="flex items-center gap-2 h-10 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm"
-                        >
-                            <Save className="w-4 h-4" />
-                            <span className="hidden sm:inline">저장</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {isEditMode ? (
+                                <>
+                                    <button
+                                        onClick={handleCancelEdits}
+                                        className="flex items-center gap-2 h-10 px-4 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
+                                    >
+                                        <X className="w-4 h-4" />
+                                        <span className="hidden sm:inline">취소</span>
+                                    </button>
+                                    <button
+                                        onClick={handleSaveEdits}
+                                        className="flex items-center gap-2 h-10 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-lg"
+                                    >
+                                        <Check className="w-4 h-4" />
+                                        <span className="hidden sm:inline">저장</span>
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    onClick={handleEnterEditMode}
+                                    className="flex items-center gap-2 h-10 px-4 rounded-xl bg-white border-2 border-gray-200 text-gray-700 font-medium hover:border-blue-500 hover:text-blue-600 transition-all"
+                                >
+                                    <Edit3 className="w-4 h-4" />
+                                    <span className="hidden sm:inline">편집</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1709,8 +2494,8 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                         value={viewMode}
                         onChange={setViewMode}
                         options={[
-                            { value: "item", label: "목록 보기" },
-                            { value: "facet", label: "기준 보기" },
+                            { value: "item", label: "항목별 보기" },
+                            { value: "facet", label: "기준별 보기" },
                         ]}
                     />
                 </div>
@@ -1720,12 +2505,25 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
                         {activeItems.length === 0 ? (
                             <div className="px-4 py-20 text-center">
-                                <p className="text-xl text-gray-400 mb-2">📝 데이터가 없습니다</p>
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 flex items-center justify-center">
+                                    <Plus className="w-8 h-8 text-gray-400" />
+                                </div>
+                                <p className="text-lg font-medium text-gray-900 mb-2">항목이 없습니다</p>
                                 <p className="text-sm text-gray-500 mb-6">
-                                    우측 하단 <b>+ 버튼</b>을 눌러 항목을 추가하세요
+                                    첫 번째 항목을 추가해보세요
                                 </p>
+                                {isEditMode && (
+                                    <button
+                                        onClick={() => setQuickAddOpen(true)}
+                                        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+                                    >
+                                        <Plus className="w-5 h-5" />
+                                        항목 추가
+                                    </button>
+                                )}
                             </div>
                         ) : (
+
                             <div className="overflow-x-auto">
                                 <DndContext
                                     sensors={sensors}
@@ -1747,6 +2545,17 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                         {facet.label}
                                                     </th>
                                                 ))}
+                                                {isEditMode && (
+                                                    <th className="w-16 px-2">
+                                                        <button
+                                                            onClick={() => setColumnManageOpen(true)}
+                                                            className="w-8 h-8 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors mx-auto"
+                                                            title="열 관리"
+                                                        >
+                                                            <Settings className="w-4 h-4 text-gray-600" />
+                                                        </button>
+                                                    </th>
+                                                )}
                                                 <th className="w-12"></th>
                                             </tr>
                                         </thead>
@@ -1756,15 +2565,24 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                         >
                                             <tbody className="divide-y divide-gray-100">
                                                 {activeItems.map((row: any) => (
-                                                    <Row key={row.id} row={row}>
+                                                    <Row key={row.id} row={row} isEditMode={isEditMode}>
                                                         <td className="px-3 py-2 align-top">
-                                                            <input
-                                                                type="text"
-                                                                value={row.name}
-                                                                onChange={(e) => updateRowName(row.id, e.target.value)}
-                                                                placeholder="항목명"
-                                                                className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                            />
+                                                            {isEditMode ? (
+                                                                <input
+                                                                    type="text"
+                                                                    value={row.name}
+                                                                    onChange={(e) => updateRowName(row.id, e.target.value)}
+                                                                    placeholder="항목명"
+                                                                    className={`w-full px-3 py-2 rounded-lg border transition-all text-sm font-medium ${row.name
+                                                                        ? "border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                        : "border-gray-200 bg-white text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:text-gray-900"
+                                                                        }`}
+                                                                />
+                                                            ) : (
+                                                                <div className="px-3 py-2 text-sm font-medium text-gray-900 min-h-[40px] flex items-center">
+                                                                    {row.name || <span className="text-gray-400">항목명</span>}
+                                                                </div>
+                                                            )}
                                                         </td>
                                                         {visibleFacets.map((facet: any) => (
                                                             <CellEditor
@@ -1777,17 +2595,21 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                                 updateCell={updateCell}
                                                                 addCustomOption={addCustomOption}
                                                                 deleteCustomOption={deleteCustomOption}
-                                                                customOptions={data.customOptions}
+                                                                customOptions={isEditMode ? draftData?.customOptions : data.customOptions}
+                                                                isEditMode={isEditMode}
+                                                                onUpdateFacetOptions={updateFacetOptions}
                                                             />
                                                         ))}
                                                         <td className="px-2 text-right align-top">
-                                                            <button
-                                                                onClick={() => removeRow(row.id)}
-                                                                className="w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
-                                                                title="삭제"
-                                                            >
-                                                                <X className="w-4 h-4 mx-auto" />
-                                                            </button>
+                                                            {isEditMode && (
+                                                                <button
+                                                                    onClick={() => removeRow(row.id, row.name)}
+                                                                    className="w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                                                                    title="삭제"
+                                                                >
+                                                                    <X className="w-4 h-4 mx-auto" />
+                                                                </button>
+                                                            )}
                                                         </td>
                                                     </Row>
                                                 ))}
@@ -1795,18 +2617,41 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                         </SortableContext>
                                     </table>
                                 </DndContext>
+
+                                {/* 인라인 행 추가 버튼 - 편집 모드에서만 표시 */}
+                                {isEditMode && (
+                                    <div className="border-t p-3">
+                                        <button
+                                            onClick={() => setQuickAddOpen(true)}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 text-gray-600 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium"
+                                        >
+                                            <Plus className="w-5 h-5" />
+                                            <span>항목 추가</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 )}
+
+                {viewMode === "facet" && (
+                    <div className="bg-white rounded-2xl shadow-sm p-4">
+                        <FacetPivotView
+                            sheetId={activeSheetId}
+                            template={template}
+                            items={activeItems}
+                            customOptions={data.customOptions || {}}
+                            addCustomOption={addCustomOption}
+                            onToggleMembership={(rowId: string, facetKey: string, option: string, enable: boolean) =>
+                                toggleFacetMembership(activeSheetId, rowId, facetKey, option, enable)
+                            }
+                        />
+                    </div>
+                )}
             </div>
 
-            {/* 플로팅 액션 버튼 */}
-            <FloatingActionButton
-                onQuickAdd={() => setQuickAddOpen(true)}
-                onColumnManage={() => setColumnManageOpen(true)}
-                onAddEmpty={() => addRow()}
-            />
+            {/* 플로팅 액션 버튼 제거 - 인라인 버튼으로 대체 */}
 
             {/* 바텀시트들 */}
             <QuickAddBottomSheet
@@ -1826,6 +2671,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 onToggle={toggleFacetVisible}
                 onCreate={createFacetToSheet}
                 onReorder={reorderVisibleFacets}
+                onDelete={deleteFacet}
             />
 
             <style jsx>{`

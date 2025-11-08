@@ -210,7 +210,7 @@ export default function TenantPortal() {
     }
 
     await refresh();
-    alert('저장 완료!');
+    //alert('저장 완료!');
     setSavingCriteria(false);
   };
 

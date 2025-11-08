@@ -78,9 +78,8 @@ export const SHEET_TEMPLATES: Record<string, any> = {
         facets: [
             {
                 key: "existence",
-                label: "존재",
-                type: "multi",
-                options: ["있음", "없음"]
+                label: "보유",
+                type: "checkbox",
             },
             {
                 key: "location",
@@ -155,6 +154,17 @@ export const SHEET_TEMPLATES: Record<string, any> = {
                     { group: "대규모", items: ["20~50인", "50인 이상"] }
                 ]
             },
+            {
+                key: "handover",
+                label: "담당자 전달",
+                type: "single",
+                options: ["필요없음", "즉시 전달", "조건부 전달"]
+            },
+            {
+                key: "notes",
+                label: "비고",
+                type: "textarea",
+            }
         ],
     },
 
@@ -166,9 +176,8 @@ export const SHEET_TEMPLATES: Record<string, any> = {
         facets: [
             {
                 key: "existence",
-                label: "존재",
-                type: "multi",
-                options: ["있음", "없음"]
+                label: "보유",
+                type: "checkbox",
             },
             {
                 key: "location",
@@ -227,6 +236,17 @@ export const SHEET_TEMPLATES: Record<string, any> = {
                     "실시간 청소"
                 ]
             },
+            {
+                key: "handover",
+                label: "담당자 전달",
+                type: "single",
+                options: ["필요없음", "즉시 전달", "조건부 전달"]
+            },
+            {
+                key: "notes",
+                label: "비고",
+                type: "textarea",
+            }
         ],
     },
 
@@ -238,9 +258,8 @@ export const SHEET_TEMPLATES: Record<string, any> = {
         facets: [
             {
                 key: "existence",
-                label: "존재",
-                type: "multi",
-                options: ["있음", "없음"]
+                label: "보유",
+                type: "checkbox",
             },
             {
                 key: "capacity",
@@ -326,6 +345,17 @@ export const SHEET_TEMPLATES: Record<string, any> = {
                     "취식 불가"
                 ]
             },
+            {
+                key: "handover",
+                label: "담당자 전달",
+                type: "single",
+                options: ["필요없음", "즉시 전달", "조건부 전달"]
+            },
+            {
+                key: "notes",
+                label: "비고",
+                type: "textarea",
+            }
         ]
     },
 
@@ -337,9 +367,8 @@ export const SHEET_TEMPLATES: Record<string, any> = {
         facets: [
             {
                 key: "existence",
-                label: "존재",
-                type: "multi",
-                options: ["있음", "없음"]
+                label: "보유",
+                type: "checkbox",
             },
             {
                 key: "location",
