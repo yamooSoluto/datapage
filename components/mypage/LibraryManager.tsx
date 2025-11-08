@@ -309,63 +309,65 @@ export default function LibraryManager({ initialData, onSave }: LibraryManagerPr
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-                {/* 미니멀 세그먼트 탭 + 카테고리 관리 */}
-                <div className="flex justify-center mb-8">
-                    <div className="inline-flex items-center gap-1 p-1 bg-black/5 rounded-full shadow-sm">
-                        {Object.keys(categories).map((type) => {
-                            const conf = categories[type as keyof typeof categories];
-                            const TypeIcon = conf.icon;
-                            const count = Object.keys(data[type as keyof LibraryData] || {}).length;
-                            const isDefault = DEFAULT_CATEGORIES[type as keyof typeof DEFAULT_CATEGORIES];
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 relative">{/* relative 추가 */}
+                {/* 미니멀 세그먼트 탭 - 작게, 스크롤 가능 */}
+                <div className="mb-8 overflow-x-auto scrollbar-hide">
+                    <div className="flex justify-center min-w-max">
+                        <div className="inline-flex items-center gap-1 p-1 bg-black/5 rounded-full shadow-sm">
+                            {Object.keys(categories).map((type) => {
+                                const conf = categories[type as keyof typeof categories];
+                                const TypeIcon = conf.icon;
+                                const count = Object.keys(data[type as keyof LibraryData] || {}).length;
+                                const isDefault = DEFAULT_CATEGORIES[type as keyof typeof DEFAULT_CATEGORIES];
 
-                            return (
-                                <div key={type} className="relative">
-                                    <button
-                                        onClick={() => setActiveTab(type as LibraryType)}
-                                        className={`relative flex items-center gap-2 px-5 py-2 rounded-full font-medium transition-all whitespace-nowrap ${activeTab === type
-                                            ? "text-gray-900 bg-white shadow-lg"
-                                            : "text-gray-500 hover:text-gray-700"
-                                            }`}
-                                    >
-                                        <span>{conf.label}</span>
-                                        {count > 0 && (
-                                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${activeTab === type
-                                                ? "bg-gray-100 text-gray-700"
-                                                : "bg-gray-200 text-gray-600"
-                                                }`}>
-                                                {count}
-                                            </span>
-                                        )}
+                                return (
+                                    <div key={type} className="relative">
+                                        <button
+                                            onClick={() => setActiveTab(type as LibraryType)}
+                                            className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${activeTab === type
+                                                ? "text-gray-900 bg-white shadow-lg"
+                                                : "text-gray-500 hover:text-gray-700"
+                                                }`}
+                                        >
+                                            <span>{conf.label}</span>
+                                            {count > 0 && (
+                                                <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${activeTab === type
+                                                    ? "bg-gray-100 text-gray-700"
+                                                    : "bg-gray-200 text-gray-600"
+                                                    }`}>
+                                                    {count}
+                                                </span>
+                                            )}
 
-                                        {/* 삭제 버튼 (편집 모드 + 커스텀 카테고리만) */}
-                                        {isEditMode && !isDefault && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteCategory(type);
-                                                }}
-                                                className="ml-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
-                                                title="카테고리 삭제"
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
-                                        )}
-                                    </button>
-                                </div>
-                            );
-                        })}
+                                            {/* 삭제 버튼 (편집 모드 + 커스텀 카테고리만) */}
+                                            {isEditMode && !isDefault && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteCategory(type);
+                                                    }}
+                                                    className="ml-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
+                                                    title="카테고리 삭제"
+                                                >
+                                                    <X className="w-2.5 h-2.5" />
+                                                </button>
+                                            )}
+                                        </button>
+                                    </div>
+                                );
+                            })}
 
-                        {/* 카테고리 추가 버튼 (편집 모드만) */}
-                        {isEditMode && (
-                            <button
-                                onClick={() => setCategoryModalOpen(true)}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-gray-500 hover:text-gray-900 hover:bg-white/50 transition-all font-medium"
-                                title="카테고리 추가"
-                            >
-                                <Plus className="w-4 h-4" />
-                            </button>
-                        )}
+                            {/* 카테고리 추가 버튼 (편집 모드만) */}
+                            {isEditMode && (
+                                <button
+                                    onClick={() => setCategoryModalOpen(true)}
+                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm text-gray-500 hover:text-gray-900 hover:bg-white/50 transition-all font-medium"
+                                    title="카테고리 추가"
+                                >
+                                    <Plus className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -456,6 +458,22 @@ export default function LibraryManager({ initialData, onSave }: LibraryManagerPr
                 </div>
             </div>
 
+            {/* 편집 버튼 - 창 밖에 고정 */}
+            <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`fixed bottom-6 right-6 w-12 h-12 rounded-full shadow-xl flex items-center justify-center transition-all z-50 ${isEditMode
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : "bg-gray-900 hover:bg-gray-800 text-white"
+                    }`}
+                title={isEditMode ? "편집 완료" : "카테고리 편집"}
+            >
+                {isEditMode ? (
+                    <X className="w-5 h-5" />
+                ) : (
+                    <Edit3 className="w-5 h-5" />
+                )}
+            </button>
+
             {/* 편집 모달 */}
             <EditModal
                 isOpen={editModalOpen}
@@ -522,23 +540,6 @@ export default function LibraryManager({ initialData, onSave }: LibraryManagerPr
                     </div>
                 </div>
             )}
-
-            {/* 우측 하단 편집 버튼 */}
-            <button
-                onClick={() => setIsEditMode(!isEditMode)}
-                className={`fixed bottom-8 right-8 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all z-30 ${isEditMode
-                    ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "bg-gray-900 hover:bg-gray-800 text-white"
-                    }`}
-                title={isEditMode ? "편집 완료" : "카테고리 편집"}
-            >
-                {isEditMode ? (
-                    <X className="w-6 h-6" />
-                ) : (
-                    <Edit3 className="w-6 h-6" />
-                )}
-            </button>
-
             <style>{`
                 .scrollbar-hide::-webkit-scrollbar {
                     display: none;

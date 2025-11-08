@@ -1107,118 +1107,186 @@ export default function TenantPortal() {
           />
         )}
 
-        {/* ✅ 2025 SaaS Dashboard Header - Sleek & Minimal */}
-        <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="flex items-center justify-between h-14 gap-4">
-              {/* Left: Brand */}
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-900 to-gray-700 flex items-center justify-center">
-                  <Database className="w-4 h-4 text-white" />
+        {/* ✅ 모바일 최적화 헤더 */}
+        <div className="bg-white/70 backdrop-blur-xl border-b border-white/30 sticky top-0 z-40 shadow-sm">
+          <div className="max-w-7xl mx-auto px-3 py-2 sm:px-6 sm:py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 flex-1 min-w-0">
+                <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-r from-yellow-400 to-amber-400 rounded-xl shadow-sm flex items-center justify-center">
+                  <Database className="w-4 h-4 sm:w-5 sm:h-5 text-gray-800" />
                 </div>
-                <h1 className="text-sm font-semibold text-gray-900 hidden sm:block">
-                  {currentTenant?.brandName || '야무 포털'}
-                </h1>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-sm sm:text-base font-bold text-gray-900 truncate">
+                      {currentTenant?.brandName || '야무 포털'}
+                    </h1>
+                    {/* ✅ 플랜 & 구독 정보 - 한 줄로 통합 */}
+                    <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${PLAN_BADGE_CLASS[currentTenant?.plan?.toLowerCase()] || PLAN_BADGE_CLASS.trial}`}>
+                      {currentPlanConfig.name}
+                    </span>
+                    {subscriptionInfo && (
+                      <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${subscriptionInfo.isExpired ? 'bg-red-100 text-red-700' :
+                        subscriptionInfo.isExpiringSoon ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                        {subscriptionInfo.isExpired
+                          ? '만료'
+                          : `D-${subscriptionInfo.daysLeft}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {/* Center: Navigation Tabs */}
-              <div className="flex items-center gap-1 flex-1 justify-center overflow-x-auto scrollbar-hide min-w-0">
-                {[
-                  { key: 'conversations', label: '대화 관리', icon: MessageSquare },
-                  { key: 'faq', label: 'FAQ', icon: Database },
-                  { key: 'stats', label: '통계', icon: BarChart3 },
-                  { key: 'data', label: '데이터 관리', icon: Database },
-                  { key: 'settings', label: '설정', icon: Settings },
+              {/* 설정 메뉴 */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowSettingsMenu(!showSettingsMenu)}
+                  className="p-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
+                >
+                  <Settings className="w-5 h-5 text-gray-600" />
+                </button>
 
-                ].map(({ key, label, icon: Icon }) => {
-                  const isActive = key === activeTab || (key === 'data' && activeTab === 'library');
-                  return (
+                {showSettingsMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-50">
                     <button
-                      key={key}
-                      onClick={() => setActiveTab(key)}
-                      className={`relative flex items-center gap-1.5 px-3 py-2 text-[13px] font-medium whitespace-nowrap transition-colors ${isActive
-                        ? 'text-gray-900'
-                        : 'text-gray-500 hover:text-gray-700'
-                        }`}
+                      onClick={reopenOnboarding}
+                      className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-sm transition-colors"
                     >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">{label}</span>
-                      {isActive && (
-                        <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900 rounded-full" />
-                      )}
+                      <BookOpen className="w-4 h-4 text-gray-600" />
+                      <span className="text-gray-900">설치 가이드</span>
                     </button>
-                  );
-                })}
-              </div>
-
-              {/* Right: Plan Badge, D-day, Settings */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium ${PLAN_BADGE_CLASS[currentTenant?.plan?.toLowerCase()] || PLAN_BADGE_CLASS.trial}`}>
-                  {currentPlanConfig.name}
-                </span>
-                {subscriptionInfo && (
-                  <span className={`text-[11px] px-2 py-0.5 rounded-md font-medium ${subscriptionInfo.isExpired
-                    ? 'bg-red-50 text-red-600'
-                    : subscriptionInfo.isExpiringSoon
-                      ? 'bg-amber-50 text-amber-600'
-                      : 'bg-gray-100 text-gray-600'
-                    }`}>
-                    {subscriptionInfo.isExpired ? '만료' : `D-${subscriptionInfo.daysLeft}`}
-                  </span>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-3 text-left hover:bg-red-50 flex items-center gap-3 text-sm border-t border-gray-100 transition-colors"
+                    >
+                      <LogOut className="w-4 h-4 text-red-600" />
+                      <span className="text-red-600">로그아웃</span>
+                    </button>
+                  </div>
                 )}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </button>
-                  {showSettingsMenu && (
-                    <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-lg shadow-lg border border-gray-100 overflow-hidden z-50">
-                      <button
-                        onClick={reopenOnboarding}
-                        className="w-full px-3 py-2 text-left hover:bg-gray-50 flex items-center gap-2.5 text-[13px] transition-colors text-gray-700"
-                      >
-                        <BookOpen className="w-3.5 h-3.5 text-gray-500" />
-                        <span>설치 가이드</span>
-                      </button>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-3 py-2 text-left hover:bg-red-50 flex items-center gap-2.5 text-[13px] transition-colors text-red-600 border-t border-gray-100"
-                      >
-                        <LogOut className="w-3.5 h-3.5" />
-                        <span>로그아웃</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           </div>
         </div>
 
+
         {/* ===================================== */}
         {/* 메인 컨텐츠 */}
         {/* ===================================== */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          {/* ✅ 헤더 - 플랫 구조, 명확하고 직관적 */}
+          <div className="sticky top-0 z-10 -mx-4 px-4 sm:-mx-6 sm:px-6 border-b border-gray-200 bg-white">
+            <div className="flex items-center justify-between py-3">
+
+              {/* 왼쪽: 메인 탭 네비게이션 */}
+              <div className="flex gap-4 overflow-x-auto scrollbar-hide">
+
+                {/* 대화 관리 */}
+                <button
+                  onClick={() => setActiveTab('conversations')}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'conversations'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  대화 관리
+                </button>
+
+                {/* FAQ */}
+                <button
+                  onClick={() => setActiveTab('faq')}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'faq'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  <Database className="w-4 h-4" />
+                  FAQ
+                </button>
+
+                {/* 통계 */}
+                <button
+                  onClick={() => setActiveTab('stats')}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'stats'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  통계
+                </button>
+
+                {/* 구분선 */}
+                <div className="w-px h-6 bg-gray-200 self-center" />
+
+                {/* 설정 */}
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'settings'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  <Settings className="w-4 h-4" />
+                  설정
+                </button>
+
+                {/* 데이터 관리 (데이터 + 라이브러리) */}
+                <button
+                  onClick={() => setActiveTab('data')}
+                  className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'data' || activeTab === 'library'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                >
+                  <Database className="w-4 h-4" />
+                  데이터 관리
+                </button>
+
+              </div>
+
+              {/* 오른쪽: 사용자 정보 */}
+              <div className="flex items-center gap-3 ml-4 flex-shrink-0">
+                <span className="text-xs text-gray-500 hidden sm:block">
+                  {currentTenant?.companyName || 'Guest'}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                  title="로그아웃"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+
+            </div>
+          </div>
 
           {/* mypage - 이제 사용 안 함 */}
           {activeTab === 'mypage' && null}
 
           {/* 설정 탭 */}
           {activeTab === 'settings' && (
-            <MyPageTabs
-              tenantId={currentTenant?.id}
-              initialSettings={settingsData}
-              onSaveSettings={handleSettingsSave}
-              defaultTab="settings"  // ← 설정만 렌더링
-            />
+            <div className="space-y-6 py-6">
+              <MyPageTabs
+                tenantId={currentTenant?.id}
+                initialData={tenantData.criteriaSheet || criteriaData}
+                initialLibrary={libraryData}
+                initialSettings={settingsData}
+                onSaveMatrix={handleMatrixSave}
+                onSaveLibrary={handleLibrarySave}
+                onSaveSettings={handleSettingsSave}
+                defaultTab="settings"
+              />
+            </div>
           )}
 
           {/* 데이터 관리 탭 (데이터 + 라이브러리 서브탭) */}
           {(activeTab === 'data' || activeTab === 'library') && (
-            <div className="space-y-6 py-6">
-              {/* 미니멀 세그먼트 컨트롤 */}
+            <div className="space-y-8 py-8">
+              {/* 초미니멀 세그먼트 컨트롤 */}
               <div className="flex justify-center">
                 <div className="relative inline-flex items-center gap-0.5 p-0.5 bg-black/5 rounded-full">
                   {/* 슬라이더 */}
@@ -1246,7 +1314,6 @@ export default function TenantPortal() {
                   </button>
                 </div>
               </div>
-
 
               {/* 데이터 서브탭 */}
               {activeTab === 'data' && (
