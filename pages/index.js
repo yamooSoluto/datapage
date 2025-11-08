@@ -8,6 +8,7 @@ import OnboardingModal from "../components/onboarding/OnboardingModal";
 import CriteriaSheetEditor from '@/components/mypage/CriteriaSheetEditor';
 import { useMatrixData } from '@/hooks/useMatrixData';
 import { useTemplates } from '@/hooks/useTemplates';
+import MyPageTabs from '@/components/mypage/MyPageTabs';
 
 console.log('🚀 페이지 로드됨!', new Date().toISOString());
 
@@ -50,6 +51,97 @@ export default function TenantPortal() {
   // 프로필 & 온보딩 입력 초안
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+
+
+  const [settingsData, setSettingsData] = useState({
+    companyName: "",
+    contact: "",
+    email: "",
+    slackUserId: "",
+    plan: "free",
+    chatWidgetUrl: "",
+    naverTalkTalkUrl: "",
+  });
+
+  // 설정 저장 함수
+  const handleSettingsSave = async (newSettings) => {
+    try {
+      setSettingsData(newSettings);
+
+      const res = await fetch('/api/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: currentTenant?.id,
+          settings: newSettings,
+        }),
+      });
+
+      if (!res.ok) throw new Error('설정 저장 실패');
+      console.log('✅ 설정 저장 완료');
+    } catch (error) {
+      console.error('❌ 설정 저장 실패:', error);
+      throw error;
+    }
+  };
+
+  // 2. 라이브러리 state 추가 (기존 state들 아래에)
+  const [libraryData, setLibraryData] = useState({
+    links: {},
+    passwords: {},
+    rules: {},
+    info: {},
+  });
+
+  // 3. 라이브러리 불러오기 함수 추가 (useEffect 안에)
+  useEffect(() => {
+    if (currentTenant?.id) {
+      // 기존 데이터 로딩...
+
+      // 라이브러리 데이터 로딩 추가
+      const loadLibrary = async () => {
+        try {
+          const res = await fetch(`/api/library/get?tenantId=${currentTenant.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            setLibraryData(data.library || {
+              links: {},
+              passwords: {},
+              rules: {},
+              info: {},
+            });
+          }
+        } catch (error) {
+          console.error('라이브러리 로딩 실패:', error);
+        }
+      };
+
+      loadLibrary();
+    }
+  }, [currentTenant?.id]);
+
+  // 4. 라이브러리 저장 함수 추가
+  const handleLibrarySave = async (newLibrary) => {
+    try {
+      setLibraryData(newLibrary);
+
+      const res = await fetch('/api/library/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: currentTenant?.id,
+          library: newLibrary,
+        }),
+      });
+
+      if (!res.ok) throw new Error('라이브러리 저장 실패');
+
+      console.log('✅ 라이브러리 저장 완료');
+    } catch (error) {
+      console.error('❌ 라이브러리 저장 실패:', error);
+      alert('라이브러리 저장에 실패했습니다.');
+    }
+  };
 
   // 탭 & 온보딩
   const [activeTab, setActiveTab] = useState('faq');
@@ -1130,29 +1222,31 @@ export default function TenantPortal() {
           {/* mypage */}
           {activeTab === 'mypage' && (
             <div className="space-y-6 py-4">
-              {/* 헤더 */}
-              <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-white/30 p-6 max-w-7xl mx-auto">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900">데이터 관리</h2>
-                    <p className="text-sm text-gray-600 mt-1">셀을 클릭하면 옵션이 나타납니다</p>
-                  </div>
-                </div>
-              </div>
+              {/* 기존 헤더 제거 - MyPageTabs에 포함됨 */}
 
               {/* 에디터 */}
               {matrixLoading ? (
-                <div>로딩중...</div>
+                <div className="flex items-center justify-center py-20">
+                  <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-gray-200 border-t-gray-900 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-600">데이터 로딩 중...</p>
+                  </div>
+                </div>
               ) : (
-                <CriteriaSheetEditor
+                <MyPageTabs
                   tenantId={currentTenant?.id}
                   initialData={tenantData.criteriaSheet || criteriaData}
+                  initialLibrary={libraryData}
+                  initialSettings={settingsData}
                   templates={templates}
                   onSave={handleCriteriaSave}
+                  onSaveLibrary={handleLibrarySave}
+                  onSaveSettings={handleSettingsSave}
                 />
               )}
             </div>
           )}
+
           {/* FAQ 탭 */}
           {activeTab === 'faq' && (
             <div className="space-y-4 pt-4">

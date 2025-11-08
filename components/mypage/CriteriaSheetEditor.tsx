@@ -8,11 +8,12 @@
 
 import React from "react";
 import {
-    Plus, X, GripVertical, ChevronDown, Calendar, Clock, Type, Settings, Columns, Eye, EyeOff, Save, Edit3, Check
+    Plus, X, GripVertical, ChevronDown, Calendar, Clock, Type, Settings, Columns, Eye, EyeOff, Save, Edit3, Check, Download, RefreshCw
 } from "lucide-react";
 import {
     DndContext,
     PointerSensor,
+    TouchSensor,
     useSensor,
     useSensors,
     closestCenter,
@@ -380,6 +381,7 @@ function SortableOptionButton({
 // InlineDropdown (기존 유지 - 모바일에서는 바텀시트로 자동 전환)
 // ────────────────────────────────────────────────────────────
 function InlineDropdown({
+    row,  // 추가
     cellRef,
     facet,
     value,
@@ -388,6 +390,10 @@ function InlineDropdown({
     customOptions,
     onDeleteCustomOption,
     onUpdateFacetOptions,  // 새로 추가: facet.options 수정용
+    library,  // 라이브러리 데이터
+    openDropdown,  // 추가
+    setOpenDropdown,  // 추가
+    isEditMode,  // 추가
 }: any) {
     const dropdownRef = React.useRef<HTMLDivElement | null>(null);
     const [selected, setSelected] = React.useState<string[]>(unpack(value));
@@ -412,6 +418,99 @@ function InlineDropdown({
         window.addEventListener("resize", checkMobile);
         return () => window.removeEventListener("resize", checkMobile);
     }, []);
+
+    // 라이브러리 참조 타입 처리 - 드롭다운으로
+    if (facet.type === "library-ref") {
+        const libraryType = facet.libraryType || "links";
+        const libraryItems = library?.[libraryType] || {};
+        const libraryOptions = Object.entries(libraryItems).map(([key, item]: any) => ({
+            key,
+            label: item.label,
+            value: item.value,
+        }));
+
+        const selectedKeys = value ? String(value).split(',').filter(Boolean) : [];
+        const selectedLabels = selectedKeys
+            .map(k => libraryItems[k]?.label)
+            .filter(Boolean)
+            .join(', ');
+
+        const dropdownId = `${row.id}-${facet.key}`;
+        const isDropdownOpen = openDropdown === dropdownId;
+
+        return (
+            <div className="relative inline-block w-full">
+                <button
+                    ref={cellRef as any}
+                    onClick={() => {
+                        if (isEditMode) {
+                            setOpenDropdown(isDropdownOpen ? null : dropdownId);
+                        }
+                    }}
+                    disabled={!isEditMode}
+                    className={`w-full px-3 py-2 text-left rounded-lg border transition-all ${isEditMode
+                        ? 'border-gray-300 hover:border-gray-900 hover:bg-gray-50'
+                        : 'border-transparent bg-transparent'
+                        } ${selectedKeys.length > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+                    title={selectedLabels || '선택'}
+                >
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm">
+                            {selectedLabels || '선택'}
+                        </span>
+                        {isEditMode && libraryOptions.length > 0 && (
+                            <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        )}
+                    </div>
+                </button>
+
+                {isDropdownOpen && libraryOptions.length > 0 && (
+                    <div
+                        ref={dropdownRef}
+                        className="absolute z-50 mt-1 w-full min-w-[200px] max-h-[300px] overflow-y-auto bg-white rounded-lg shadow-lg border border-gray-200"
+                    >
+                        <div className="p-2 space-y-1">
+                            {libraryOptions.map((opt: any) => {
+                                const isSelected = selectedKeys.includes(opt.key);
+                                return (
+                                    <label
+                                        key={opt.key}
+                                        className="flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => {
+                                                const newSelected = isSelected
+                                                    ? selectedKeys.filter((k: string) => k !== opt.key)
+                                                    : [...selectedKeys, opt.key];
+                                                onChange(newSelected.join(','));
+                                            }}
+                                            className="mt-0.5 w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900"
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium text-gray-900 truncate">
+                                                {opt.label}
+                                            </div>
+                                            <div className="text-xs text-gray-500 truncate" title={opt.value}>
+                                                {opt.value}
+                                            </div>
+                                        </div>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {!isDropdownOpen && libraryOptions.length === 0 && isEditMode && (
+                    <div className="absolute z-50 mt-1 w-full p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+                        📚 라이브러리 탭에서 {facet.label}을 추가하세요
+                    </div>
+                )}
+            </div>
+        );
+    }
 
     const [position, setPosition] = React.useState({ top: 0, left: 0 });
     React.useEffect(() => {
@@ -796,7 +895,8 @@ function InlineDropdown({
                                 <div className="rounded-xl bg-slate-50 p-2.5">
                                     {structuredOptions.groups.map((group, groupIdx) => {
                                         const sensors = useSensors(
-                                            useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+                                            useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+                                            useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
                                         );
 
                                         return (
@@ -1087,70 +1187,44 @@ function InlineDropdown({
 }
 
 // ────────────────────────────────────────────────────────────
-// QuickAddBottomSheet - 미니멀 & 모던 디자인
+// QuickAddBottomSheet - 간소화 버전 (프리셋 제거)
 // ────────────────────────────────────────────────────────────
 function QuickAddBottomSheet({ isOpen, onClose, sheetId, onAdd, onAddAll }: any) {
     const [customName, setCustomName] = React.useState("");
-    const presets = PRESET_ITEMS[sheetId] || [];
 
     const add = (name?: string) => {
         if (!name?.trim()) return;
         onAdd(name.trim());
         setCustomName("");
-        onClose();
     };
 
     return (
         <MobileBottomSheet isOpen={isOpen} onClose={onClose} title="항목 추가">
-            <div className="space-y-5">
-                {/* 직접 입력 */}
+            <div className="space-y-3">
                 <div className="flex gap-2">
                     <input
                         value={customName}
                         onChange={(e) => setCustomName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && add(customName)}
-                        placeholder="항목명 입력..."
-                        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                add(customName);
+                            }
+                        }}
+                        placeholder="항목명 입력 (예: 현관, 로비, 복도)"
+                        className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
                         autoFocus
                     />
                     <button
                         onClick={() => add(customName)}
                         disabled={!customName.trim()}
-                        className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                        className="px-5 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
                     >
                         추가
                     </button>
                 </div>
-
-                {/* 프리셋 */}
-                {presets.length > 0 && (
-                    <div className="pt-3 border-t border-gray-100">
-                        <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs text-gray-500">프리셋에서 선택</span>
-                            <button
-                                onClick={() => {
-                                    onAddAll(presets.map((p: any) => p.name));
-                                    onClose();
-                                }}
-                                className="text-xs text-blue-600 font-medium hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-                            >
-                                전체 추가
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                            {presets.map((p: any) => (
-                                <button
-                                    key={p.name}
-                                    onClick={() => add(p.name)}
-                                    className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left group"
-                                >
-                                    <span className="text-xl group-hover:scale-110 transition-transform">{p.icon || "📌"}</span>
-                                    <span className="font-medium text-gray-900 text-sm truncate">{p.name}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                <p className="text-xs text-gray-500">
+                    Enter 키를 눌러 빠르게 추가할 수 있습니다
+                </p>
             </div>
         </MobileBottomSheet>
     );
@@ -1172,7 +1246,10 @@ function ColumnManageBottomSheet({ isOpen, onClose, sheetId, allFacets, visibleK
         }
     }, [isOpen, allFacets, visibleKeys]);
 
-    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+    );
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -1309,6 +1386,33 @@ function SortableColumnItem({ id, facet, isVisible, onToggle, onDelete }: any) {
     const coreRequiredFacets = ['existence', 'handover', 'notes'];
     const isDeletable = !coreRequiredFacets.includes(facet.key);
 
+    // 타입별 아이콘 표시
+    const getTypeIcon = () => {
+        if (facet.type === 'library-ref') {
+            return '📚'; // 라이브러리 참조
+        }
+        if (facet.type === 'multi') {
+            return '☐'; // 멀티셀렉
+        }
+        if (facet.type === 'checkbox') {
+            return '✓'; // 체크박스
+        }
+        return '○'; // 단일
+    };
+
+    const getTypeLabel = () => {
+        if (facet.type === 'library-ref') {
+            return '라이브러리';
+        }
+        if (facet.type === 'multi') {
+            return '멀티';
+        }
+        if (facet.type === 'checkbox') {
+            return '체크';
+        }
+        return '단일';
+    };
+
     return (
         <div
             ref={setNodeRef}
@@ -1332,9 +1436,16 @@ function SortableColumnItem({ id, facet, isVisible, onToggle, onDelete }: any) {
 
             {/* 열 정보 */}
             <div className="flex-1 min-w-0">
-                <div className={`text-sm font-medium truncate ${isVisible ? 'text-gray-900' : 'text-gray-500'
-                    }`}>
-                    {facet.label}
+                <div className="flex items-center gap-2">
+                    <div className={`text-sm font-medium truncate ${isVisible ? 'text-gray-900' : 'text-gray-500'
+                        }`}>
+                        {facet.label}
+                    </div>
+                    {facet.type === 'library-ref' && (
+                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium whitespace-nowrap">
+                            📚 라이브러리
+                        </span>
+                    )}
                 </div>
                 <div className="text-xs text-gray-400 truncate">{facet.key}</div>
             </div>
@@ -1396,14 +1507,39 @@ function Row({ row, children, isEditMode = false }: any) {
 // ────────────────────────────────────────────────────────────
 // CellEditor (기존 유지)
 // ────────────────────────────────────────────────────────────
-function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, updateCell, addCustomOption, deleteCustomOption, customOptions, isEditMode = false, onUpdateFacetOptions }: any) {
+function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, updateCell, addCustomOption, deleteCustomOption, customOptions, isEditMode = false, onUpdateFacetOptions, library }: any) {
     const cellRef = React.useRef<HTMLButtonElement | HTMLTextAreaElement | null>(null);
+    const dropdownRef = React.useRef<HTMLDivElement | null>(null);
     const value = row.facets[facet.key] || "";
     const values = unpack(value);
     const displayText =
         values.length === 0 ? "선택" : values.length === 1 ? values[0] : values.length === 2 ? values.join(", ") : `${values[0]} 외 ${values.length - 1}개`;
     const isOpen = openDropdown?.rowId === row.id && openDropdown?.facetKey === facet.key;
     const customKey = `${sheetId}::${facet.key}`;
+
+    // 드롭다운 외부 클릭 시 닫기
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                dropdownRef.current &&
+                cellRef.current &&
+                !dropdownRef.current.contains(event.target as Node) &&
+                !cellRef.current.contains(event.target as Node)
+            ) {
+                // 라이브러리 참조 드롭다운이 열려있는지 확인
+                const dropdownId = `${row.id}-${facet.key}`;
+                if (openDropdown === dropdownId) {
+                    setOpenDropdown(null);
+                }
+            }
+        };
+
+        // 라이브러리 참조 타입이고 드롭다운이 열려있을 때만 리스너 추가
+        if (facet.type === 'library-ref' && openDropdown === `${row.id}-${facet.key}`) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [facet.type, openDropdown, row.id, facet.key, setOpenDropdown]);
 
     // existence 체크박스 확인 - 체크되지 않으면 다른 필드 비활성화
     const existenceValue = row.facets["existence"];
@@ -1477,6 +1613,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
 
                         {isOpen && !isDisabled && (
                             <InlineDropdown
+                                row={row}
                                 cellRef={cellRef}
                                 facet={facet}
                                 value={value}
@@ -1487,6 +1624,10 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                                 customOptions={[]}
                                 onDeleteCustomOption={() => { }}
                                 onUpdateFacetOptions={onUpdateFacetOptions}
+                                library={library}
+                                openDropdown={openDropdown}
+                                setOpenDropdown={setOpenDropdown}
+                                isEditMode={isEditMode}
                             />
                         )}
                     </>
@@ -1521,6 +1662,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
 
                     {isOpen && !isDisabled && (
                         <InlineDropdown
+                            row={row}
                             cellRef={cellRef}
                             facet={facet}
                             value={value}
@@ -1533,6 +1675,10 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                             customOptions={customOptions[customKey] || []}
                             onDeleteCustomOption={(opt: string) => deleteCustomOption(customKey, opt)}
                             onUpdateFacetOptions={onUpdateFacetOptions}
+                            library={library}
+                            openDropdown={openDropdown}
+                            setOpenDropdown={setOpenDropdown}
+                            isEditMode={isEditMode}
                         />
                     )}
                 </>
@@ -1647,7 +1793,7 @@ function FacetListItem({ facet, items, onToggle, customOptions, addCustomOption 
     );
 }
 
-function FacetPivotView({ sheetId, template, items, onToggleMembership, customOptions, addCustomOption }: any) {
+function FacetPivotView({ sheetId, template, items, onToggleMembership, customOptions, addCustomOption, isEditMode, library }: any) {
     // 체크박스 타입 제외한 facet만 사용
     const availableFacets = React.useMemo(() =>
         template.facets.filter((f: any) => f.type !== 'checkbox'),
@@ -1655,6 +1801,8 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
     );
 
     const [facetKey, setFacetKey] = React.useState(() => (availableFacets?.[0]?.key || ""));
+    const [viewType, setViewType] = React.useState<"grid" | "card">("card"); // 뷰 타입 상태
+
     const facet = React.useMemo(() =>
         availableFacets.find((f: any) => f.key === facetKey) || availableFacets[0] || null,
         [facetKey, availableFacets]
@@ -1662,6 +1810,15 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
 
     const options: string[] = React.useMemo(() => {
         if (!facet) return [];
+
+        // 라이브러리 참조 타입인 경우
+        if (facet.type === 'library-ref') {
+            const libraryType = facet.libraryType || 'links';
+            const libraryItems = library?.[libraryType] || {};
+            return Object.keys(libraryItems);
+        }
+
+        // 일반 타입
         const base: string[] = [];
         (facet.options || []).forEach((opt: any) => {
             if (typeof opt === "string") base.push(opt);
@@ -1670,16 +1827,14 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
         const customKey = `${sheetId}::${facet.key}`;
         const customs = (customOptions[customKey] || []).filter((c: string) => !base.some((b) => normalize(b) === normalize(c)));
         return [...base, ...customs];
-    }, [facet, sheetId, customOptions]);
+    }, [facet, sheetId, customOptions, library]);
 
     const [newOpt, setNewOpt] = React.useState("");
     const [optionError, setOptionError] = React.useState("");
 
     const addOpt = () => {
-        // 공백 제거하고 trimmed 값만 사용
         const v = newOpt.trim();
 
-        // 유효성 검사
         if (!v) {
             setOptionError("옵션 이름을 입력하세요");
             return;
@@ -1690,7 +1845,6 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
             return;
         }
 
-        // 이미 존재하는 옵션인지 확인
         const customKey = `${sheetId}::${facet.key}`;
         const existingOptions = [...(facet.options || []), ...(customOptions[customKey] || [])];
         const allOptions = existingOptions.map(opt =>
@@ -1707,45 +1861,157 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
         setOptionError("");
     };
 
+    // 옵션별로 아이템 그룹핑 (카드 뷰용)
+    const groupedByOption = React.useMemo(() => {
+        if (!facet) return {};
+        const groups: Record<string, any[]> = {};
+
+        options.forEach(option => {
+            groups[option] = items.filter((item: any) => {
+                const values = unpack(item.facets?.[facet.key] || "");
+                return values.some((v: string) => normalize(v) === normalize(option));
+            });
+        });
+
+        return groups;
+    }, [facet, options, items]);
+
+    // 라이브러리 참조 타입의 옵션 라벨 가져오기
+    const getOptionLabel = (optionKey: string) => {
+        if (facet?.type === 'library-ref') {
+            const libraryType = facet.libraryType || 'links';
+            const libraryItems = library?.[libraryType] || {};
+            return libraryItems[optionKey]?.label || optionKey;
+        }
+        return optionKey;
+    };
+
     if (!facet || items.length === 0) {
         return (
             <div className="bg-white rounded-2xl shadow-sm p-12 text-center">
-                <p className="text-gray-400">기준 중심 보기를 사용하려면 먼저 항목을 추가하세요.</p>
+                <p className="text-gray-400">기준별 보기를 사용하려면 먼저 항목을 추가하세요.</p>
             </div>
         );
     }
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-4 border-b bg-gray-50">
-                <div className="flex flex-col gap-4">
-                    {/* 헤더와 기준 선택 */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Columns className="w-5 h-5 text-gray-600" />
-                            <span className="font-semibold text-gray-900">기준 중심 보기</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">보기 기준:</label>
-                            <select
-                                value={facet?.key || ""}
-                                onChange={(e) => setFacetKey(e.target.value)}
-                                className="h-10 px-3 pr-8 rounded-lg border border-gray-300 bg-white text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[150px]"
-                            >
-                                {availableFacets.map((f: any) => (
-                                    <option key={f.key} value={f.key}>
-                                        {f.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+        <div className="space-y-4">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                <div className="flex items-center gap-2">
+                    <Columns className="w-5 h-5 text-gray-600" />
+                    <span className="font-semibold text-gray-900">기준별 보기</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    {/* 뷰 타입 토글 */}
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                        <button
+                            onClick={() => setViewType("card")}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewType === "card"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                                }`}
+                        >
+                            카드
+                        </button>
+                        <button
+                            onClick={() => setViewType("grid")}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewType === "grid"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                                }`}
+                        >
+                            그리드
+                        </button>
                     </div>
 
-                    {/* 새 옵션 추가 */}
-                    <div className="pt-2 border-t">
-                        <div className="flex items-center gap-2">
-                            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">새 옵션:</label>
-                            <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">보기 기준:</label>
+                        <select
+                            value={facet?.key || ""}
+                            onChange={(e) => setFacetKey(e.target.value)}
+                            className="h-10 px-3 pr-8 rounded-lg border border-gray-300 bg-white text-sm font-medium focus:ring-2 focus:ring-gray-900 focus:border-transparent min-w-[150px]"
+                        >
+                            {availableFacets.map((f: any) => (
+                                <option key={f.key} value={f.key}>
+                                    {f.label}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {/* 카드 뷰 */}
+            {viewType === "card" && (
+                <div className="space-y-3">
+                    {options.map(option => {
+                        const itemsInGroup = groupedByOption[option] || [];
+
+                        return (
+                            <div key={option} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                {/* 옵션 헤더 */}
+                                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="font-semibold text-gray-900">{getOptionLabel(option)}</h3>
+                                        <span className="text-xs text-gray-500">
+                                            {itemsInGroup.length}개 항목
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* 항목 리스트 - 멀티셀렉 */}
+                                <div className="p-3">
+                                    {isEditMode ? (
+                                        <>
+                                            {/* 편집 모드: 멀티셀렉 */}
+                                            <div className="flex flex-wrap gap-2 mb-3">
+                                                {items.map((item: any) => {
+                                                    const isSelected = itemsInGroup.find((i: any) => i.id === item.id);
+                                                    return (
+                                                        <button
+                                                            key={item.id}
+                                                            onClick={() => onToggleMembership(item.id, facet.key, option, !isSelected)}
+                                                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isSelected
+                                                                ? "bg-gray-900 text-white"
+                                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                                                }`}
+                                                        >
+                                                            {item.name}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                            <p className="text-xs text-gray-500">클릭하여 항목을 추가/제거하세요</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            {/* 일반 모드: 선택된 항목만 표시 */}
+                                            {itemsInGroup.length > 0 ? (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {itemsInGroup.map((item: any) => (
+                                                        <div
+                                                            key={item.id}
+                                                            className="px-3 py-1.5 rounded-lg bg-gray-100 text-sm text-gray-700"
+                                                        >
+                                                            {item.name}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-gray-400 py-2">이 옵션에 해당하는 항목이 없습니다</p>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {/* 새 옵션 추가 (편집 모드) */}
+                    {isEditMode && facet?.type !== 'library-ref' && (
+                        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-4">
+                            <div className="flex items-center gap-2">
                                 <input
                                     value={newOpt}
                                     onChange={(e) => {
@@ -1753,73 +2019,315 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                                         setOptionError("");
                                     }}
                                     onKeyDown={(e) => e.key === "Enter" && addOpt()}
-                                    placeholder={`${facet?.label || '기준'} 옵션 입력 (예: 빈백)`}
-                                    className={`w-full h-10 px-3 rounded-lg border text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
+                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (예: 6층, 옥상)`}
+                                    className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
                                         }`}
                                 />
-                                {optionError && (
-                                    <p className="text-xs text-red-600 mt-1">{optionError}</p>
+                                <button
+                                    onClick={addOpt}
+                                    disabled={!newOpt.trim()}
+                                    className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                >
+                                    추가
+                                </button>
+                            </div>
+                            {optionError && (
+                                <p className="text-xs text-red-600 mt-2">{optionError}</p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* 라이브러리 참조 타입 안내 */}
+                    {facet?.type === 'library-ref' && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                            <div className="flex items-start gap-2">
+                                <span className="text-blue-600 text-lg">📚</span>
+                                <div>
+                                    <p className="text-sm font-medium text-blue-900">라이브러리 참조 필드</p>
+                                    <p className="text-xs text-blue-700 mt-1">
+                                        이 필드는 <strong>라이브러리 탭</strong>에서 관리됩니다.
+                                        새 항목을 추가하려면 상단의 라이브러리 탭으로 이동하세요.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* 그리드 뷰 */}
+            {viewType === "grid" && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[140px] sticky left-0 bg-gray-50 z-10">
+                                        {facet?.label || "기준"}
+                                    </th>
+                                    {items.map((it: any) => (
+                                        <th key={it.id} className="px-2 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-[100px]">
+                                            {it.name || "(이름 없음)"}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {options.map((opt) => (
+                                    <tr key={opt} className="hover:bg-gray-50">
+                                        <td className="px-3 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10">
+                                            {getOptionLabel(opt)}
+                                        </td>
+                                        {items.map((it: any) => {
+                                            const values = unpack(it.facets?.[facet.key] || "");
+                                            const active = values.some((v: string) => normalize(v) === normalize(opt));
+                                            return (
+                                                <td key={it.id + opt} className="px-2 py-2">
+                                                    <button
+                                                        onClick={() => isEditMode && onToggleMembership(it.id, facet.key, opt, !active)}
+                                                        disabled={!isEditMode}
+                                                        className={`w-full h-10 rounded-lg border-2 border-dashed text-sm font-medium transition-all ${active
+                                                            ? "bg-gray-900 text-white border-gray-900 border-solid"
+                                                            : "bg-white text-gray-400 border-gray-300 hover:border-gray-900 hover:text-gray-900"
+                                                            } ${!isEditMode ? "cursor-default" : "cursor-pointer"}`}
+                                                    >
+                                                        {active ? "✓" : "+"}
+                                                    </button>
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* 새 옵션 추가 (편집 모드) */}
+                    {isEditMode && facet?.type !== 'library-ref' && (
+                        <div className="border-t border-gray-200 p-4 bg-gray-50">
+                            <div className="flex items-center gap-2">
+                                <input
+                                    value={newOpt}
+                                    onChange={(e) => {
+                                        setNewOpt(e.target.value);
+                                        setOptionError("");
+                                    }}
+                                    onKeyDown={(e) => e.key === "Enter" && addOpt()}
+                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (예: 6층, 옥상)`}
+                                    className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
+                                        }`}
+                                />
+                                <button
+                                    onClick={addOpt}
+                                    disabled={!newOpt.trim()}
+                                    className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                >
+                                    추가
+                                </button>
+                            </div>
+                            {optionError && (
+                                <p className="text-xs text-red-600 mt-2">{optionError}</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ────────────────────────────────────────────────────────────
+// LinkLibraryBottomSheet - 링크 라이브러리 관리
+// ────────────────────────────────────────────────────────────
+function LinkLibraryBottomSheet({ isOpen, onClose, linkLibrary, onUpdate }: any) {
+    const [editingKey, setEditingKey] = React.useState<string | null>(null);
+    const [editLabel, setEditLabel] = React.useState("");
+    const [editValue, setEditValue] = React.useState("");
+    const [editType, setEditType] = React.useState<"link" | "password">("link");
+    const [newLabel, setNewLabel] = React.useState("");
+    const [newValue, setNewValue] = React.useState("");
+    const [newType, setNewType] = React.useState<"link" | "password">("link");
+
+    const links = Object.entries(linkLibrary || {}).map(([key, data]: [string, any]) => ({
+        key,
+        ...data
+    }));
+
+    const startEdit = (link: any) => {
+        setEditingKey(link.key);
+        setEditLabel(link.label);
+        setEditValue(link.value);
+        setEditType(link.type || "link");
+    };
+
+    const saveEdit = () => {
+        if (!editingKey || !editLabel.trim() || !editValue.trim()) return;
+
+        const updated = {
+            ...linkLibrary,
+            [editingKey]: {
+                label: editLabel.trim(),
+                value: editValue.trim(),
+                type: editType
+            }
+        };
+        onUpdate(updated);
+        setEditingKey(null);
+    };
+
+    const deleteLink = (key: string) => {
+        if (!confirm("이 링크를 삭제하시겠습니까?")) return;
+        const updated = { ...linkLibrary };
+        delete updated[key];
+        onUpdate(updated);
+    };
+
+    const addNew = () => {
+        if (!newLabel.trim() || !newValue.trim()) return;
+
+        const key = newLabel.toLowerCase().replace(/\s+/g, "_").replace(/[^\w가-힣]/g, "");
+        if (linkLibrary[key]) {
+            alert("이미 존재하는 링크입니다.");
+            return;
+        }
+
+        const updated = {
+            ...linkLibrary,
+            [key]: {
+                label: newLabel.trim(),
+                value: newValue.trim(),
+                type: newType
+            }
+        };
+        onUpdate(updated);
+        setNewLabel("");
+        setNewValue("");
+        setNewType("link");
+    };
+
+    return (
+        <MobileBottomSheet isOpen={isOpen} onClose={onClose} title="링크 라이브러리">
+            <div className="space-y-4">
+                {/* 기존 링크 목록 */}
+                <div className="space-y-2">
+                    {links.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-8">
+                            등록된 링크가 없습니다
+                        </p>
+                    ) : (
+                        links.map((link) => (
+                            <div key={link.key} className="bg-white border border-gray-200 rounded-lg p-3">
+                                {editingKey === link.key ? (
+                                    <div className="space-y-2">
+                                        <input
+                                            value={editLabel}
+                                            onChange={(e) => setEditLabel(e.target.value)}
+                                            placeholder="링크 이름"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900"
+                                        />
+                                        <input
+                                            value={editValue}
+                                            onChange={(e) => setEditValue(e.target.value)}
+                                            placeholder="URL 또는 비밀번호"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900"
+                                        />
+                                        <select
+                                            value={editType}
+                                            onChange={(e) => setEditType(e.target.value as "link" | "password")}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900"
+                                        >
+                                            <option value="link">링크</option>
+                                            <option value="password">비밀번호</option>
+                                        </select>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={saveEdit}
+                                                className="flex-1 px-3 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800"
+                                            >
+                                                저장
+                                            </button>
+                                            <button
+                                                onClick={() => setEditingKey(null)}
+                                                className="flex-1 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200"
+                                            >
+                                                취소
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="flex items-start justify-between mb-1">
+                                            <div className="flex-1">
+                                                <h4 className="font-medium text-gray-900 text-sm">{link.label}</h4>
+                                                <p className="text-xs text-gray-500 mt-0.5 break-all">{link.value}</p>
+                                                <span className="inline-block mt-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+                                                    {link.type === "link" ? "링크" : "비밀번호"}
+                                                </span>
+                                            </div>
+                                            <div className="flex gap-1 ml-2">
+                                                <button
+                                                    onClick={() => startEdit(link)}
+                                                    className="p-1.5 text-gray-400 hover:text-gray-900 transition-colors"
+                                                >
+                                                    <Edit3 className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteLink(link.key)}
+                                                    className="p-1.5 text-gray-400 hover:text-red-600 transition-colors"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
-                            <button
-                                onClick={addOpt}
-                                disabled={!newOpt.trim()}
-                                className="h-10 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors whitespace-nowrap disabled:bg-gray-300 disabled:cursor-not-allowed"
-                            >
-                                <Plus className="w-4 h-4 inline mr-1" />
-                                추가
-                            </button>
-                        </div>
+                        ))
+                    )}
+                </div>
+
+                {/* 새 링크 추가 */}
+                <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">새 링크 추가</h3>
+                    <div className="space-y-2">
+                        <input
+                            value={newLabel}
+                            onChange={(e) => setNewLabel(e.target.value)}
+                            placeholder="링크 이름 (예: 스터디룸 예약)"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900"
+                        />
+                        <input
+                            value={newValue}
+                            onChange={(e) => setNewValue(e.target.value)}
+                            placeholder="URL 또는 비밀번호 (예: www.study.com)"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900"
+                        />
+                        <select
+                            value={newType}
+                            onChange={(e) => setNewType(e.target.value as "link" | "password")}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gray-900"
+                        >
+                            <option value="link">링크</option>
+                            <option value="password">비밀번호</option>
+                        </select>
+                        <button
+                            onClick={addNew}
+                            disabled={!newLabel.trim() || !newValue.trim()}
+                            className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                        >
+                            추가
+                        </button>
                     </div>
                 </div>
             </div>
-
-            <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px]">
-                    <thead className="bg-gray-50 border-b sticky top-0">
-                        <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[220px]">{facet?.label || "기준"}</th>
-                            {items.map((it: any) => (
-                                <th key={it.id} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[160px]">
-                                    {it.name || "(이름 없음)"}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {options.map((opt) => (
-                            <tr key={opt} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 text-sm font-medium text-gray-900">{opt}</td>
-                                {items.map((it: any) => {
-                                    const values = unpack(it.facets[facet.key] || "");
-                                    const active = values.some((v) => normalize(v) === normalize(opt));
-                                    return (
-                                        <td key={it.id + opt} className="px-4 py-2">
-                                            <button
-                                                onClick={() => onToggleMembership(it.id, facet.key, opt, !active)}
-                                                className={`w-full h-9 rounded-lg border text-sm font-medium transition-colors ${active
-                                                    ? "bg-blue-600 text-white border-blue-600"
-                                                    : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                                                    }`}
-                                            >
-                                                {active ? "✔ 배정됨" : "+ 추가"}
-                                            </button>
-                                        </td>
-                                    );
-                                })}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        </MobileBottomSheet>
     );
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // 🚀 메인 컴포넌트 (UI만 개선, 로직은 기존 유지)
 // ─────────────────────────────────────────────────────────────────────
-export default function CriteriaSheetEditor({ tenantId, initialData, templates, onSave }: any) {
+export default function CriteriaSheetEditor({ tenantId, initialData, templates, onSave, library }: any) {
     // 기존 상태 관리 로직 그대로 유지
     const [data, setData] = React.useState<any>(() => {
         const defaults = {
@@ -1927,6 +2435,13 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     // 모바일 UI 상태
     const [quickAddOpen, setQuickAddOpen] = React.useState(false);
     const [columnManageOpen, setColumnManageOpen] = React.useState(false);
+    const [linkLibraryOpen, setLinkLibraryOpen] = React.useState(false); // 링크 라이브러리 모달
+
+    // DnD Sensors (모바일 터치 지원)
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+    );
 
     // 템플릿 풀 (기존 로직 유지)
     const allTemplates = React.useMemo(() => {
@@ -1986,6 +2501,100 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         setIsEditMode(true);
     }, [data]);
 
+    // ────────────────────────────────────────────────────────────
+    // n8n 동기화 함수
+    // ────────────────────────────────────────────────────────────
+    const prepareForVectorization = (sheets: string[], items: any, lib: any) => {
+        const result: any[] = [];
+
+        sheets.forEach((sheetId: string) => {
+            const sheetItems = items[sheetId] || [];
+            const template = allTemplates[sheetId] || {};
+
+            sheetItems.forEach((item: any) => {
+                const vectorItem: any = {
+                    name: item.name,
+                    sheet: template.title || sheetId,
+                };
+
+                template.facets?.forEach((facet: any) => {
+                    const rawValue = item.facets?.[facet.key];
+                    const label = facet.label;
+
+                    if (!rawValue && rawValue !== false && rawValue !== "false") {
+                        return;
+                    }
+
+                    switch (facet.type) {
+                        case "checkbox":
+                            vectorItem[label] = rawValue === "true" || rawValue === true;
+                            break;
+
+                        case "library-ref":
+                            const libraryType = facet.libraryType || "links";
+                            const libraryItems = lib?.[libraryType] || {};
+                            const keys = String(rawValue).split(',').filter(Boolean);
+
+                            const libraryValues: any = {};
+                            keys.forEach((key: string) => {
+                                if (libraryItems[key]) {
+                                    libraryValues[libraryItems[key].label] = libraryItems[key].value;
+                                }
+                            });
+
+                            vectorItem[label] = libraryValues;
+                            break;
+
+                        case "multi":
+                            vectorItem[label] = String(rawValue)
+                                .split(',')
+                                .filter(Boolean)
+                                .map((v: string) => v.trim());
+                            break;
+
+                        case "single":
+                        case "textarea":
+                        default:
+                            vectorItem[label] = String(rawValue);
+                            break;
+                    }
+                });
+
+                result.push(vectorItem);
+            });
+        });
+
+        return result;
+    };
+
+    const syncToN8n = async (sheets: string[], items: any, lib: any, tid: string) => {
+        try {
+            const vectorData = prepareForVectorization(sheets, items, lib);
+
+            const response = await fetch('https://soluto.app.n8n.cloud/webhook/criteria-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenantId: tid,
+                    timestamp: new Date().toISOString(),
+                    items: vectorData
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`n8n sync failed: ${response.status}`);
+            }
+
+            console.log('✅ n8n 동기화 완료:', vectorData.length, '개 항목');
+        } catch (error) {
+            console.error('⚠️ n8n 동기화 실패:', error);
+            throw error;
+        }
+    };
+
+    // ────────────────────────────────────────────────────────────
+    // 저장/취소
+    // ────────────────────────────────────────────────────────────
     const handleSaveEdits = React.useCallback(async () => {
         if (!draftData) return;
 
@@ -2002,6 +2611,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 items: draftData.items,
                 customOptions: draftData.customOptions,
                 visibleFacets: draftData.visibleFacets,
+                linkLibrary: draftData.linkLibrary || {},
             };
 
             if (onSave) {
@@ -2009,6 +2619,11 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             } else {
                 console.log("📦 저장 (로컬)", payload);
             }
+
+            // n8n 동기화 (비동기, 실패해도 저장은 완료)
+            syncToN8n(cleanSheets, draftData.items, library, tenantId).catch(err => {
+                console.error('⚠️ n8n 동기화 실패:', err);
+            });
 
             // 저장 성공 후 실제 데이터에 반영
             setData(draftData);
@@ -2019,7 +2634,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             console.error("Save error:", err);
             alert("❌ 저장 실패");
         }
-    }, [draftData, onSave]);
+    }, [draftData, onSave, library, tenantId]);
 
     const handleCancelEdits = React.useCallback(() => {
         setIsEditMode(false);
@@ -2060,6 +2675,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 items: data.items,
                 customOptions: data.customOptions,
                 visibleFacets: data.visibleFacets,
+                linkLibrary: data.linkLibrary || {},
             };
 
             // ✅ onSave prop이 있으면 사용, 없으면 기본 동작
@@ -2383,100 +2999,268 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         scheduleAutoSave();
     };
 
-    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+    // ────────────────────────────────────────────────────────────
+    // Airtable 동기화
+    // ────────────────────────────────────────────────────────────
+    const [isSyncing, setIsSyncing] = React.useState(false);
+
+    const handleSyncToAirtable = async () => {
+        if (!confirm('Airtable 질문 데이터셋을 업데이트하시겠습니까?\n\n모든 항목의 질문이 자동으로 생성됩니다.')) {
+            return;
+        }
+
+        setIsSyncing(true);
+
+        try {
+            const response = await fetch('/api/airtable/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tenantId })
+            });
+
+            if (!response.ok) {
+                throw new Error('동기화 실패');
+            }
+
+            const result = await response.json();
+
+            alert(`✅ Airtable 동기화 완료!\n\n` +
+                `• 항목: ${result.data.totalItems}개\n` +
+                `• 질문: ${result.data.totalQuestions}개\n` +
+                `• 시트: ${result.data.sheets.join(', ')}`);
+        } catch (error) {
+            console.error('Airtable sync error:', error);
+            alert('❌ 동기화 실패\n\n잠시 후 다시 시도해주세요.');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    // ────────────────────────────────────────────────────────────
+    // CSV 내보내기
+    // ────────────────────────────────────────────────────────────
+    const exportToCSV = () => {
+        const items = activeItems;
+        if (!items || items.length === 0) {
+            alert("내보낼 데이터가 없습니다.");
+            return;
+        }
+
+        // CSV 헤더 생성
+        const headers = ["항목명"];
+        visibleFacets.forEach((facet: any) => {
+            headers.push(facet.label);
+        });
+
+        // CSV 데이터 생성
+        const rows = items.map((item: any) => {
+            const row = [item.name || ""];
+
+            visibleFacets.forEach((facet: any) => {
+                const value = item.facets?.[facet.key] || "";
+
+                // 라이브러리 참조 타입인 경우 label로 변환
+                if (facet.type === "library-ref") {
+                    const libraryType = facet.libraryType || "links";
+                    const libraryItems = library?.[libraryType] || {};
+                    const keys = String(value).split(',').filter(Boolean);
+                    const labels = keys
+                        .map(k => libraryItems[k]?.label)
+                        .filter(Boolean)
+                        .join(', ');
+                    row.push(labels || "");
+                } else if (facet.type === "checkbox") {
+                    // 체크박스는 O/X로
+                    row.push(value === "true" ? "O" : "X");
+                } else {
+                    // 일반 필드
+                    row.push(String(value).replace(/,/g, '、')); // 쉼표를 점으로 변경
+                }
+            });
+
+            return row;
+        });
+
+        // CSV 문자열 생성
+        const csvContent = [
+            headers.map(h => `"${h}"`).join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n');
+
+        // BOM 추가 (엑셀에서 한글 깨짐 방지)
+        const BOM = '\uFEFF';
+        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+
+        // 다운로드
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${template.title}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // ────────────────────────────────────────────────────────────
     // 🎨 UI 렌더링 (모바일 최적화)
     // ────────────────────────────────────────────────────────────
     return (
-        <div className="min-h-screen bg-gray-50 pb-24">
-            {/* 헤더 */}
+        <div className="min-h-screen bg-gray-50 pb-24 relative">
+            {/* 헤더 - 심플하게 */}
             <div className="bg-white border-b sticky top-0 z-30 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between">
-                        <div>
+                        <div className="flex items-center gap-3">
                             <h1 className="text-xl sm:text-2xl font-bold text-gray-900">데이터 관리</h1>
-                            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-                                {isEditMode ? "편집 중..." : "자동 저장됨"}
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            {isEditMode ? (
-                                <>
-                                    <button
-                                        onClick={handleCancelEdits}
-                                        className="flex items-center gap-2 h-10 px-4 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
-                                    >
-                                        <X className="w-4 h-4" />
-                                        <span className="hidden sm:inline">취소</span>
-                                    </button>
-                                    <button
-                                        onClick={handleSaveEdits}
-                                        className="flex items-center gap-2 h-10 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-lg"
-                                    >
-                                        <Check className="w-4 h-4" />
-                                        <span className="hidden sm:inline">저장</span>
-                                    </button>
-                                </>
-                            ) : (
+                            {/* CSV 내보내기 버튼 */}
+                            {!isEditMode && activeItems.length > 0 && (
                                 <button
-                                    onClick={handleEnterEditMode}
-                                    className="flex items-center gap-2 h-10 px-4 rounded-xl bg-white border-2 border-gray-200 text-gray-700 font-medium hover:border-blue-500 hover:text-blue-600 transition-all"
+                                    onClick={exportToCSV}
+                                    className="px-3 py-1.5 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium transition-colors flex items-center gap-1.5"
+                                    title="CSV 내보내기"
                                 >
-                                    <Edit3 className="w-4 h-4" />
-                                    <span className="hidden sm:inline">편집</span>
+                                    <Download className="w-4 h-4" />
+                                    <span className="hidden sm:inline">CSV</span>
+                                </button>
+                            )}
+                            {/* Airtable 동기화 버튼 */}
+                            {!isEditMode && activeItems.length > 0 && (
+                                <button
+                                    onClick={handleSyncToAirtable}
+                                    disabled={isSyncing}
+                                    className="px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Airtable 동기화"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                                    <span className="hidden sm:inline">{isSyncing ? '동기화 중...' : '동기화'}</span>
                                 </button>
                             )}
                         </div>
+                        {isEditMode && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handleCancelEdits}
+                                    className="flex items-center gap-2 h-10 px-3 sm:px-4 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                    <span className="hidden sm:inline">취소</span>
+                                </button>
+                                <button
+                                    onClick={handleSaveEdits}
+                                    className="flex items-center gap-2 h-10 px-3 sm:px-4 rounded-xl bg-gray-900 text-white font-semibold hover:bg-gray-800 transition-colors shadow-lg"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    <span className="hidden sm:inline">저장</span>
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 space-y-4">
-                {/* 카테고리 탭 (상단 고정) */}
+                {/* 시트 탭 - 애플 스타일 */}
                 <div className="bg-white rounded-2xl shadow-sm p-3 sticky top-[73px] z-20">
-                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
                         {(data.sheets || []).map((sheetId: string) => {
                             const t = allTemplates[sheetId] || { icon: "🧩", title: sheetId };
                             const isActive = activeSheetId === sheetId;
                             const itemCount = data.items[sheetId]?.length || 0;
                             return (
-                                <button
-                                    key={sheetId}
-                                    onClick={() => {
-                                        setData((prev: any) => ({ ...prev, activeSheet: sheetId }));
-                                    }}
-                                    className={`flex-shrink-0 px-4 py-2.5 rounded-xl font-medium transition-all whitespace-nowrap ${isActive
-                                        ? "bg-blue-600 text-white shadow-md"
-                                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                        }`}
-                                >
-                                    <span className="mr-2">{t.icon}</span>
-                                    {t.title}
-                                    {itemCount > 0 && (
-                                        <span
-                                            className={`ml-2 text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-white/20" : "bg-gray-200"
-                                                }`}
+                                <div key={sheetId} className="flex items-center gap-1 flex-shrink-0">
+                                    <button
+                                        onClick={() => {
+                                            setData((prev: any) => ({ ...prev, activeSheet: sheetId }));
+                                        }}
+                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${isActive
+                                            ? "bg-gray-900 text-white"
+                                            : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
+                                            }`}
+                                    >
+                                        {t.title}
+                                        {itemCount > 0 && (
+                                            <span className={`ml-2 text-xs ${isActive ? "text-gray-300" : "text-gray-400"}`}>
+                                                {itemCount}
+                                            </span>
+                                        )}
+                                    </button>
+                                    {/* 편집 모드에서 삭제 버튼 표시 */}
+                                    {isEditMode && data.sheets.length > 1 && (
+                                        <button
+                                            onClick={() => {
+                                                if (confirm(`"${t.title}" 시트를 삭제하시겠습니까?\n\n모든 데이터가 삭제됩니다.`)) {
+                                                    const newSheets = data.sheets.filter((s: string) => s !== sheetId);
+                                                    const newItems = { ...data.items };
+                                                    delete newItems[sheetId];
+                                                    setData((prev: any) => ({
+                                                        ...prev,
+                                                        sheets: newSheets,
+                                                        items: newItems,
+                                                        activeSheet: prev.activeSheet === sheetId ? newSheets[0] : prev.activeSheet,
+                                                    }));
+                                                }
+                                            }}
+                                            className="w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center justify-center flex-shrink-0"
+                                            title="시트 삭제"
                                         >
-                                            {itemCount}
-                                        </span>
+                                            <X className="w-4 h-4" />
+                                        </button>
                                     )}
-                                </button>
+                                </div>
                             );
                         })}
+
+                        {/* 시트 추가 버튼 */}
+                        {isEditMode && (
+                            <button
+                                onClick={() => {
+                                    const sheetName = prompt("새 시트 이름을 입력하세요:");
+                                    if (sheetName && sheetName.trim()) {
+                                        const sheetId = sheetName.toLowerCase().replace(/\s+/g, "_");
+                                        if (data.sheets.includes(sheetId)) {
+                                            alert("이미 존재하는 시트입니다.");
+                                            return;
+                                        }
+                                        setData((prev: any) => ({
+                                            ...prev,
+                                            sheets: [...prev.sheets, sheetId],
+                                            items: { ...prev.items, [sheetId]: [] },
+                                            activeSheet: sheetId,
+                                        }));
+                                    }
+                                }}
+                                className="flex-shrink-0 w-9 h-9 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all flex items-center justify-center text-gray-600"
+                                title="시트 추가"
+                            >
+                                <Plus className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                {/* 보기 모드 (세그먼트 컨트롤) */}
-                <div className="bg-white rounded-2xl shadow-sm p-4">
-                    <SegmentedControl
-                        value={viewMode}
-                        onChange={setViewMode}
-                        options={[
-                            { value: "item", label: "항목별 보기" },
-                            { value: "facet", label: "기준별 보기" },
-                        ]}
-                    />
+                {/* 뷰 모드 - iOS 스타일 세그먼트 컨트롤 */}
+                <div className="bg-white rounded-2xl shadow-sm p-3">
+                    <div className="inline-flex bg-gray-100 rounded-lg p-0.5 w-full sm:w-auto">
+                        <button
+                            onClick={() => setViewMode("item")}
+                            className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "item"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                                }`}
+                        >
+                            항목별 보기
+                        </button>
+                        <button
+                            onClick={() => setViewMode("facet")}
+                            className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "facet"
+                                ? "bg-white text-gray-900 shadow-sm"
+                                : "text-gray-600 hover:text-gray-900"
+                                }`}
+                        >
+                            기준별 보기
+                        </button>
+                    </div>
                 </div>
 
                 {/* 테이블 영역 */}
@@ -2513,17 +3297,30 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                         <thead className="bg-gray-50 border-b">
                                             <tr>
                                                 <th className="w-8"></th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[240px]">
+                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[180px]">
                                                     이름
                                                 </th>
-                                                {visibleFacets.map((facet: any) => (
-                                                    <th
-                                                        key={facet.key}
-                                                        className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase"
-                                                    >
-                                                        {facet.label}
-                                                    </th>
-                                                ))}
+                                                {visibleFacets.map((facet: any) => {
+                                                    // 컬럼 타입에 따라 너비 조정
+                                                    let widthClass = "";
+                                                    if (facet.type === "checkbox") {
+                                                        widthClass = "w-20"; // 체크박스는 좁게
+                                                    } else if (facet.key === "notes" || facet.type === "textarea") {
+                                                        widthClass = "w-[200px]"; // 비고는 넓게
+                                                    } else if (facet.key === "location") {
+                                                        widthClass = "w-[120px]"; // 위치는 중간
+                                                    }
+                                                    // 나머지는 자동 너비 (widthClass 없음)
+
+                                                    return (
+                                                        <th
+                                                            key={facet.key}
+                                                            className={`px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase ${widthClass}`}
+                                                        >
+                                                            {facet.label}
+                                                        </th>
+                                                    );
+                                                })}
                                                 {isEditMode && (
                                                     <th className="w-16 px-2">
                                                         <button
@@ -2577,6 +3374,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                                 customOptions={isEditMode ? draftData?.customOptions : data.customOptions}
                                                                 isEditMode={isEditMode}
                                                                 onUpdateFacetOptions={updateFacetOptions}
+                                                                library={library}
                                                             />
                                                         ))}
                                                         <td className="px-2 text-right align-top">
@@ -2602,7 +3400,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                     <div className="border-t p-3">
                                         <button
                                             onClick={() => setQuickAddOpen(true)}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-gray-300 text-gray-600 hover:border-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium"
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-gray-700 hover:border-gray-900 hover:bg-gray-50 transition-all font-medium"
                                         >
                                             <Plus className="w-5 h-5" />
                                             <span>항목 추가</span>
@@ -2622,6 +3420,8 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                             items={activeItems}
                             customOptions={data.customOptions || {}}
                             addCustomOption={addCustomOption}
+                            isEditMode={isEditMode}
+                            library={library}
                             onToggleMembership={(rowId: string, facetKey: string, option: string, enable: boolean) =>
                                 toggleFacetMembership(activeSheetId, rowId, facetKey, option, enable)
                             }
@@ -2653,6 +3453,16 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 onDelete={deleteFacet}
             />
 
+            <LinkLibraryBottomSheet
+                isOpen={linkLibraryOpen}
+                onClose={() => setLinkLibraryOpen(false)}
+                linkLibrary={data.linkLibrary || {}}
+                onUpdate={(updated: any) => {
+                    setData((prev: any) => ({ ...prev, linkLibrary: updated }));
+                    scheduleAutoSave();
+                }}
+            />
+
             <style jsx>{`
                 .scrollbar-hide::-webkit-scrollbar {
                     display: none;
@@ -2662,6 +3472,17 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                     scrollbar-width: none;
                 }
             `}</style>
+
+            {/* FAB - 편집 버튼 (애플 스타일) */}
+            {!isEditMode && (
+                <button
+                    onClick={handleEnterEditMode}
+                    className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition-all hover:scale-105 active:scale-95 z-40 flex items-center justify-center"
+                    aria-label="편집 모드"
+                >
+                    <Edit3 className="w-5 h-5" />
+                </button>
+            )}
         </div>
     );
 }

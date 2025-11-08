@@ -164,6 +164,31 @@ export const SHEET_TEMPLATES: Record<string, any> = {
                 key: "notes",
                 label: "비고",
                 type: "textarea",
+            },
+            // 라이브러리 참조 필드
+            {
+                key: "links",
+                label: "링크",
+                type: "library-ref",
+                libraryType: "links"
+            },
+            {
+                key: "passwords",
+                label: "비밀번호",
+                type: "library-ref",
+                libraryType: "passwords"
+            },
+            {
+                key: "rules",
+                label: "규정",
+                type: "library-ref",
+                libraryType: "rules"
+            },
+            {
+                key: "info",
+                label: "공통정보",
+                type: "library-ref",
+                libraryType: "info"
             }
         ],
     },
@@ -246,6 +271,25 @@ export const SHEET_TEMPLATES: Record<string, any> = {
                 key: "notes",
                 label: "비고",
                 type: "textarea",
+            },
+            // 라이브러리 참조 필드
+            {
+                key: "links",
+                label: "링크",
+                type: "library-ref",
+                libraryType: "links"
+            },
+            {
+                key: "passwords",
+                label: "비밀번호",
+                type: "library-ref",
+                libraryType: "passwords"
+            },
+            {
+                key: "rules",
+                label: "규정",
+                type: "library-ref",
+                libraryType: "rules"
             }
         ],
     },
@@ -355,6 +399,13 @@ export const SHEET_TEMPLATES: Record<string, any> = {
                 key: "notes",
                 label: "비고",
                 type: "textarea",
+            },
+            // 라이브러리 참조 필드
+            {
+                key: "rules",
+                label: "규정",
+                type: "library-ref",
+                libraryType: "rules"
             }
         ]
     },
