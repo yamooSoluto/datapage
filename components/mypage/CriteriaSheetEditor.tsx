@@ -670,27 +670,6 @@ function InlineDropdown({
         );
     };
 
-    const handleBulkDeleteOptions = () => {
-        if (!optionBulkSelection.length || !onUpdateFacetOptions) return;
-
-        const newOptions = (facet.options || [])
-            .map((opt: any) => {
-                if (typeof opt === 'string') {
-                    return !optionBulkSelection.includes(opt) ? opt : null;
-                } else if (opt?.group && Array.isArray(opt.items)) {
-                    // 그룹 내에서 선택된 항목들 제거
-                    const filteredItems = opt.items.filter((item: string) => !optionBulkSelection.includes(item));
-                    // 그룹 내 항목이 없으면 null 반환 (그룹 제거)
-                    return filteredItems.length > 0 ? { ...opt, items: filteredItems } : null;
-                }
-                return opt;
-            })
-            .filter((opt: any) => opt !== null); // null 제거
-
-        onUpdateFacetOptions(facet.key, newOptions);
-        setOptionBulkSelection([]);
-    };
-
     const containerClass = isMobile
         ? "fixed inset-x-0 bottom-0 z-[1000] px-3 pb-4"
         : "absolute z-[1000]";
