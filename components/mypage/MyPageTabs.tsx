@@ -16,6 +16,7 @@ interface MyPageTabsProps {
     onSave?: (data: any) => void;
     onSaveLibrary?: (data: any) => void;
     onSaveSettings?: (settings: any) => void;
+    defaultTab?: "settings" | "data" | "library"; // 기본 탭 설정
 }
 
 export default function MyPageTabs({
@@ -27,8 +28,34 @@ export default function MyPageTabs({
     onSave,
     onSaveLibrary,
     onSaveSettings,
+    defaultTab = "settings",
 }: MyPageTabsProps) {
-    const [activeTab, setActiveTab] = React.useState<"settings" | "data" | "library">("settings");
+    const [activeTab, setActiveTab] = React.useState<"settings" | "data" | "library">(defaultTab);
+
+    // defaultTab이 'library'면 헤더 없이 바로 라이브러리만 렌더링
+    if (defaultTab === "library") {
+        return (
+            <div className="bg-gray-50">
+                <LibraryManager
+                    initialData={initialLibrary}
+                    onSave={onSaveLibrary}
+                />
+            </div>
+        );
+    }
+
+    // defaultTab이 'settings'면 설정만 렌더링
+    if (defaultTab === "settings") {
+        return (
+            <div className="bg-gray-50">
+                <SettingsPage
+                    tenantId={tenantId}
+                    initialSettings={initialSettings}
+                    onSave={onSaveSettings}
+                />
+            </div>
+        );
+    }
 
     const tabs = [
         {

@@ -216,17 +216,6 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                 </p>
                             )}
                         </div>
-
-                        {/* Tenant ID (읽기 전용) */}
-                        <div>
-                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <User className="w-4 h-4" />
-                                Tenant ID
-                            </label>
-                            <p className="text-gray-600 px-3 py-2 bg-gray-50 rounded-lg font-mono text-sm">
-                                {settings.tenantId}
-                            </p>
-                        </div>
                     </div>
                 </div>
 
@@ -238,9 +227,12 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                     <div className="p-6 space-y-6">
                         {/* Slack Channel ID */}
                         <div>
-                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <MessageSquare className="w-4 h-4" />
-                                Slack 채널 ID
+                            <label className="block mb-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <MessageSquare className="w-4 h-4 text-gray-400" />
+                                    <span className="text-sm font-semibold text-gray-900">Slack 채널 ID</span>
+                                </div>
+                                <p className="text-xs text-gray-500 ml-6">메신저 카드를 받을 Slack 채널 ID</p>
                             </label>
                             {isEditMode ? (
                                 <input
@@ -248,16 +240,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                     value={currentSettings?.slack?.defaultChannelId || ""}
                                     onChange={(e) => updateField("slack.defaultChannelId", e.target.value)}
                                     placeholder="C01234ABCDE"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900"
                                 />
                             ) : (
-                                <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
+                                <p className="text-gray-900 px-3 py-2.5 bg-gray-50 rounded-lg font-mono text-sm">
                                     {settings.slack?.defaultChannelId || "-"}
                                 </p>
                             )}
-                            <p className="text-xs text-gray-500 mt-1">
-                                메신저 카드를 받을 Slack 채널 ID를 입력하세요
-                            </p>
                         </div>
 
                         {/* 구분선 */}
@@ -265,41 +254,64 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                             <h3 className="text-sm font-semibold text-gray-900 mb-4">채팅 위젯</h3>
 
                             {/* 채팅 위젯 URL */}
-                            <div className="mb-4">
-                                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                    <Globe className="w-4 h-4" />
-                                    채팅 위젯 URL
+                            <div className="mb-6">
+                                <label className="block mb-3">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <Globe className="w-4 h-4 text-gray-400" />
+                                        <span className="text-sm font-semibold text-gray-900">채팅 위젯 URL</span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 ml-6">웹사이트에 임베드할 채팅 위젯 주소</p>
                                 </label>
-                                <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row gap-2">
                                     <input
                                         type="text"
                                         value={settings.widgetUrl || `https://chat.yamoo.ai.kr/chat/${tenantId}`}
                                         readOnly
-                                        className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-600 text-sm font-mono"
+                                        className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm font-mono"
                                     />
-                                    <button
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(settings.widgetUrl || `https://chat.yamoo.ai.kr/chat/${tenantId}`);
-                                            alert("✅ 복사되었습니다!");
-                                        }}
-                                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-                                    >
-                                        복사
-                                    </button>
-                                    <a
-                                        href={settings.widgetUrl || `https://chat.yamoo.ai.kr/chat/${tenantId}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                                    >
-                                        테스트
-                                    </a>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(settings.widgetUrl || `https://chat.yamoo.ai.kr/chat/${tenantId}`);
+                                                alert("✅ 복사되었습니다!");
+                                            }}
+                                            className="flex-1 sm:flex-none px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors text-sm whitespace-nowrap"
+                                        >
+                                            복사
+                                        </button>
+                                        <a
+                                            href={settings.widgetUrl || `https://chat.yamoo.ai.kr/chat/${tenantId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex-1 sm:flex-none px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm whitespace-nowrap text-center"
+                                        >
+                                            테스트
+                                        </a>
+                                    </div>
                                 </div>
-                                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                    <p className="text-xs text-blue-800">
-                                        💡 <strong>테스트:</strong> 위 링크를 클릭하여 채팅 위젯을 바로 테스트할 수 있습니다.<br />
-                                        📊 <strong>운영:</strong> 웹사이트에 이 URL을 임베드하면, 등록한 데이터를 바탕으로 자동 답변이 제공됩니다.
-                                    </p>
+
+                                {/* 안내 카드 - 모던 스타일 */}
+                                <div className="mt-3 rounded-xl border border-gray-200 bg-gradient-to-br from-slate-50 to-gray-50 overflow-hidden">
+                                    <div className="p-4 space-y-2.5">
+                                        <div className="flex gap-3">
+                                            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm">
+                                                💡
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-semibold text-gray-900 mb-0.5">테스트</p>
+                                                <p className="text-xs text-gray-600">위 링크를 클릭하여 채팅 위젯을 바로 테스트할 수 있습니다</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-sm">
+                                                📊
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-semibold text-gray-900 mb-0.5">운영</p>
+                                                <p className="text-xs text-gray-600">웹사이트에 이 URL을 임베드하면 등록한 데이터를 바탕으로 자동 답변이 제공됩니다</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -314,24 +326,27 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                             </div>
 
                             {/* 네이버 톡톡 URL */}
-                            <div className="mb-4">
-                                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                    <LinkIcon className="w-4 h-4" />
-                                    이벤트 받을 URL
+                            <div className="mb-6">
+                                <label className="block mb-3">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <LinkIcon className="w-4 h-4 text-gray-400" />
+                                        <span className="text-sm font-semibold text-gray-900">이벤트 받을 URL</span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 ml-6">네이버 톡톡에서 메시지를 받을 웹훅 주소</p>
                                 </label>
-                                <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row gap-2">
                                     <input
                                         type="text"
                                         value={settings.naverInboundUrl || `https://chat.yamoo.ai.kr/${tenantId}/naver/inbound`}
                                         readOnly
-                                        className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-600 text-sm font-mono"
+                                        className="flex-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm font-mono"
                                     />
                                     <button
                                         onClick={() => {
                                             navigator.clipboard.writeText(settings.naverInboundUrl || `https://chat.yamoo.ai.kr/${tenantId}/naver/inbound`);
                                             alert("✅ 복사되었습니다!");
                                         }}
-                                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                                        className="w-full sm:w-auto px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors text-sm whitespace-nowrap"
                                     >
                                         복사
                                     </button>
@@ -339,10 +354,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                             </div>
 
                             {/* Authorization 키 */}
-                            <div className="mb-4">
-                                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                    <LinkIcon className="w-4 h-4" />
-                                    Authorization 키
+                            <div className="mb-6">
+                                <label className="block mb-3">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <LinkIcon className="w-4 h-4 text-gray-400" />
+                                        <span className="text-sm font-semibold text-gray-900">Authorization 키</span>
+                                    </div>
+                                    <p className="text-xs text-gray-500 ml-6">네이버 톡톡 파트너센터에서 발급받은 인증 키</p>
                                 </label>
                                 {isEditMode ? (
                                     <input
@@ -362,31 +380,63 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                 </p>
                             </div>
 
-                            {/* 연동 방법 안내 */}
-                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                                <p className="text-sm font-semibold text-amber-900 mb-2">
-                                    📋 네이버 톡톡 파트너센터 연동 방법
-                                </p>
-                                <ol className="text-xs text-amber-800 space-y-1 list-decimal list-inside">
-                                    <li>
-                                        <a
-                                            href="https://partner.talk.naver.com"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="underline hover:text-amber-900"
-                                        >
-                                            네이버 톡톡 파트너센터
-                                        </a> 접속 → <strong>시작하기</strong>
-                                    </li>
-                                    <li><strong>계정 관리</strong> 클릭</li>
-                                    <li>왼쪽 메뉴 → <strong>연동 관리</strong> → <strong>챗봇 API 설정</strong></li>
-                                    <li><strong>이벤트 받을 URL</strong> 칸에 위 URL 붙여넣기</li>
-                                    <li><strong>보내기 API</strong> 칸의 <strong>Authorization</strong> 값을 복사하여 위 입력란에 붙여넣기</li>
-                                    <li>저장 버튼 클릭</li>
-                                </ol>
-                                <p className="text-xs text-amber-700 mt-3">
-                                    ⚠️ <strong>주의:</strong> 네이버 톡톡 파트너센터 계정이 없으면 사용할 수 없습니다.
-                                </p>
+                            {/* 연동 방법 안내 - 모던 스타일 */}
+                            <div className="relative overflow-hidden rounded-xl border border-gray-200 bg-gradient-to-br from-slate-50 to-gray-50">
+                                {/* 헤더 */}
+                                <div className="px-5 py-4 rounded-xl border-b border-gray-100 bg-white/50 backdrop-blur-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                                            <span className="text-base">📋</span>
+                                        </div>
+                                        <h4 className="text-sm font-semibold text-gray-900">네이버 톡톡 파트너센터 연동 방법</h4>
+                                    </div>
+                                </div>
+
+                                {/* 단계별 가이드 */}
+                                <div className="p-5 space-y-3">
+                                    {[
+                                        {
+                                            step: 1,
+                                            text: (
+                                                <>
+                                                    <a
+                                                        href="https://partner.talk.naver.com"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-blue-600 hover:text-blue-700 font-medium underline"
+                                                    >
+                                                        네이버 톡톡 파트너센터
+                                                    </a>
+                                                    {" "}접속 → 시작하기
+                                                </>
+                                            )
+                                        },
+                                        { step: 2, text: "계정 관리 클릭" },
+                                        { step: 3, text: "왼쪽 메뉴 → 연동 관리 → 챗봇 API 설정" },
+                                        { step: 4, text: "이벤트 받을 URL 칸에 위 URL 붙여넣기" },
+                                        { step: 5, text: "보내기 API 칸의 Authorization 값을 복사하여 위 입력란에 붙여넣기" },
+                                        { step: 6, text: "저장 버튼 클릭" }
+                                    ].map((item) => (
+                                        <div key={item.step} className="flex gap-3">
+                                            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold">
+                                                {item.step}
+                                            </div>
+                                            <p className="text-sm text-gray-700 leading-6">
+                                                {item.text}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* 주의사항 */}
+                                <div className="mx-5 mb-5 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                                    <div className="flex gap-2">
+                                        <span className="text-amber-600 text-sm">⚠️</span>
+                                        <p className="text-xs text-amber-800">
+                                            <strong>주의:</strong> 네이버 톡톡 파트너센터 계정이 없으면 사용할 수 없습니다.
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
