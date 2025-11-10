@@ -1,6 +1,6 @@
-// pages/api/auth/verify-token.js
+// pages/api/auth/slack-redirect.js
 // ════════════════════════════════════════
-// JWT 토큰 검증 및 테넌트 목록 반환 (Firestore)
+// Slack에서 포탈로 즉시 접속 (관리자 전용)
 // ════════════════════════════════════════
 
 import jwt from 'jsonwebtoken';
@@ -10,13 +10,18 @@ import admin from 'firebase-admin';
 if (!admin.apps.length) {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
+  // ✅ Private Key 처리 (여러 포맷 대응)
   let formattedKey = privateKey;
   if (privateKey) {
+    // 1. 이미 실제 개행문자가 있는 경우 그대로 사용
     if (privateKey.includes('\n')) {
       formattedKey = privateKey;
-    } else if (privateKey.includes('\\n')) {
+    }
+    // 2. \\n 이스케이프 문자열인 경우 실제 개행으로 변환
+    else if (privateKey.includes('\\n')) {
       formattedKey = privateKey.replace(/\\n/g, '\n');
     }
+    // 3. 따옴표로 감싸진 경우 제거
     formattedKey = formattedKey.replace(/^["']|["']$/g, '');
   }
 
@@ -38,166 +43,163 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  const { tenant } = req.query;
 
-  const { token } = req.query;
-
-  if (!token) {
-    return res.status(400).json({ error: '토큰이 필요합니다.' });
-  }
-
-  // ✅ 개발 환경 Fastlane: JWT 검증 없이 바로 통과
-  const isDev = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV !== 'production';
-  if (isDev && token === 'dev-admin') {
-    console.log('🧭 [Dev Fastlane] 관리자 토큰 통과');
-    return res.status(200).json({
-      success: true,
-      email: 'dev-admin@yamoo.ai',
-      source: 'magic-link-admin-dev',
-      tenants: [
-        {
-          id: 't_dev',
-          name: '로컬테넌트',
-          email: 'dev-admin@yamoo.ai',
-          plan: 'pro',
-          status: 'active',
-          faqCount: 0,
-          showOnboarding: true,
-        },
-      ],
-    });
+  if (!tenant) {
+    return res.status(400).send(errorPage('잘못된 요청입니다.'));
   }
 
   try {
-    // ✅ JWT 토큰 검증
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const { email, tenantId, source } = decoded;
+    // ✅ 1. Firestore에서 테넌트 정보 조회
+    const tenantDoc = await db.collection('tenants').doc(tenant).get();
 
-    // ✅ Slack에서 온 경우: tenantId로 직접 조회
-    if (source === 'slack' && tenantId) {
-      const tenantDoc = await db.collection('tenants').doc(tenantId).get();
-
-      if (!tenantDoc.exists) {
-        return res.status(404).json({
-          error: '테넌트를 찾을 수 없습니다.'
-        });
-      }
-
-      const tenant = tenantDoc.data();
-
-      // ✅ FAQ 개수 조회
-      let faqCount = 0;
-      try {
-        const faqSnapshot = await db.collection('faq_master')
-          .where('tenantId', '==', tenantId)
-          .get();
-        faqCount = faqSnapshot.size;
-      } catch (faqError) {
-        console.warn('⚠️ FAQ 개수 조회 실패:', faqError.message);
-      }
-
-      const tenantData = {
-        id: tenantId,
-        branchNo: tenant.branchNo || '',
-        name: tenant.brandName || '',
-        brandName: tenant.brandName || '',
-        email: tenant.email || '',
-        plan: tenant.plan || 'trial',
-        status: tenant.status || 'active',
-        createdAt: tenant.subscription?.startedAt || '',
-        widgetIframe: tenant.widgetUrl || '',
-        WidgetLink: tenant.widgetUrl || '',
-        onboardingFormLink: '', // 필요시 추가
-        OnboardingFormLink: '',
-        naverOutbound: tenant.naverInboundUrl || '',
-        NaverOutbound: tenant.naverInboundUrl || '',
-        portalDomain: process.env.PORTAL_DOMAIN || '',
-        faqCount,
-        showOnboarding: faqCount === 0,
-      };
-
-      console.log(`✅ [Verify Token] Slack → ${tenantId} (FAQ: ${faqCount}개)`);
-
-      return res.status(200).json({
-        success: true,
-        source: 'slack',
-        tenants: [tenantData],
-      });
+    if (!tenantDoc.exists) {
+      return res.status(404).send(errorPage('테넌트를 찾을 수 없습니다.'));
     }
 
-    // ✅ Magic Link: 이메일로 여러 테넌트 조회
-    if (!email) {
-      return res.status(400).json({ error: '이메일 정보가 없습니다.' });
-    }
+    const tenantData = tenantDoc.data();
 
-    // ✅ Firestore에서 해당 이메일의 테넌트 조회
-    const tenantsSnapshot = await db.collection('tenants')
-      .where('email', '==', email.toLowerCase())
-      .get();
+    // ✅ 2. 24시간 유효 토큰 생성 (관리자 전용)
+    const token = jwt.sign(
+      {
+        tenantId: tenant,
+        branchNo: tenantData.branchNo || '',
+        brandName: tenantData.brandName || tenant,
+        plan: tenantData.plan || 'trial',
+        email: tenantData.tenantEmail || null,
+        source: 'slack',  // ← Slack에서 온 것 표시
+        exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24), // ✅ 24시간
+      },
+      process.env.JWT_SECRET
+    );
 
-    if (tenantsSnapshot.empty) {
-      return res.status(404).json({
-        error: '등록된 테넌트를 찾을 수 없습니다.'
-      });
-    }
+    // ✅ 3. 포털 URL 결정
+    const portalDomain =
+      tenantData.portalDomain ||
+      process.env.PORTAL_DOMAIN ||
+      'https://app.yamoo.ai.kr';
 
-    const tenants = [];
+    const redirectUrl = `${portalDomain}/?token=${encodeURIComponent(token)}`;
 
-    for (const doc of tenantsSnapshot.docs) {
-      const tenant = doc.data();
-      const tenantId = doc.id;
+    console.log(`🔗 [Slack → Portal] ${tenant} → ${tenantData.brandName}`);
 
-      // FAQ 개수 조회
-      let faqCount = 0;
-      try {
-        const faqSnapshot = await db.collection('faq_master')
-          .where('tenantId', '==', tenantId)
-          .get();
-        faqCount = faqSnapshot.size;
-      } catch (faqError) {
-        console.warn(`⚠️ FAQ 개수 조회 실패 (${tenantId}):`, faqError.message);
-      }
-
-      tenants.push({
-        id: tenantId,
-        branchNo: tenant.branchNo || '',
-        name: tenant.brandName || '',
-        email: tenant.email || '',
-        plan: tenant.plan || 'trial',
-        status: tenant.status || 'active',
-        createdAt: tenant.subscription?.startedAt || '',
-        widgetIframe: tenant.widgetUrl || '',
-        onboardingFormLink: '',
-        naverOutbound: tenant.naverInboundUrl || '',
-        portalDomain: process.env.PORTAL_DOMAIN || '',
-        faqCount,
-        showOnboarding: faqCount === 0,
-      });
-    }
-
-    console.log(`✅ [Verify Token] ${email} → ${tenants.length}개 테넌트${source === 'slack' ? ' (from Slack)' : ''}`);
-
-    return res.status(200).json({
-      success: true,
-      email,
-      source,
-      tenants,
-    });
+    // ✅ 4. 즉시 리다이렉트 (로딩 최소화)
+    return res.status(200).send(instantRedirect(redirectUrl, tenantData.brandName));
 
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ error: '토큰이 만료되었습니다.' });
-    }
-
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ error: '유효하지 않은 토큰입니다.' });
-    }
-
-    console.error('❌ [Verify Token] Error:', error);
-    return res.status(500).json({
-      error: '서버 오류가 발생했습니다.'
-    });
+    console.error('❌ [Slack Redirect] Error:', error);
+    return res.status(500).send(errorPage('포털에 접속할 수 없습니다.'));
   }
+}
+
+// ✅ 즉시 리다이렉트 (0.1초 후 이동)
+function instantRedirect(redirectUrl, brandName = '') {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta http-equiv="refresh" content="0;url=${redirectUrl}">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${brandName || '야무'} 포털</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          background: linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%);
+        }
+        .container {
+          text-align: center;
+          color: white;
+          padding: 40px;
+        }
+        .spinner {
+          border: 4px solid rgba(255,255,255,0.3);
+          border-top: 4px solid white;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+          margin: 0 auto;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        h2 { 
+          font-size: 20px; 
+          font-weight: 600; 
+          margin-top: 20px;
+          opacity: 0.95;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="spinner"></div>
+        <h2>${brandName || '포털'}로 이동 중...</h2>
+      </div>
+      <script>
+        // 즉시 리다이렉트
+        window.location.href = "${redirectUrl}";
+      </script>
+    </body>
+    </html>
+  `;
+}
+
+// ✅ 에러 페이지
+function errorPage(message) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>오류</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+        }
+        .container {
+          text-align: center;
+          padding: 40px;
+          max-width: 500px;
+          background: white;
+          border-radius: 24px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+        h1 { 
+          font-size: 24px; 
+          color: #92400E; 
+          margin-bottom: 10px;
+          font-weight: 700;
+        }
+        p { 
+          font-size: 16px; 
+          color: #78350F;
+          line-height: 1.6;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="icon">⚠️</div>
+        <h1>접속 오류</h1>
+        <p>${message}</p>
+      </div>
+    </body>
+    </html>
+  `;
 }
