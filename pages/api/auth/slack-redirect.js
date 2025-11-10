@@ -9,7 +9,7 @@ import admin from 'firebase-admin';
 // Firebase Admin 초기화
 if (!admin.apps.length) {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-  
+
   // ✅ Private Key 처리 (여러 포맷 대응)
   let formattedKey = privateKey;
   if (privateKey) {
@@ -74,12 +74,12 @@ export default async function handler(req, res) {
     );
 
     // ✅ 3. 포털 URL 결정
-    const portalDomain = 
-      tenantData.portalDomain || 
-      process.env.PORTAL_DOMAIN || 
+    const portalDomain =
+      tenantData.portalDomain ||
+      process.env.PORTAL_DOMAIN ||
       'https://app.yamoo.ai.kr';
 
-    const redirectUrl = `${portalDomain}/?token=${token}`;
+    const redirectUrl = `${portalDomain}/?token=${encodeURIComponent(token)}`;
 
     console.log(`🔗 [Slack → Portal] ${tenant} → ${tenantData.brandName}`);
 
