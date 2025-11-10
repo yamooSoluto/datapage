@@ -1751,7 +1751,7 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                                         setOptionError("");
                                     }}
                                     onKeyDown={(e) => e.key === "Enter" && addOpt()}
-                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (예: 6층, 옥상)`}
+                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (실제 이용하는 명칭을 적어주세요)`}
                                     className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
                                         }`}
                                 />
@@ -1845,7 +1845,7 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                                         setOptionError("");
                                     }}
                                     onKeyDown={(e) => e.key === "Enter" && addOpt()}
-                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (예: 6층, 옥상)`}
+                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (실제 이용하는 명칭을 적어주세요)`}
                                     className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
                                         }`}
                                 />
@@ -2234,7 +2234,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     }, [data]);
 
     // ────────────────────────────────────────────────────────────
-    // n8n 동기화 함수
+    // n8n 데이터 전송 함수
     // ────────────────────────────────────────────────────────────
     const prepareForVectorization = (sheets: string[], items: any, lib: any) => {
         const result: any[] = [];
@@ -2317,9 +2317,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 throw new Error(`n8n sync failed: ${response.status}`);
             }
 
-            console.log('✅ n8n 동기화 완료:', vectorData.length, '개 항목');
+            console.log('✅ n8n 데이터 전송 완료:', vectorData.length, '개 항목');
         } catch (error) {
-            console.error('⚠️ n8n 동기화 실패:', error);
+            console.error('⚠️ n8n 데이터 전송 실패:', error);
             throw error;
         }
     };
@@ -2352,9 +2352,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 console.log("📦 저장 (로컬)", payload);
             }
 
-            // n8n 동기화 (비동기, 실패해도 저장은 완료)
+            // n8n 데이터 전송 (비동기, 실패해도 저장은 완료)
             syncToN8n(cleanSheets, draftData.items, library, tenantId).catch(err => {
-                console.error('⚠️ n8n 동기화 실패:', err);
+                console.error('⚠️ n8n 데이터 전송 실패:', err);
             });
 
             // 저장 성공 후 실제 데이터에 반영
@@ -2732,7 +2732,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     };
 
     // ────────────────────────────────────────────────────────────
-    // Airtable 동기화
+    // Airtable 데이터 전송
     // ────────────────────────────────────────────────────────────
     const [isSyncing, setIsSyncing] = React.useState(false);
 
@@ -2751,18 +2751,18 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             });
 
             if (!response.ok) {
-                throw new Error('동기화 실패');
+                throw new Error('데이터 전송 실패');
             }
 
             const result = await response.json();
 
-            alert(`✅ Airtable 동기화 완료!\n\n` +
+            alert(`✅ Airtable 데이터 전송 완료!\n\n` +
                 `• 항목: ${result.data.totalItems}개\n` +
                 `• 질문: ${result.data.totalQuestions}개\n` +
                 `• 시트: ${result.data.sheets.join(', ')}`);
         } catch (error) {
             console.error('Airtable sync error:', error);
-            alert('❌ 동기화 실패\n\n잠시 후 다시 시도해주세요.');
+            alert('❌ 데이터 전송 실패\n\n잠시 후 다시 시도해주세요.');
         } finally {
             setIsSyncing(false);
         }
@@ -2856,7 +2856,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                 className="px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50"
                             >
                                 <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                                <span className="hidden sm:inline">{isSyncing ? '동기화 중...' : '동기화'}</span>
+                                <span className="hidden sm:inline">{isSyncing ? '데이터 전송 중...' : '데이터 전송'}</span>
                             </button>
                         )}
 
