@@ -1,7 +1,6 @@
 // pages/api/auth/send-magic-link.js
-// ════════════════════════════════════════
-// 이메일 매직링크 + 관리자 2단계(비밀키) 바이패스 (Firestore)
-// ════════════════════════════════════════
+// 이메일 매직링크 + 관리자 2단계(비밀키) 바이패스
+// ✅ Firestore 버전
 
 import jwt from 'jsonwebtoken';
 import admin from 'firebase-admin';
@@ -77,15 +76,21 @@ export default async function handler(req, res) {
     const isDev = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV !== 'production';
 
     try {
-        // ════════════════════════════════════════════════════════
+        // ─────────────────────────────────────────────────────
         // A) 관리자 이메일인 경우: 2단계(비밀키) 요구
-        // ════════════════════════════════════════════════════════
+        // ─────────────────────────────────────────────────────
         if (isAdminEmail(email, adminList)) {
             // ✅ 개발 환경에서는 비밀키 생략하고 바로 관리자 페이지 입장
             if (isDev) {
                 const now = Math.floor(Date.now() / 1000);
                 const token = jwt.sign(
-                    { email: email.toLowerCase(), role: 'admin', source: 'magic-link-admin-dev', iat: now, exp: now + 60 * 60 * 24 },
+                    {
+                        email: email.toLowerCase(),
+                        role: 'admin',
+                        source: 'magic-link-admin-dev',
+                        iat: now,
+                        exp: now + 60 * 60 * 24
+                    },
                     process.env.JWT_SECRET
                 );
                 const redirectPath = '/admin';
@@ -124,7 +129,7 @@ export default async function handler(req, res) {
                     role: 'admin',
                     source: 'magic-link-admin-2step',
                     iat: now,
-                    exp: now + 60 * 60 * 24,
+                    exp: now + 60 * 60 * 24, // 24h
                 },
                 process.env.JWT_SECRET
             );
@@ -142,9 +147,11 @@ export default async function handler(req, res) {
             });
         }
 
-        // ════════════════════════════════════════════════════════
+        // ─────────────────────────────────────────────────────
         // B) 일반 사용자: Firestore 조회 → n8n 이메일 발송
-        // ════════════════════════════════════════════════════════
+        // ─────────────────────────────────────────────────────
+
+        // ✅ Firestore에서 이메일로 테넌트 조회
         const tenantsSnapshot = await db.collection('tenants')
             .where('email', '==', email.toLowerCase())
             .get();
@@ -154,6 +161,19 @@ export default async function handler(req, res) {
             return res.status(404).json({ error: '등록되지 않은 이메일입니다.' });
         }
 
+        // ✅ 조회된 테넌트 목록
+        const tenants = [];
+        tenantsSnapshot.forEach(doc => {
+            const data = doc.data();
+            tenants.push({
+                tenantId: doc.id,
+                email: data.email,
+                brandName: data.brandName,
+                plan: data.plan || 'trial',
+            });
+        });
+
+        // ✅ JWT 토큰 생성 (24시간)
         const token = jwt.sign(
             {
                 email: email.toLowerCase(),
@@ -166,8 +186,9 @@ export default async function handler(req, res) {
         );
 
         const magicLink = `${portalDomain}/?token=${encodeURIComponent(token)}`;
-        const n8nWebhookUrl = process.env.N8N_EMAIL_WEBHOOK_URL;
 
+        // ✅ n8n Webhook으로 이메일 전송
+        const n8nWebhookUrl = process.env.N8N_EMAIL_WEBHOOK_URL;
         if (!n8nWebhookUrl) {
             console.warn('⚠️ [Send Magic Link] N8N_EMAIL_WEBHOOK_URL not set');
             return res.status(500).json({ error: '이메일 전송 서비스가 설정되지 않았습니다.' });
@@ -175,9 +196,9 @@ export default async function handler(req, res) {
 
         const emailPayload = {
             to: email,
-            subject: '🔓 야무 포털 로그인 링크',
+            subject: '🔐 야무 포털 로그인 링크',
             magicLink,
-            tenantsCount: tenantsSnapshot.size,
+            tenantsCount: tenants.length,
             expiresIn: '24시간',
             timestamp: new Date().toISOString(),
         };
@@ -195,18 +216,25 @@ export default async function handler(req, res) {
                 statusText: webhookResponse.statusText,
                 body: errorText,
             });
-            return res.status(500).json({ error: '이메일 전송에 실패했습니다. 잠시 후 다시 시도해주세요.' });
+            return res.status(500).json({
+                error: '이메일 전송에 실패했습니다. 잠시 후 다시 시도해주세요.'
+            });
         }
 
         const result = await webhookResponse.json().catch(() => ({}));
-        console.log(`📧 [Send Magic Link] 이메일 전송 완료:`, { email, success: result.success });
+        console.log(`📧 [Send Magic Link] 이메일 전송 완료:`, {
+            email,
+            tenantsCount: tenants.length,
+            success: result.success
+        });
 
         return res.status(200).json({
             success: true,
             message: '로그인 링크가 이메일로 전송되었습니다.',
-            tenantsCount: tenantsSnapshot.size,
+            tenantsCount: tenants.length,
             magicLink: process.env.NODE_ENV === 'development' ? magicLink : undefined,
         });
+
     } catch (err) {
         console.error('❌ [Send Magic Link] Error:', err);
         return res.status(500).json({

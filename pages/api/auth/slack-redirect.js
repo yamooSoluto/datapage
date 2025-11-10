@@ -10,13 +10,18 @@ import admin from 'firebase-admin';
 if (!admin.apps.length) {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
+  // ✅ Private Key 처리 (여러 포맷 대응)
   let formattedKey = privateKey;
   if (privateKey) {
+    // 1. 이미 실제 개행문자가 있는 경우 그대로 사용
     if (privateKey.includes('\n')) {
       formattedKey = privateKey;
-    } else if (privateKey.includes('\\n')) {
+    }
+    // 2. \\n 이스케이프 문자열인 경우 실제 개행으로 변환
+    else if (privateKey.includes('\\n')) {
       formattedKey = privateKey.replace(/\\n/g, '\n');
     }
+    // 3. 따옴표로 감싸진 경우 제거
     formattedKey = formattedKey.replace(/^["']|["']$/g, '');
   }
 
@@ -54,16 +59,16 @@ export default async function handler(req, res) {
 
     const tenantData = tenantDoc.data();
 
-    // ✅ 2. JWT 토큰 생성 (email 필수!)
+    // ✅ 2. 24시간 유효 토큰 생성 (관리자 전용)
     const token = jwt.sign(
       {
         tenantId: tenant,
-        email: tenantData.email || `${tenant}@temp.yamoo.ai`,  // ✅ Firestore는 email 필드 사용
         branchNo: tenantData.branchNo || '',
         brandName: tenantData.brandName || tenant,
         plan: tenantData.plan || 'trial',
-        source: 'slack',
-        exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24),
+        email: tenantData.tenantEmail || null,
+        source: 'slack',  // ← Slack에서 온 것 표시
+        exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24), // ✅ 24시간
       },
       process.env.JWT_SECRET
     );
@@ -74,7 +79,7 @@ export default async function handler(req, res) {
       process.env.PORTAL_DOMAIN ||
       'https://app.yamoo.ai.kr';
 
-    const redirectUrl = `${portalDomain}/?token=${encodeURIComponent(token)}`;
+    const redirectUrl = `${portalDomain}/?token=${token}`;
 
     console.log(`🔗 [Slack → Portal] ${tenant} → ${tenantData.brandName}`);
 
@@ -87,7 +92,7 @@ export default async function handler(req, res) {
   }
 }
 
-// ✅ 즉시 리다이렉트
+// ✅ 즉시 리다이렉트 (0.1초 후 이동)
 function instantRedirect(redirectUrl, brandName = '') {
   return `
     <!DOCTYPE html>
@@ -139,6 +144,7 @@ function instantRedirect(redirectUrl, brandName = '') {
         <h2>${brandName || '포털'}로 이동 중...</h2>
       </div>
       <script>
+        // 즉시 리다이렉트
         window.location.href = "${redirectUrl}";
       </script>
     </body>
