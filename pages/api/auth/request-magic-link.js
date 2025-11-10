@@ -1,6 +1,41 @@
 // pages/api/auth/request-magic-link.js
+// ════════════════════════════════════════
+// Firestore 기반 매직링크 요청
+// ════════════════════════════════════════
+
 import jwt from 'jsonwebtoken';
-import { google } from 'googleapis';
+import admin from 'firebase-admin';
+
+// Firebase Admin 초기화
+if (!admin.apps.length) {
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  let formattedKey = privateKey;
+  if (privateKey) {
+    if (privateKey.includes('\n')) {
+      formattedKey = privateKey;
+    } else if (privateKey.includes('\\n')) {
+      formattedKey = privateKey.replace(/\\n/g, '\n');
+    }
+    formattedKey = formattedKey.replace(/^["']|["']$/g, '');
+  }
+
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: formattedKey,
+      }),
+    });
+    console.log('✅ Firebase Admin initialized');
+  } catch (initError) {
+    console.error('❌ Firebase Admin initialization failed:', initError.message);
+    throw initError;
+  }
+}
+
+const db = admin.firestore();
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -14,26 +49,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ✅ 1. Google Sheets에서 이메일로 테넌트 검색
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-    });
+    // ✅ 1. Firestore에서 이메일로 테넌트 검색
+    const tenantsSnapshot = await db.collection('tenants')
+      .where('email', '==', email.toLowerCase())
+      .get();
 
-    const sheets = google.sheets({ version: 'v4', auth });
-
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: process.env.GOOGLE_SHEET_ID,
-      range: 'Tenants!A2:H1000',
-    });
-
-    const rows = response.data.values || [];
-    const tenant = rows.find(row => row[3]?.toLowerCase() === email.toLowerCase());
-
-    if (!tenant) {
+    if (tenantsSnapshot.empty) {
       console.warn(`[Magic Link] 등록되지 않은 이메일: ${email}`);
       // 보안상 존재 여부를 명확히 알려주지 않음
       return res.status(200).json({
@@ -42,13 +63,18 @@ export default async function handler(req, res) {
       });
     }
 
+    // 첫 번째 테넌트 정보 가져오기
+    const tenantDoc = tenantsSnapshot.docs[0];
+    const tenant = tenantDoc.data();
+    const tenantId = tenantDoc.id;
+
     // ✅ 2. JWT 토큰 생성 (7일 유효)
     const token = jwt.sign(
       {
-        tenantId: tenant[0],      // A: TenantID
-        email: tenant[3],         // D: Email
-        brandName: tenant[2],     // C: BrandName
-        plan: tenant[4],          // E: Plan
+        tenantId: tenantId,
+        email: tenant.email,
+        brandName: tenant.brandName,
+        plan: tenant.plan || 'trial',
         exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7일
       },
       process.env.JWT_SECRET
@@ -57,7 +83,7 @@ export default async function handler(req, res) {
     const portalDomain = process.env.PORTAL_DOMAIN || 'http://localhost:3000';
     const magicLink = `${portalDomain}/?token=${token}`;
 
-    console.log(`✉️ [Magic Link] 생성됨: ${email} → ${tenant[0]}`);
+    console.log(`✉️ [Magic Link] 생성됨: ${email} → ${tenantId}`);
 
     // ✅ 3. n8n Webhook으로 이메일 전송 요청
     if (process.env.N8N_EMAIL_WEBHOOK_URL) {
@@ -67,10 +93,10 @@ export default async function handler(req, res) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             to: email,
-            brandName: tenant[2],
+            brandName: tenant.brandName,
             magicLink: magicLink,
-            tenantId: tenant[0],
-            plan: tenant[4],
+            tenantId: tenantId,
+            plan: tenant.plan || 'trial',
             timestamp: new Date().toISOString()
           })
         });
@@ -97,9 +123,9 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('❌ [Magic Link] Error:', error);
 
-    if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+    if (error.code === 'unavailable') {
       return res.status(503).json({
-        error: 'Google Sheets 연결에 실패했습니다.',
+        error: 'Firestore 연결에 실패했습니다.',
       });
     }
 

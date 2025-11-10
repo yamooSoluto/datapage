@@ -1,5 +1,5 @@
 // pages/api/library/save.js
-// 라이브러리 데이터 저장
+// 라이브러리 데이터 저장 (서브컬렉션)
 
 import { db } from '@/lib/firebase';
 
@@ -20,11 +20,23 @@ export default async function handler(req, res) {
         }
 
         const tenantRef = db.collection('tenants').doc(tenantId);
+        const libraryRef = tenantRef.collection('library');
 
-        // library 필드 업데이트
-        await tenantRef.set({
-            library: library
-        }, { merge: true });
+        // ✅ 각 타입을 서브컬렉션 문서로 저장 (수정됨)
+        const types = ['links', 'passwords', 'rules', 'info'];
+        const batch = db.batch();
+
+        types.forEach((type) => {
+            const docRef = libraryRef.doc(type);
+            batch.set(docRef, {
+                items: library[type] || {},
+                updatedAt: new Date().toISOString(),
+            }, { merge: true });
+        });
+
+        await batch.commit();
+
+        console.log(`✅ [Library Save] ${tenantId} library saved to subcollection`);
 
         res.status(200).json({ success: true });
     } catch (error) {

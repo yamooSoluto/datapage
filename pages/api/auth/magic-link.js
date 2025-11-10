@@ -1,11 +1,41 @@
 // pages/api/auth/magic-link.js
 // ════════════════════════════════════════
-// 매직링크 검증 → HttpOnly 세션 쿠키(yamoo_session) 세팅
-// (레거시: email 없음 & tenantId만 있을 때 Sheets fallback 지원)
+// 매직링크 검증 → HttpOnly 세션 쿠키(yamoo_session) 세팅 (Firestore)
 // ════════════════════════════════════════
 
 import jwt from 'jsonwebtoken';
-import { google } from 'googleapis';
+import admin from 'firebase-admin';
+
+// Firebase Admin 초기화
+if (!admin.apps.length) {
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  let formattedKey = privateKey;
+  if (privateKey) {
+    if (privateKey.includes('\n')) {
+      formattedKey = privateKey;
+    } else if (privateKey.includes('\\n')) {
+      formattedKey = privateKey.replace(/\\n/g, '\n');
+    }
+    formattedKey = formattedKey.replace(/^["']|["']$/g, '');
+  }
+
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: formattedKey,
+      }),
+    });
+    console.log('✅ Firebase Admin initialized');
+  } catch (initError) {
+    console.error('❌ Firebase Admin initialization failed:', initError.message);
+    throw initError;
+  }
+}
+
+const db = admin.firestore();
 
 // 공통: 쿠키 문자열 생성기
 function cookieString(
@@ -13,7 +43,6 @@ function cookieString(
   value,
   { maxAge = 60 * 60 * 24, secure = process.env.NODE_ENV === 'production' } = {}
 ) {
-  // SameSite=Lax 로 외부 리다이렉트 시도 최소화, 프로덕션에선 Secure
   let c = `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
   if (secure) c += '; Secure';
   return c;
@@ -32,45 +61,34 @@ export default async function handler(req, res) {
   try {
     // 1) 토큰 검증
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // 기대 payload: { email?: string, role?: 'user'|'admin', ... }
     let userEmail = decoded?.email ? String(decoded.email).toLowerCase() : null;
 
     // 2) 레거시 토큰 지원: email이 없고 tenantId만 있는 경우
     if (!userEmail && decoded?.tenantId) {
-      const hasSheetsEnv =
-        process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-        process.env.GOOGLE_PRIVATE_KEY &&
-        process.env.GOOGLE_SHEET_ID;
+      try {
+        const tenantDoc = await db.collection('tenants').doc(decoded.tenantId).get();
 
-      if (hasSheetsEnv) {
-        const auth = new google.auth.GoogleAuth({
-          credentials: {
-            client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-          },
-          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-        });
-
-        const sheets = google.sheets({ version: 'v4', auth });
-        const response = await sheets.spreadsheets.values.get({
-          spreadsheetId: process.env.GOOGLE_SHEET_ID,
-          range: 'Tenants!A2:K1000',
-        });
-
-        const rows = response.data.values || [];
-        const tenant = rows.find((row) => row[0] === decoded.tenantId); // A열: tenantId
-        if (!tenant) {
-          return res.status(404).json({ error: '테넌트를 찾을 수 없습니다.', expired: false });
+        if (!tenantDoc.exists) {
+          return res.status(404).json({
+            error: '테넌트를 찾을 수 없습니다.',
+            expired: false
+          });
         }
-        userEmail = String(tenant[3] || '').toLowerCase(); // D열: Email
+
+        const tenant = tenantDoc.data();
+        userEmail = String(tenant.email || '').toLowerCase();
+
         if (!userEmail) {
-          return res.status(400).json({ error: '레거시 토큰: 이메일을 찾을 수 없습니다.', expired: false });
+          return res.status(400).json({
+            error: '레거시 토큰: 이메일을 찾을 수 없습니다.',
+            expired: false
+          });
         }
-      } else {
-        // 앞으로 시트 사용 중단 시 여기로 떨어짐
-        return res.status(400).json({
-          error: '레거시 토큰(tenantId)입니다. 새 로그인 링크를 요청하세요.',
-          expired: false,
+      } catch (firestoreError) {
+        console.error('❌ [Magic Link] Firestore 조회 실패:', firestoreError);
+        return res.status(500).json({
+          error: '테넌트 정보 조회에 실패했습니다.',
+          expired: false
         });
       }
     }
@@ -84,8 +102,8 @@ export default async function handler(req, res) {
     const session = jwt.sign(
       {
         email: userEmail,
-        role: decoded.role || 'user',        // 매직링크 기본은 user
-        source: 'magic-link-verified',       // 감사/추적용
+        role: decoded.role || 'user',
+        source: 'magic-link-verified',
         iat: now,
         exp: now + 60 * 60 * 24,
       },

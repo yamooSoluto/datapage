@@ -1,5 +1,5 @@
 // pages/api/criteria/save.js
-// criteria sheet 데이터 저장
+// criteria sheet 데이터 저장 (서브컬렉션)
 
 import { db } from '@/lib/firebase';
 
@@ -20,11 +20,15 @@ export default async function handler(req, res) {
         }
 
         const tenantRef = db.collection('tenants').doc(tenantId);
-        
-        // criteriaSheet 필드 업데이트
-        await tenantRef.set({
-            criteriaSheet: criteriaSheet
+
+        // ✅ 서브컬렉션으로 저장 (수정됨)
+        const criteriaRef = tenantRef.collection('criteria').doc('sheets');
+        await criteriaRef.set({
+            ...criteriaSheet,
+            updatedAt: new Date().toISOString(),
         }, { merge: true });
+
+        console.log(`✅ [Criteria Save] ${tenantId} criteria sheets saved to subcollection`);
 
         res.status(200).json({ success: true });
     } catch (error) {
@@ -32,4 +36,3 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'Internal server error', message: error.message });
     }
 }
-

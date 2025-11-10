@@ -1,101 +1,123 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { db } from "@/lib/firebase";
-import { generateInitialSheetData } from "@/components/onboarding/config";
+// pages/api/onboarding/initialize.js
+// ════════════════════════════════════════
+// 온보딩 완료 시 Firestore 업데이트
+// ✅ criteriaSheet는 서브컬렉션으로 저장
+// ════════════════════════════════════════
 
-type SheetSelections = {
-    space?: string[];
-    facility?: string[];
-    seat?: string[];
-    [key: string]: string[] | undefined;
-};
+import admin from 'firebase-admin';
 
-const chunk = <T,>(arr: T[], size: number) => {
-    const result: T[][] = [];
-    for (let i = 0; i < arr.length; i += size) {
-        result.push(arr.slice(i, i + size));
-    }
-    return result;
-};
+// Firebase Admin 초기화
+if (!admin.apps.length) {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    if (req.method !== "POST") {
-        return res.status(405).json({ error: "method_not_allowed" });
-    }
-
-    const { tenantId, industry = "other", selections = {}, sheetData } = req.body || {};
-    if (!tenantId) {
-        return res.status(400).json({ error: "tenantId_required" });
+    let formattedKey = privateKey;
+    if (privateKey) {
+        if (privateKey.includes('\n')) {
+            formattedKey = privateKey;
+        } else if (privateKey.includes('\\n')) {
+            formattedKey = privateKey.replace(/\\n/g, '\n');
+        }
+        formattedKey = formattedKey.replace(/^["']|["']$/g, '');
     }
 
     try {
-        const normalizedSelections: SheetSelections = {
-            space: Array.isArray(selections.space) ? selections.space : [],
-            facility: Array.isArray(selections.facility) ? selections.facility : [],
-            seat: Array.isArray(selections.seat) ? selections.seat : [],
-        };
-
-        const generated = sheetData?.items ? sheetData : generateInitialSheetData(industry, normalizedSelections);
-        const sheetIds: string[] = Array.isArray(generated.sheets) && generated.sheets.length
-            ? generated.sheets
-            : Object.keys(generated.items || {});
-
-        const tenantRef = db.collection("tenants").doc(tenantId);
-        const itemsRef = tenantRef.collection("items");
-        const batch = db.batch();
-
-        // 기존 시트 아이템 정리 (최대 10개 chunk)
-        if (sheetIds.length) {
-            const chunks = chunk(sheetIds, 10);
-            for (const ids of chunks) {
-                const snapshot = await itemsRef.where("type", "in", ids).get();
-                snapshot.forEach((doc) => batch.delete(doc.ref));
-            }
-        }
-
-        // 새 아이템 추가
-        Object.entries(generated.items || {}).forEach(([sheetId, rows]) => {
-            if (!Array.isArray(rows)) return;
-            rows.forEach((row: any, index) => {
-                const docRef = itemsRef.doc();
-                batch.set(docRef, {
-                    id: docRef.id,
-                    type: sheetId,
-                    sheetId,
-                    name: row.name,
-                    icon: row.icon || "🧩",
-                    facets: row.facets || { existence: "있음" },
-                    order: row.order ?? index + 1,
-                    isRequired: row.isRequired ?? false,
-                    createdAt: row.createdAt || Date.now(),
-                    onboardingSeed: true,
-                });
-            });
+        admin.initializeApp({
+            credential: admin.credential.cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                privateKey: formattedKey,
+            }),
         });
-
-        // 온보딩 정보 메타 업데이트
-        batch.set(
-            tenantRef.collection("meta").doc("profile"),
-            {
-                industry,
-                onboardingInitialized: true,
-                criteriaData: generated,
-                updatedAt: Date.now(),
-            },
-            { merge: true }
-        );
-
-        await batch.commit();
-
-        return res.status(200).json({
-            ok: true,
-            sheets: sheetIds,
-            counts: Object.fromEntries(
-                Object.entries(generated.items || {}).map(([sheetId, rows]) => [sheetId, Array.isArray(rows) ? rows.length : 0])
-            ),
-        });
-    } catch (error: any) {
-        console.error("[onboarding/initialize]", error);
-        return res.status(500).json({ error: "internal_error", message: error?.message });
+        console.log('✅ Firebase Admin initialized');
+    } catch (initError) {
+        console.error('❌ Firebase Admin initialization failed:', initError.message);
+        throw initError;
     }
 }
 
+const db = admin.firestore();
+
+export default async function handler(req, res) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const {
+        tenantId,
+        industry,
+        selections,
+        sheetData,
+        // ✅ 온보딩에서 편집된 기본 정보
+        brandName,
+        email,
+        address,
+    } = req.body;
+
+    if (!tenantId) {
+        return res.status(400).json({ error: 'tenantId is required' });
+    }
+
+    try {
+        const tenantRef = db.collection('tenants').doc(tenantId);
+
+        // ✅ 1. 테넌트 문서에는 기본 정보만 저장
+        const updateData = {
+            // 온보딩 완료 플래그
+            onboardingCompleted: true,
+            onboardingCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
+
+            // 기본 정보 업데이트 (조건부)
+            ...(brandName && { brandName }),
+            ...(email && { email }),
+            ...(address && { address }),
+            ...(industry && { industry }),
+
+            // 업데이트 타임스탬프
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        await tenantRef.update(updateData);
+
+        // ✅ 2. criteriaSheet는 서브컬렉션으로 저장
+        if (sheetData) {
+            const criteriaRef = tenantRef.collection('criteria').doc('sheets');
+            await criteriaRef.set({
+                ...sheetData,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+
+        // ✅ 3. selections도 서브컬렉션으로 저장
+        if (selections) {
+            const selectionsRef = tenantRef.collection('criteria').doc('selections');
+            await selectionsRef.set({
+                space: selections.space || [],
+                facility: selections.facility || [],
+                seat: selections.seat || [],
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+
+        console.log(`✅ [Onboarding] ${tenantId} 온보딩 완료`, {
+            brandName,
+            email,
+            industry,
+            address,
+            spaceCount: selections?.space?.length || 0,
+            facilityCount: selections?.facility?.length || 0,
+            seatCount: selections?.seat?.length || 0,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: '온보딩이 완료되었습니다.',
+        });
+
+    } catch (error) {
+        console.error('❌ [Onboarding] Error:', error);
+        return res.status(500).json({
+            error: '온보딩 처리 중 오류가 발생했습니다.',
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        });
+    }
+}

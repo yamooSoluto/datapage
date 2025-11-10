@@ -53,39 +53,76 @@ export default function TenantPortal() {
   const [profileLoading, setProfileLoading] = useState(false);
 
 
+  // ════════════════════════════════════════════════════════════
+  // pages/index.js - settingsData 관련 코드 교체
+  // 기존 56줄부터 171줄까지를 아래 코드로 교체
+  // ════════════════════════════════════════════════════════════
+
+  // ✅ 설정 데이터 (SettingsPage 형식)
   const [settingsData, setSettingsData] = useState({
-    companyName: "",
-    contact: "",
-    email: "",
-    slackUserId: "",
-    plan: "free",
-    chatWidgetUrl: "",
-    naverTalkTalkUrl: "",
+    tenantId: "",
+    brandName: "",
+    email: null,
+    industry: "other",
+    address: "",
+    plan: "trial",
+    status: "active",
+    widgetUrl: "",
+    naverInboundUrl: "",
+    naverAuthorization: "",
+    slack: {
+      allowedUserIds: [],
+      defaultChannelId: null,
+      teamId: null,
+    },
+    subscription: {
+      plan: "trial",
+      status: "trialing",
+      startedAt: new Date().toISOString().split('T')[0],
+      renewsAt: null,
+    },
   });
 
-  // 설정 저장 함수
+  // ✅ 설정 저장 함수 (새 API 사용)
   const handleSettingsSave = async (newSettings) => {
     try {
-      setSettingsData(newSettings);
-
-      const res = await fetch('/api/settings/save', {
+      // 새 API로 저장
+      const res = await fetch(`/api/tenants/${newSettings.tenantId}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tenantId: currentTenant?.id,
-          settings: newSettings,
+          brandName: newSettings.brandName,
+          email: newSettings.email,
+          address: newSettings.address,
+          slack: newSettings.slack,
+          naverAuthorization: newSettings.naverAuthorization,
         }),
       });
 
-      if (!res.ok) throw new Error('설정 저장 실패');
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || '설정 저장 실패');
+      }
+
       console.log('✅ 설정 저장 완료');
+
+      // settingsData 업데이트
+      setSettingsData(newSettings);
+
+      // currentTenant도 업데이트
+      setCurrentTenant(prev => ({
+        ...prev,
+        brandName: newSettings.brandName,
+        email: newSettings.email,
+      }));
+
     } catch (error) {
       console.error('❌ 설정 저장 실패:', error);
       throw error;
     }
   };
 
-  // 2. 라이브러리 state 추가 (기존 state들 아래에)
+  // 라이브러리 state
   const [libraryData, setLibraryData] = useState({
     links: {},
     passwords: {},
@@ -93,12 +130,10 @@ export default function TenantPortal() {
     info: {},
   });
 
-  // 3. 라이브러리 불러오기 함수 추가 (useEffect 안에)
+  // ✅ 테넌트 정보 & 라이브러리 로딩
   useEffect(() => {
     if (currentTenant?.id) {
-      // 기존 데이터 로딩...
-
-      // 라이브러리 데이터 로딩 추가
+      // 라이브러리 데이터 로딩
       const loadLibrary = async () => {
         try {
           const res = await fetch(`/api/library/get?tenantId=${currentTenant.id}`);
@@ -116,11 +151,49 @@ export default function TenantPortal() {
         }
       };
 
+      // ✅ 설정 데이터 로딩
+      const loadSettings = async () => {
+        try {
+          const res = await fetch(`/api/tenants/${currentTenant.id}`);
+          if (res.ok) {
+            const tenant = await res.json();
+            console.log('✅ 테넌트 데이터 로드:', tenant);
+
+            setSettingsData({
+              tenantId: tenant.tenantId,
+              brandName: tenant.brandName || "",
+              email: tenant.email || null,
+              industry: tenant.industry || "other",
+              address: tenant.address || "",
+              plan: tenant.plan || "trial",
+              status: tenant.status || "active",
+              widgetUrl: tenant.widgetUrl || `https://chat.yamoo.ai.kr/chat/${currentTenant.id}`,
+              naverInboundUrl: tenant.naverInboundUrl || `https://chat.yamoo.ai.kr/${currentTenant.id}/naver/inbound`,
+              naverAuthorization: tenant.naverAuthorization || "",
+              slack: {
+                allowedUserIds: tenant.slack?.allowedUserIds || [],
+                defaultChannelId: tenant.slack?.defaultChannelId || null,
+                teamId: tenant.slack?.teamId || null,
+              },
+              subscription: {
+                plan: tenant.subscription?.plan || tenant.plan || "trial",
+                status: tenant.subscription?.status || tenant.status || "trialing",
+                startedAt: tenant.subscription?.startedAt || new Date().toISOString().split('T')[0],
+                renewsAt: tenant.subscription?.renewsAt || null,
+              },
+            });
+          }
+        } catch (error) {
+          console.error('❌ 설정 로딩 실패:', error);
+        }
+      };
+
       loadLibrary();
+      loadSettings();
     }
   }, [currentTenant?.id]);
 
-  // 4. 라이브러리 저장 함수 추가
+  // 라이브러리 저장 함수
   const handleLibrarySave = async (newLibrary) => {
     try {
       setLibraryData(newLibrary);
@@ -143,7 +216,7 @@ export default function TenantPortal() {
     }
   };
 
-  // 5. Criteria Sheet 저장 함수 추가
+  // Criteria Sheet 저장 함수
   const handleMatrixSave = async (newCriteriaSheet) => {
     try {
       setTenantData((prev) => ({
@@ -176,6 +249,7 @@ export default function TenantPortal() {
   const [canDismissOnboarding, setCanDismissOnboarding] = useState(true);
 
   // 온보딩 입력값(2단계용)
+  const [obBrandName, setObBrandName] = useState('');
   const [obEmail, setObEmail] = useState('');
   const [obSlackId, setObSlackId] = useState('');
   const [obFacilities, setObFacilities] = useState([]);
@@ -496,7 +570,7 @@ export default function TenantPortal() {
       setIsLoggedIn(true);
 
       // ✅ 온보딩 표시 조건: FAQ가 없으면 무조건 표시
-      const shouldShowOnboarding = !data.onboardingDismissed && (data.faqCount === 0 || data.showOnboarding);
+      const shouldShowOnboarding = !data.onboardingCompleted;
       setShowOnboarding(shouldShowOnboarding);
       setCanDismissOnboarding(true); // ✅ 항상 닫기 가능
 
@@ -576,10 +650,7 @@ export default function TenantPortal() {
     localStorage.setItem('magicLogin', 'true');
 
     // ✅ Slack에서 온 경우 온보딩 무조건 스킵
-    const shouldShowOnboarding = fromSlack
-      ? false
-      : !tenant.onboardingDismissed && (tenant.faqCount === 0 || tenant.showOnboarding);
-
+    const shouldShowOnboarding = !tenant.onboardingCompleted;
     setShowOnboarding(shouldShowOnboarding);
     setCanDismissOnboarding(true);
 
@@ -664,6 +735,7 @@ export default function TenantPortal() {
       setProfile(p);
 
       // 온보딩 프리필
+      setObBrandName(p?.brandName || currentTenant?.brandName || '');
       setObEmail(currentTenant?.email || p?.contactEmail || '');
       setObSlackId(p?.slackUserId || '');
       setObFacilities((p?.dictionaries?.facilities || []).map(x => x?.name).filter(Boolean));
@@ -1065,6 +1137,7 @@ export default function TenantPortal() {
           <OnboardingModal
             open={showOnboarding}
             initial={{
+              brandName: obBrandName,
               email: obEmail,
               slackUserId: obSlackId,
               industry: "study_cafe",   // 기본 업종
@@ -1080,6 +1153,7 @@ export default function TenantPortal() {
 
                 // 로컬 상태 업데이트
                 setObEmail(payload.contactEmail || "");
+                setObBrandName(payload.brandName || obBrandName || currentTenant?.brandName || "");
                 setObSlackId(payload.slackUserId || "");
                 setObFacilities(facilities);
                 setObPasses((payload.dictionaries?.passes || []).map((x) => x.name));
@@ -1091,13 +1165,26 @@ export default function TenantPortal() {
                   criteriaSheet: payload.criteriaSheet,
                   industry: payload.industry,
                 });
+
                 setTenantData(prev => ({
                   ...prev,
                   industry: payload.industry || prev.industry,
                   criteriaSheet: payload.criteriaSheet || prev.criteriaSheet,
                 }));
+
                 await refresh();
                 await refreshTemplates?.();
+
+                // ✅ 테넌트 정보 다시 로드 (onboardingCompleted 업데이트 반영)
+                const res = await fetch(`/api/tenants/${currentTenant.id}`);
+                if (res.ok) {
+                  const updatedTenant = await res.json();
+                  setCurrentTenant(prev => ({
+                    ...prev,
+                    onboardingCompleted: updatedTenant.onboardingCompleted,
+                  }));
+                }
+
                 setShowOnboarding(false);
               } catch (error) {
                 console.error('온보딩 완료 처리 실패', error);
@@ -1274,7 +1361,7 @@ export default function TenantPortal() {
                 tenantId={currentTenant?.id}
                 initialData={tenantData.criteriaSheet || criteriaData}
                 initialLibrary={libraryData}
-                initialSettings={settingsData}
+                initialSettings={settingsData}  // ← 이제 완전한 형식
                 onSaveMatrix={handleMatrixSave}
                 onSaveLibrary={handleLibrarySave}
                 onSaveSettings={handleSettingsSave}
@@ -1282,6 +1369,7 @@ export default function TenantPortal() {
               />
             </div>
           )}
+
 
           {/* 데이터 관리 탭 (데이터 + 라이브러리 서브탭) */}
           {(activeTab === 'data' || activeTab === 'library') && (
@@ -1342,7 +1430,7 @@ export default function TenantPortal() {
                   tenantId={currentTenant?.id}
                   initialData={tenantData.criteriaSheet || criteriaData}
                   initialLibrary={libraryData}
-                  initialSettings={settingsData}
+                  initialSettings={settingsData}  // ← 이제 완전한 형식
                   onSave={handleMatrixSave}
                   onSaveLibrary={handleLibrarySave}
                   onSaveSettings={handleSettingsSave}

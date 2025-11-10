@@ -98,7 +98,7 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
 
 export default function OnboardingModal({
     open,
-    initial = {},           // { email, slackUserId, industry }
+    initial = {},           // { email, brandName, industry, address, tenantId }
     onClose,
     onComplete,             // (payload) => Promise<void> | void
     tenantId,
@@ -106,13 +106,14 @@ export default function OnboardingModal({
     const [step, setStep] = React.useState(1);
     if (!open) return null;
 
+    // ✅ Firestore에서 받아온 초기값 (편집 가능)
+    const [email, setEmail] = React.useState(initial.email || "");
+    const [brandName, setBrandName] = React.useState(initial.brandName || "");
+    const [address, setAddress] = React.useState(initial.address || "");
+
     // 업종은 모달에서만 수정 가능 (기본값: study_cafe)
     const [industry, setIndustry] = React.useState(initial.industry || "study_cafe");
     const presets = React.useMemo(() => getSheetPresetsForIndustry(industry), [industry]);
-
-    // 초기 선택은 항상 빈 배열(자동 선택 없음)
-    const [email, setEmail] = React.useState(initial.email || "");
-    const [slackId, setSlackId] = React.useState(initial.slackUserId || "");
 
     // 시트별 선택된 항목들
     const [spaceItems, setSpaceItems] = React.useState([]);
@@ -124,6 +125,7 @@ export default function OnboardingModal({
     const finish = async () => {
         if (submitting) return;
         setSubmitting(true);
+
         // CriteriaSheet 초기 데이터 생성
         const selections = {
             space: spaceItems,
@@ -142,6 +144,10 @@ export default function OnboardingModal({
                         industry,
                         selections,
                         sheetData,
+                        // ✅ 온보딩에서 편집된 기본 정보
+                        brandName,
+                        email,
+                        address,
                     }),
                 });
                 if (!res.ok) {
@@ -151,8 +157,10 @@ export default function OnboardingModal({
             }
 
             const payload = {
-                contactEmail: email || "",
-                slackUserId: slackId || "",
+                // ✅ 온보딩에서 편집된 기본 정보
+                brandName,
+                email,
+                address,
                 industry,
                 selections,
                 // CriteriaSheet 데이터
@@ -205,9 +213,9 @@ export default function OnboardingModal({
                                 아래 정보는 언제든 <strong>마이페이지</strong>에서 수정할 수 있어요.
                             </p>
                             <ul className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-2 text-sm text-gray-700">
-                                <li>• 슬랙 가입 후 <strong>본인 이메일</strong>을 입력하면 실시간 메시지 카드를 받을 수 있어요.</li>
                                 <li>• <strong>공간/시설/좌석</strong>은 FAQ 모듈과 안내 기준 관리에 사용돼요.</li>
                                 <li>• 추가 채널(네이버·카카오) 연동 설명은 마이페이지에서 자세히 볼 수 있어요.</li>
+                                <li>• 기본 정보는 다음 단계에서 확인하고 수정할 수 있어요.</li>
                             </ul>
                             <button
                                 onClick={() => setStep(2)}
@@ -220,73 +228,102 @@ export default function OnboardingModal({
 
                     {step === 2 && (
                         <div className="space-y-6">
-                            {/* 업종 드롭다운 (모달에서만 노출) */}
-                            <div className="flex items-center justify-between">
-                                <div className="text-sm text-gray-600">
-                                    업종 프리셋은 <b>이 모달에서만</b> 변경됩니다.
+                            {/* ✅ 기본 정보 섹션 */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                                <h3 className="text-sm font-bold text-blue-900 mb-3">📋 기본 정보</h3>
+                                <div className="space-y-3">
+                                    {/* 이메일 */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-900 mb-1">
+                                            이메일 <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            placeholder="your@email.com"
+                                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none text-sm"
+                                        />
+                                    </div>
+
+                                    {/* 상호명 */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-900 mb-1">
+                                            상호명 <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            value={brandName}
+                                            onChange={(e) => setBrandName(e.target.value)}
+                                            placeholder="브랜드/매장명"
+                                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none text-sm"
+                                        />
+                                    </div>
+
+                                    {/* 업종 */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-900 mb-1">
+                                            업종 <span className="text-red-500">*</span>
+                                        </label>
+                                        <select
+                                            value={industry}
+                                            onChange={(e) => setIndustry(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none"
+                                        >
+                                            {INDUSTRY_OPTIONS.map((opt) => (
+                                                <option key={opt.code} value={opt.code}>
+                                                    {opt.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            업종에 따라 아래 추천 항목이 달라집니다
+                                        </p>
+                                    </div>
+
+                                    {/* 매장 주소 */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-900 mb-1">
+                                            매장 주소 (선택)
+                                        </label>
+                                        <input
+                                            value={address}
+                                            onChange={(e) => setAddress(e.target.value)}
+                                            placeholder="서울시 강남구..."
+                                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none text-sm"
+                                        />
+                                    </div>
                                 </div>
-                                <label className="flex items-center gap-2 text-sm">
-                                    <span className="text-gray-700">업종</span>
-                                    <select
-                                        value={industry}
-                                        onChange={(e) => setIndustry(e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-lg bg-white"
-                                    >
-                                        {INDUSTRY_OPTIONS.map((opt) => (
-                                            <option key={opt.code} value={opt.code}>
-                                                {opt.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
                             </div>
 
-                            {/* 연락 정보 */}
-                            <div className="grid grid-cols-1 gap-4">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-900 mb-1">이메일</label>
-                                    <input
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="your@email.com"
-                                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 outline-none"
-                                    />
+                            {/* ✅ 멀티셀렉 섹션 */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-bold text-gray-900">🏢 매장 구성 요소</h3>
+                                    <span className="text-xs text-gray-500">선택 사항입니다</span>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-900 mb-1">
-                                        Slack 사용자 ID (선택)
-                                    </label>
-                                    <input
-                                        value={slackId}
-                                        onChange={(e) => setSlackId(e.target.value)}
-                                        placeholder="U0XXXXXXX"
-                                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 outline-none"
-                                    />
-                                </div>
-                            </div>
 
-                            {/* 멀티셀렉(프리셋 + 직접추가) */}
-                            <MultiSelectWithAdd
-                                label="🏠 공간"
-                                options={presets.space}
-                                value={spaceItems}
-                                onChange={setSpaceItems}
-                                placeholder="현관, 로비, 복도…"
-                            />
-                            <MultiSelectWithAdd
-                                label="⚙️ 시설"
-                                options={presets.facility}
-                                value={facilityItems}
-                                onChange={setFacilityItems}
-                                placeholder="프린터, 냉장고, 휴게존…"
-                            />
-                            <MultiSelectWithAdd
-                                label="💺 좌석"
-                                options={presets.seat}
-                                value={seatItems}
-                                onChange={setSeatItems}
-                                placeholder="1인실, 칸막이석…"
-                            />
+                                {/* 멀티셀렉(프리셋 + 직접추가) */}
+                                <MultiSelectWithAdd
+                                    label="🏠 공간"
+                                    options={presets.space}
+                                    value={spaceItems}
+                                    onChange={setSpaceItems}
+                                    placeholder="현관, 로비, 복도…"
+                                />
+                                <MultiSelectWithAdd
+                                    label="⚙️ 시설"
+                                    options={presets.facility}
+                                    value={facilityItems}
+                                    onChange={setFacilityItems}
+                                    placeholder="프린터, 냉장고, 휴게존…"
+                                />
+                                <MultiSelectWithAdd
+                                    label="💺 좌석"
+                                    options={presets.seat}
+                                    value={seatItems}
+                                    onChange={setSeatItems}
+                                    placeholder="1인실, 칸막이석…"
+                                />
+                            </div>
                         </div>
                     )}
                 </div>
@@ -308,8 +345,11 @@ export default function OnboardingModal({
                     {step === 2 ? (
                         <button
                             onClick={finish}
-                            disabled={submitting}
-                            className={`px-5 py-2 rounded-xl text-sm font-semibold ${submitting ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-gray-900 text-white hover:opacity-90"}`}
+                            disabled={submitting || !email || !brandName}
+                            className={`px-5 py-2 rounded-xl text-sm font-semibold ${submitting || !email || !brandName
+                                ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                : "bg-gray-900 text-white hover:opacity-90"
+                                }`}
                         >
                             {submitting ? "설정 중..." : "완료하고 시작하기 🚀"}
                         </button>

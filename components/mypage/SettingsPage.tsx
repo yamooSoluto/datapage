@@ -2,17 +2,20 @@
 // 테넌트 설정 메인 페이지
 
 import React from "react";
-import { Building2, Mail, Phone, User, CreditCard, Link as LinkIcon, MessageSquare, Save, Edit3, Check, X, Globe } from "lucide-react";
+import { Building2, Mail, Phone, User, CreditCard, Link as LinkIcon, MessageSquare, Save, Edit3, Check, X, Globe, MapPin, Briefcase } from "lucide-react";
+import { INDUSTRY_OPTIONS } from "../onboarding/config";
 
 interface TenantSettings {
     tenantId: string;
     brandName: string;
     email: string | null;
+    industry?: string;  // ✅ 업종 추가
+    address?: string;   // ✅ 주소 추가
     plan: string;
     status: string;
     widgetUrl: string;
     naverInboundUrl: string;
-    naverAuthorization?: string;  // 네이버 톡톡 Authorization 키
+    naverAuthorization?: string;
     slack?: {
         allowedUserIds?: string[];
         defaultChannelId?: string | null;
@@ -39,11 +42,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
             tenantId: tenantId,
             brandName: "",
             email: null,
+            industry: "other",
+            address: "",
             plan: "trial",
             status: "active",
             widgetUrl: "",
             naverInboundUrl: "",
-            naverAuthorization: "",  // 네이버 Authorization 초기값
+            naverAuthorization: "",
             slack: {
                 allowedUserIds: [],
                 defaultChannelId: null,
@@ -126,6 +131,11 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
         }
     };
 
+    // ✅ 업종 라벨 가져오기
+    const getIndustryLabel = (code?: string) => {
+        return INDUSTRY_OPTIONS.find(opt => opt.code === code)?.label || "기타";
+    };
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* 헤더 */}
@@ -169,33 +179,12 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
             </div>
 
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-                {/* 기본 정보 */}
+                {/* ✅ 기본 정보 */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                     <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
                         <h2 className="text-sm font-semibold text-gray-900">기본 정보</h2>
                     </div>
                     <div className="p-6 space-y-4">
-                        {/* 상호 (brandName) */}
-                        <div>
-                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                                <Building2 className="w-4 h-4" />
-                                상호
-                            </label>
-                            {isEditMode ? (
-                                <input
-                                    type="text"
-                                    value={currentSettings?.brandName || ""}
-                                    onChange={(e) => updateField("brandName", e.target.value)}
-                                    placeholder="회사명을 입력하세요"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                                />
-                            ) : (
-                                <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
-                                    {settings.brandName || "-"}
-                                </p>
-                            )}
-                        </div>
-
                         {/* 이메일 */}
                         <div>
                             <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
@@ -213,6 +202,62 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                             ) : (
                                 <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
                                     {settings.email || "-"}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* 상호 (brandName) */}
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <Building2 className="w-4 h-4" />
+                                상호명
+                            </label>
+                            {isEditMode ? (
+                                <input
+                                    type="text"
+                                    value={currentSettings?.brandName || ""}
+                                    onChange={(e) => updateField("brandName", e.target.value)}
+                                    placeholder="브랜드/매장명을 입력하세요"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                                />
+                            ) : (
+                                <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
+                                    {settings.brandName || "-"}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* ✅ 업종 (읽기 전용) */}
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <Briefcase className="w-4 h-4" />
+                                업종
+                            </label>
+                            <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
+                                {getIndustryLabel(settings.industry)}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                                업종은 온보딩 시에만 설정할 수 있습니다
+                            </p>
+                        </div>
+
+                        {/* ✅ 매장 주소 */}
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <MapPin className="w-4 h-4" />
+                                매장 주소
+                            </label>
+                            {isEditMode ? (
+                                <input
+                                    type="text"
+                                    value={currentSettings?.address || ""}
+                                    onChange={(e) => updateField("address", e.target.value)}
+                                    placeholder="서울시 강남구..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                                />
+                            ) : (
+                                <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
+                                    {settings.address || "-"}
                                 </p>
                             )}
                         </div>

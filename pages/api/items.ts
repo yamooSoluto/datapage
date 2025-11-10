@@ -1,4 +1,9 @@
 // pages/api/items.ts
+// POST /api/items - 추가
+// PUT /api/items - 수정
+// DELETE /api/items - 삭제
+
+
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { db } from '@/lib/firebase';
 

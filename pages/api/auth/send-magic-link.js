@@ -1,9 +1,42 @@
 // pages/api/auth/send-magic-link.js
-// 이메일 매직링크 + 관리자 2단계(비밀키) 바이패스
+// ════════════════════════════════════════
+// 이메일 매직링크 + 관리자 2단계(비밀키) 바이패스 (Firestore)
+// ════════════════════════════════════════
 
 import jwt from 'jsonwebtoken';
-import { google } from 'googleapis';
+import admin from 'firebase-admin';
 import crypto from 'crypto';
+
+// Firebase Admin 초기화
+if (!admin.apps.length) {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    let formattedKey = privateKey;
+    if (privateKey) {
+        if (privateKey.includes('\n')) {
+            formattedKey = privateKey;
+        } else if (privateKey.includes('\\n')) {
+            formattedKey = privateKey.replace(/\\n/g, '\n');
+        }
+        formattedKey = formattedKey.replace(/^["']|["']$/g, '');
+    }
+
+    try {
+        admin.initializeApp({
+            credential: admin.credential.cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                privateKey: formattedKey,
+            }),
+        });
+        console.log('✅ Firebase Admin initialized');
+    } catch (initError) {
+        console.error('❌ Firebase Admin initialization failed:', initError.message);
+        throw initError;
+    }
+}
+
+const db = admin.firestore();
 
 function parseAdminList(v) {
     return String(v || '')
@@ -39,15 +72,14 @@ export default async function handler(req, res) {
     if (!email) return res.status(400).json({ error: '이메일을 입력해주세요.' });
 
     const portalDomain = process.env.PORTAL_DOMAIN || 'https://app.yamoo.ai.kr';
-    const adminList = parseAdminList(process.env.ADMIN_EMAILS);          // 예) "ceo@brand.com,@yamoo.ai.kr"
-    const adminLoginSecret = process.env.ADMIN_LOGIN_SECRET || '';        // 비밀키
+    const adminList = parseAdminList(process.env.ADMIN_EMAILS);
+    const adminLoginSecret = process.env.ADMIN_LOGIN_SECRET || '';
     const isDev = process.env.NODE_ENV === 'development' || process.env.VERCEL_ENV !== 'production';
 
-
     try {
-        // ─────────────────────────────────────────────────────
+        // ════════════════════════════════════════════════════════
         // A) 관리자 이메일인 경우: 2단계(비밀키) 요구
-        // ─────────────────────────────────────────────────────
+        // ════════════════════════════════════════════════════════
         if (isAdminEmail(email, adminList)) {
             // ✅ 개발 환경에서는 비밀키 생략하고 바로 관리자 페이지 입장
             if (isDev) {
@@ -92,12 +124,11 @@ export default async function handler(req, res) {
                     role: 'admin',
                     source: 'magic-link-admin-2step',
                     iat: now,
-                    exp: now + 60 * 60 * 24, // 24h
+                    exp: now + 60 * 60 * 24,
                 },
                 process.env.JWT_SECRET
             );
 
-            // 프론트가 처리할 수 있게 쿼리로 넘김 (필요하면 /admin 등으로 교체)
             const redirectPath = '/admin';
             const redirectUrl = `${portalDomain}/?token=${encodeURIComponent(token)}&redirect=${encodeURIComponent(redirectPath)}&admin=1`;
 
@@ -107,31 +138,18 @@ export default async function handler(req, res) {
                 success: true,
                 direct: true,
                 redirectUrl,
-                // 개발모드에서만 노출
                 magicLink: process.env.NODE_ENV === 'development' ? redirectUrl : undefined,
             });
         }
 
-        // ─────────────────────────────────────────────────────
-        // B) 일반 사용자: 시트 조회 → n8n 이메일 발송
-        // ─────────────────────────────────────────────────────
-        const auth = new google.auth.GoogleAuth({
-            credentials: {
-                client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-                private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-            },
-            scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-        });
+        // ════════════════════════════════════════════════════════
+        // B) 일반 사용자: Firestore 조회 → n8n 이메일 발송
+        // ════════════════════════════════════════════════════════
+        const tenantsSnapshot = await db.collection('tenants')
+            .where('email', '==', email.toLowerCase())
+            .get();
 
-        const sheets = google.sheets({ version: 'v4', auth });
-        const response = await sheets.spreadsheets.values.get({
-            spreadsheetId: process.env.GOOGLE_SHEET_ID,
-            range: 'Tenants!A2:K1000',
-        });
-
-        const rows = response.data.values || [];
-        const tenants = rows.filter((row) => row[3]?.toLowerCase() === email.toLowerCase());
-        if (tenants.length === 0) {
+        if (tenantsSnapshot.empty) {
             console.warn(`❌ [Send Magic Link] 등록되지 않은 이메일: ${email}`);
             return res.status(404).json({ error: '등록되지 않은 이메일입니다.' });
         }
@@ -149,6 +167,7 @@ export default async function handler(req, res) {
 
         const magicLink = `${portalDomain}/?token=${encodeURIComponent(token)}`;
         const n8nWebhookUrl = process.env.N8N_EMAIL_WEBHOOK_URL;
+
         if (!n8nWebhookUrl) {
             console.warn('⚠️ [Send Magic Link] N8N_EMAIL_WEBHOOK_URL not set');
             return res.status(500).json({ error: '이메일 전송 서비스가 설정되지 않았습니다.' });
@@ -156,9 +175,9 @@ export default async function handler(req, res) {
 
         const emailPayload = {
             to: email,
-            subject: '🔐 야무 포털 로그인 링크',
+            subject: '🔓 야무 포털 로그인 링크',
             magicLink,
-            tenantsCount: tenants.length,
+            tenantsCount: tenantsSnapshot.size,
             expiresIn: '24시간',
             timestamp: new Date().toISOString(),
         };
@@ -185,7 +204,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
             success: true,
             message: '로그인 링크가 이메일로 전송되었습니다.',
-            tenantsCount: tenants.length,
+            tenantsCount: tenantsSnapshot.size,
             magicLink: process.env.NODE_ENV === 'development' ? magicLink : undefined,
         });
     } catch (err) {
