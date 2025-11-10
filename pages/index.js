@@ -74,32 +74,6 @@ export default function TenantPortal() {
   const [obPasses, setObPasses] = useState([]);
   const [obMenu, setObMenu] = useState([]);
 
-  const expectJSON = async (res) => {
-    const contentType = res.headers?.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      return res.json();
-    }
-    const text = await res.text();
-    throw new Error(text || 'Invalid JSON response');
-  };
-
-  const readJSONSafe = async (res) => {
-    const contentType = res.headers?.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      try {
-        return await res.json();
-      } catch {
-        return {};
-      }
-    }
-    const text = await res.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { raw: text };
-    }
-  };
-
   // ──────────────────────────────────────────────────────────
   // 4. FAQ 관련 State
   // ──────────────────────────────────────────────────────────
@@ -218,7 +192,7 @@ export default function TenantPortal() {
         try {
           const res = await fetch(`/api/library/get?tenantId=${currentTenant.id}`);
           if (res.ok) {
-            const data = await expectJSON(res);
+            const data = await res.json();
             setLibraryData(data.library || {
               links: {},
               passwords: {},
@@ -236,7 +210,7 @@ export default function TenantPortal() {
         try {
           const res = await fetch(`/api/tenants/${currentTenant.id}`);
           if (res.ok) {
-            const tenant = await expectJSON(res);
+            const tenant = await res.json();
             console.log('✅ 테넌트 데이터 로드:', tenant);
 
             setSettingsData({
@@ -352,8 +326,7 @@ export default function TenantPortal() {
       });
 
       const res = await fetch(`/api/faqs?tenantId=${currentTenant.id}`);
-      if (!res.ok) throw new Error('FAQ 불러오기 실패');
-      const data = await expectJSON(res);
+      const data = await res.json();
       setFaqData(data.faqs || []);
       closeModal();
     } catch (err) {
@@ -368,8 +341,7 @@ export default function TenantPortal() {
     try {
       await fetch(`/api/faqs/${item.id}`, { method: 'DELETE' });
       const res = await fetch(`/api/faqs?tenantId=${currentTenant.id}`);
-      if (!res.ok) throw new Error('FAQ 불러오기 실패');
-      const data = await expectJSON(res);
+      const data = await res.json();
       setFaqData(data.faqs || []);
     } catch (err) {
       console.error('FAQ 삭제 실패:', err);
@@ -407,7 +379,7 @@ export default function TenantPortal() {
       });
 
       if (!res.ok) {
-        const error = await readJSONSafe(res);
+        const error = await res.json();
         throw new Error(error.message || '설정 저장 실패');
       }
 
@@ -572,7 +544,7 @@ export default function TenantPortal() {
       try {
         const res = await fetch(`/api/tenants/${currentTenant.id}`);
         if (res.ok) {
-          const updatedTenant = await expectJSON(res);
+          const updatedTenant = await res.json();
           setCurrentTenant(prev => ({
             ...prev,
             onboardingCompleted: updatedTenant.onboardingCompleted,
@@ -649,24 +621,19 @@ export default function TenantPortal() {
   async function verifyToken(token) {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/auth/verify-token?token=${token}`);
+      const res = await fetch(`/api/auth/verify?token=${token}`);
       if (!res.ok) throw new Error('토큰 검증 실패');
 
-      const data = await expectJSON(res);
-      const resolvedTenantId = data.tenantId || data.tenants?.[0]?.id;
-      const resolvedEmail = data.email || data.tenants?.[0]?.email || null;
+      const data = await res.json();
+      const { email, tenantId } = data;
 
-      if (!resolvedTenantId) throw new Error('테넌트 정보를 찾을 수 없습니다');
+      localStorage.setItem('userEmail', email);
+      localStorage.setItem('tenantId', tenantId);
 
-      if (resolvedEmail) {
-        localStorage.setItem('userEmail', resolvedEmail);
-      }
-      localStorage.setItem('tenantId', resolvedTenantId);
-
-      const tRes = await fetch(`/api/tenants/${resolvedTenantId}`);
+      const tRes = await fetch(`/api/tenants/${tenantId}`);
       if (!tRes.ok) throw new Error('테넌트 조회 실패');
 
-      const tenant = await expectJSON(tRes);
+      const tenant = await tRes.json();
       setCurrentTenant(tenant);
       setIsLoggedIn(true);
 
@@ -691,7 +658,7 @@ export default function TenantPortal() {
       const res = await fetch(`/api/tenants/by-email?email=${encodeURIComponent(email)}`);
       if (!res.ok) throw new Error('테넌트 조회 실패');
 
-      const data = await expectJSON(res);
+      const data = await res.json();
       setCurrentTenant(data);
       setIsLoggedIn(true);
 
@@ -755,7 +722,7 @@ export default function TenantPortal() {
             alt="야무"
             className="w-20 h-20 object-contain mx-auto mb-6"
           />
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">나만의 맞춤형 운영 비서</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">야무 포털</h1>
           <p className="text-gray-600">로그인이 필요합니다</p>
         </div>
       </div>
