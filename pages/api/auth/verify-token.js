@@ -113,11 +113,8 @@ export default async function handler(req, res) {
         createdAt: data.subscription?.startedAt || '',
         widgetIframe: data.widgetUrl || '',
         WidgetLink: data.widgetUrl || '',
-        onboardingFormLink: '', // Firestore 스키마에 없음
-        OnboardingFormLink: '',
         naverOutbound: data.naverInboundUrl || '',
         NaverOutbound: data.naverInboundUrl || '',
-        portalDomain: portalDomain || '',
         faqCount,
         showOnboarding: faqCount === 0,
       };
@@ -176,9 +173,7 @@ export default async function handler(req, res) {
         status: data.status || 'active',
         createdAt: data.subscription?.startedAt || '',
         widgetIframe: data.widgetUrl || '',
-        onboardingFormLink: '', // Firestore 스키마에 없음
         naverOutbound: data.naverInboundUrl || '',
-        portalDomain: '', // Firestore 스키마에 없음
         faqCount,
         showOnboarding: faqCount === 0,
       });
