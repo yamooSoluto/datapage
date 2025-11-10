@@ -1,238 +1,264 @@
-// pages/api/stats/[tenant].js
-import admin from "firebase-admin";
+// pages/api/stats/[tenantId].js
+// BigQuery 기반 통계 API
 
-// ─────────────────────────────────────────────
-// 🔐 Firebase Admin 초기화 (중복 방지 + 안전한 키 파싱)
-// ─────────────────────────────────────────────
-if (!admin.apps.length) {
+const DATASET = process.env.BQ_DATASET || 'cs_analytics';
+
+let bigQueryInstance = null;
+function getBigQuery() {
+  if (bigQueryInstance) return bigQueryInstance;
   try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-      }),
-    });
-    console.log("✅ Firebase Admin initialized successfully");
-  } catch (initError) {
-    console.error("❌ Firebase Admin initialization failed:", initError);
+    const { BigQuery } = require('@google-cloud/bigquery');
+    bigQueryInstance = new BigQuery();
+  } catch (err) {
+    console.warn('⚠️ BigQuery SDK not installed. Stats API will return empty data.', err.message);
+    bigQueryInstance = null;
   }
+  return bigQueryInstance;
 }
 
-const db = admin.firestore();
-
-// ─────────────────────────────────────────────
-// 📊 Stats API Handler
-// ─────────────────────────────────────────────
 export default async function handler(req, res) {
-  const { tenant } = req.query;
-  const { view = "conversations", limit = 50, range = "7d" } = req.query;
-
-  if (!tenant) {
-    return res.status(400).json({ error: "Tenant ID required" });
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // 숫자 안전 변환기
-  const toInt = (v, d = 0) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : d;
-  };
+  const { tenantId } = req.query;
+  const { view = 'conversations', limit = 50, range = '7d' } = req.query;
+
+  if (!tenantId) {
+    return res.status(400).json({ error: 'tenantId is required' });
+  }
+
+  console.log(`📊 통계 조회: ${tenantId}, range: ${range}`);
+
+  const bq = getBigQuery();
+  if (!bq) {
+    console.warn('BigQuery client unavailable. Returning empty stats.');
+    return res.status(200).json({
+      stats: {
+        total: 0,
+        aiAutoRate: 0,
+        avgResponseTime: 0,
+        agentMessages: 0,
+      },
+      chartData: {
+        mediumData: [],
+        tagData: [],
+        aiVsAgentData: [],
+        dailyTrend: [],
+      },
+      conversations: [],
+    });
+  }
 
   try {
-    // ✅ MOCK 모드 (테스트용)
-    if (process.env.USE_MOCK_STATS === "true") {
-      return res.status(200).json({
-        view: "conversations",
-        conversations: [
-          {
-            id: "demo_conversation",
-            userName: "테스트 회원",
-            mediumName: "appKakao",
-            tags: ["테스트_태그"],
-            userChats: 3,
-            aiAutoChats: 2,
-            agentChats: 1,
-            firstOpenedAt: "2025-01-01T10:00:00Z",
-          },
-        ],
-        stats: {
-          total: 1,
-          aiAutoRate: 67,
-          avgResponseTime: 3,
-          byMedium: { appKakao: 1 },
-          byTag: { "테스트_태그": 1 },
-        },
-        chartData: {
-          mediumData: [{ name: "카카오", count: 1 }],
-          tagData: [{ name: "테스트_태그", count: 1 }],
-          aiVsAgentData: [
-            { name: "AI 자동", value: 2 },
-            { name: "상담원", value: 1 },
-          ],
-        },
-      });
+    // 날짜 범위 계산
+    const days = parseInt(range.replace('d', '')) || 7;
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+
+    console.log(`📅 조회 기간: ${startDateStr} ~ ${endDateStr}`);
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 1. 기본 통계 (총 대화, AI 자동응답률, 상담원 개입)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const statsQuery = `
+      SELECT
+        COUNT(DISTINCT chat_id) as total_conversations,
+        SUM(ai_auto) as ai_auto_count,
+        SUM(agent_chats) as agent_messages,
+        AVG(first_response_time_sec) as avg_response_time
+      FROM \`${DATASET}.conversations_daily_raw\`
+      WHERE tenant_id = @tenantId
+        AND DATE(first_message_iso) BETWEEN @startDate AND @endDate
+    `;
+
+    const [statsRows] = await bq.query({
+      query: statsQuery,
+      params: { tenantId, startDate: startDateStr, endDate: endDateStr }
+    });
+
+    const statsResult = statsRows[0] || {};
+    const totalConversations = parseInt(statsResult.total_conversations) || 0;
+    const aiAutoCount = parseInt(statsResult.ai_auto_count) || 0;
+    const agentMessages = parseInt(statsResult.agent_messages) || 0;
+    const avgResponseTime = Math.round(parseFloat(statsResult.avg_response_time) || 3);
+    const aiAutoRate = totalConversations > 0
+      ? Math.round((aiAutoCount / totalConversations) * 100)
+      : 0;
+
+    console.log(`✅ 기본 통계: 총 ${totalConversations}개, AI ${aiAutoRate}%`);
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 2. 채널별 집계
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const mediumQuery = `
+      SELECT
+        channel,
+        COUNT(DISTINCT chat_id) as count
+      FROM \`${DATASET}.conversations_daily_raw\`
+      WHERE tenant_id = @tenantId
+        AND DATE(first_message_iso) BETWEEN @startDate AND @endDate
+      GROUP BY channel
+      ORDER BY count DESC
+    `;
+
+    const [mediumRows] = await bq.query({
+      query: mediumQuery,
+      params: { tenantId, startDate: startDateStr, endDate: endDateStr }
+    });
+
+    const mediumData = mediumRows.map(row => ({
+      name: row.channel === 'widget' ? '웹' :
+        row.channel === 'naver' ? '네이버' :
+          row.channel === 'kakao' ? '카카오' : row.channel,
+      count: parseInt(row.count) || 0
+    }));
+
+    console.log(`✅ 채널별 집계: ${mediumData.length}개`);
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 3. AI vs Agent 분포
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const aiVsAgentQuery = `
+      SELECT
+        SUM(ai_auto) as ai_only,
+        SUM(ai_mediatedchats) as ai_assisted,
+        SUM(agent_direct + agent_modal + agent_thread) as agent_only
+      FROM \`${DATASET}.stats_conversations_daily_raw\` s
+      WHERE s.tenant_id = @tenantId
+        AND DATE(s.updated_at) BETWEEN @startDate AND @endDate
+    `;
+
+    const [aiVsAgentRows] = await bq.query({
+      query: aiVsAgentQuery,
+      params: { tenantId, startDate: startDateStr, endDate: endDateStr }
+    });
+
+    const aiVsResult = aiVsAgentRows[0] || {};
+    const aiVsAgentData = [
+      { name: 'AI 자동', value: parseInt(aiVsResult.ai_only) || 0 },
+      { name: 'AI 보조', value: parseInt(aiVsResult.ai_assisted) || 0 },
+      { name: '상담원', value: parseInt(aiVsResult.agent_only) || 0 }
+    ];
+
+    console.log(`✅ AI vs Agent 분포 완료`);
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 4. 일별 추이 (최근 7일)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const dailyTrendQuery = `
+      SELECT
+        DATE(first_message_iso) as date,
+        SUM(CASE WHEN mode_snapshot = 'AUTO' THEN 1 ELSE 0 END) as ai_count,
+        COUNT(DISTINCT chat_id) - SUM(CASE WHEN mode_snapshot = 'AUTO' THEN 1 ELSE 0 END) as agent_count
+      FROM \`${DATASET}.conversations_daily_raw\`
+      WHERE tenant_id = @tenantId
+        AND DATE(first_message_iso) BETWEEN @startDate AND @endDate
+      GROUP BY date
+      ORDER BY date ASC
+    `;
+
+    const [dailyRows] = await bq.query({
+      query: dailyTrendQuery,
+      params: { tenantId, startDate: startDateStr, endDate: endDateStr }
+    });
+
+    const dailyTrend = dailyRows.map(row => {
+      const d = new Date(row.date.value);
+      return {
+        date: `${d.getMonth() + 1}/${d.getDate()}`,
+        ai: parseInt(row.ai_count) || 0,
+        agent: parseInt(row.agent_count) || 0
+      };
+    });
+
+    // 빈 날짜 채우기
+    if (dailyTrend.length < days) {
+      const filledTrend = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+
+        const existing = dailyTrend.find(t => t.date === dateStr);
+        filledTrend.push(existing || { date: dateStr, ai: 0, agent: 0 });
+      }
+      dailyTrend.length = 0;
+      dailyTrend.push(...filledTrend);
     }
 
-    // ✅ 실제 Firestore 조회
-    console.log(`[Stats API] Fetching tenant: ${tenant}`);
+    console.log(`✅ 일별 추이: ${dailyTrend.length}일`);
 
-    // (선택) range에 따른 날짜 필터: 최근 X일
-    const now = new Date();
-    const days = range === "30d" ? 30 : range === "90d" ? 90 : 7;
-    const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 5. 주요 태그 (messages에서 추출)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // BigQuery의 messages_daily_raw에는 태그가 없으므로
+    // Firestore에서 조회하거나 생략
+    const tagData = []; // TODO: 필요시 Firestore에서 조회
 
-    let q = db
-      .collection("stats_conversations")
-      .where("tenantId", "==", tenant)
-      .orderBy("firstOpenedAt", "desc");
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 6. 최근 대화 목록 (Firestore에서 조회)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // API에서 conversations를 별도로 조회하는 것이 일반적
+    const conversations = []; // TODO: /api/conversations/list 사용
 
-    // firstOpenedAt이 Timestamp인 케이스를 우선 지원
-    try {
-      q = q.where("firstOpenedAt", ">=", admin.firestore.Timestamp.fromDate(since));
-    } catch (_) {}
-
-    const snapshot = await q.limit(Number(limit)).get();
-
-    if (snapshot.empty) {
-      return res.status(200).json({
-        view,
-        conversations: [],
-        stats: {
-          total: 0,
-          aiAutoRate: 0,
-          avgResponseTime: 0,
-          byMedium: {},
-          byTag: {},
-        },
-        chartData: { mediumData: [], tagData: [], aiVsAgentData: [] },
-      });
-    }
-
-    // =============================
-    // 📄 문서 변환 (혼합 스키마 호환)
-    // =============================
-    const conversations = [];
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-
-      // Timestamp 또는 ISO 문자열/number 모두 호환
-      const ts =
-        data.firstOpenedAt?.toDate?.() ??
-        (typeof data.firstOpenedAt === "string"
-          ? new Date(data.firstOpenedAt)
-          : typeof data.firstOpenedAt === "number"
-          ? new Date(data.firstOpenedAt)
-          : null);
-
-      const mediumRaw = data.mediumName || data.medium || "unknown";
-      const mediumName = mediumRaw === "Channel::WebWidget" ? "widget" : mediumRaw;
-
-      const aiAuto = toInt(data.ai_autochats ?? data.aiAutoChats);
-      const aiMedi = toInt(data.ai_mediatedchats ?? data.aiMediatedChats);
-      const agent = toInt(data.agent_chats ?? data.agentChats);
-      const user = toInt(data.user_chats ?? data.userChats);
-
-      conversations.push({
-        id: data.conversationId || doc.id,
-        userId: data.userId || null,
-        userName: data.userName || "익명",
-        mediumName,
-        page: data.page || null,
-        tags: data.tags || [],
-        url: data.url || null,
-        firstOpenedAt: ts ? ts.toISOString() : null,
-        userChats: user,
-        aiAutoChats: aiAuto,
-        aiMediatedChats: aiMedi,
-        agentChats: agent,
-        responseTimeFirst: toInt(data.responseTime_first ?? data.responseTimeFirst) || null,
-      });
-    });
-
-    // =============================
-    // 📈 통계 계산
-    // =============================
-    const stats = {
-      total: conversations.length,
-      totalMessages: conversations.reduce(
-        (sum, c) =>
-          sum +
-          (c.userChats || 0) +
-          (c.aiAutoChats || 0) +
-          (c.aiMediatedChats || 0) +
-          (c.agentChats || 0),
-        0
-      ),
-      aiAutoMessages: conversations.reduce((sum, c) => sum + (c.aiAutoChats || 0), 0),
-      aiMediatedMessages: conversations.reduce((sum, c) => sum + (c.aiMediatedChats || 0), 0),
-      agentMessages: conversations.reduce((sum, c) => sum + (c.agentChats || 0), 0),
-      avgResponseTime: (() => {
-        const arr = conversations
-          .map((c) => c.responseTimeFirst)
-          .filter((v) => typeof v === "number" && v >= 0);
-        return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : 0;
-      })(),
-      aiAutoRate: 0,
-      byMedium: {},
-      byTag: {},
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 최종 응답
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const response = {
+      stats: {
+        total: totalConversations,
+        aiAutoRate: aiAutoRate,
+        avgResponseTime: avgResponseTime,
+        agentMessages: agentMessages
+      },
+      chartData: {
+        mediumData,
+        tagData,
+        aiVsAgentData,
+        dailyTrend
+      },
+      conversations // 빈 배열 또는 별도 API 호출
     };
 
-    // 분류
-    conversations.forEach((conv) => {
-      const medium = conv.mediumName || "unknown";
-      stats.byMedium[medium] = (stats.byMedium[medium] || 0) + 1;
-      (conv.tags || []).forEach((tag) => {
-        stats.byTag[tag] = (stats.byTag[tag] || 0) + 1;
-      });
-    });
+    console.log('✅ 통계 응답 완료');
 
-    // 'AI 자동응답률' = 전체 메시지 중 AI 자동 비율
-    stats.aiAutoRate =
-      stats.totalMessages > 0
-        ? Math.round((stats.aiAutoMessages / stats.totalMessages) * 100)
-        : 0;
+    return res.status(200).json(response);
 
-    // =============================
-    // 📊 차트 데이터 구성
-    // =============================
-    const chartData = {
-      mediumData: Object.entries(stats.byMedium).map(([name, count]) => ({
-        name:
-          name === "appKakao"
-            ? "카카오"
-            : name === "appNaverTalk"
-            ? "네이버톡"
-            : name === "web"
-            ? "웹"
-            : name === "widget"
-            ? "위젯"
-            : name === "unknown"
-            ? "기타"
-            : name,
-        count,
-      })),
-      tagData: Object.entries(stats.byTag)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10),
-      aiVsAgentData: [
-        { name: "AI 자동", value: stats.aiAutoMessages },
-        { name: "AI 보조", value: stats.aiMediatedMessages },
-        { name: "상담원", value: stats.agentMessages },
-      ].filter((i) => i.value > 0),
-    };
-
-    return res.status(200).json({
-      view,
-      conversations,
-      stats,
-      chartData,
-    });
   } catch (error) {
-    console.error("🔥 [Stats API] Error:", error);
-    return res.status(500).json({
-      error: "Server error",
-      details: process.env.NODE_ENV === "development" ? error.message : undefined,
+    console.error('❌ BigQuery 통계 조회 실패:', error);
+
+    // Fallback: 빈 데이터 반환
+    return res.status(200).json({
+      stats: {
+        total: 0,
+        aiAutoRate: 0,
+        avgResponseTime: 3,
+        agentMessages: 0
+      },
+      chartData: {
+        mediumData: [],
+        tagData: [],
+        aiVsAgentData: [
+          { name: 'AI 자동', value: 0 },
+          { name: 'AI 보조', value: 0 },
+          { name: '상담원', value: 0 }
+        ],
+        dailyTrend: Array.from({ length: 7 }, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - (6 - i));
+          return {
+            date: `${d.getMonth() + 1}/${d.getDate()}`,
+            ai: 0,
+            agent: 0
+          };
+        })
+      },
+      conversations: []
     });
   }
 }

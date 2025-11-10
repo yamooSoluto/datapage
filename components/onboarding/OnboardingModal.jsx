@@ -3,17 +3,17 @@ import React from "react";
 import { X, ChevronLeft } from "lucide-react";
 import { INDUSTRY_OPTIONS, getSheetPresetsForIndustry, generateInitialSheetData } from "./config";
 
-// 칩
+// 칩 - 야무 스타일
 function Chip({ selected, children, onClick }) {
     return (
         <button
             type="button"
             onClick={onClick}
             className={[
-                "px-3 py-1.5 rounded-full border text-sm transition-colors",
+                "px-3 py-1.5 rounded-full border text-sm font-medium transition-all",
                 selected
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-800 border-gray-200 hover:border-gray-300",
+                    ? "bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 border-yellow-400 shadow-sm"
+                    : "bg-white/80 backdrop-blur-sm text-gray-700 border-gray-200/50 hover:border-yellow-300 hover:bg-yellow-50/30",
             ].join(" ")}
         >
             {children}
@@ -62,12 +62,12 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addDraft()}
                     placeholder={placeholder || "콤마(,)로 여러 개 입력"}
-                    className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-900/10 focus:border-gray-300 outline-none text-sm"
+                    className="flex-1 px-3 py-2 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 outline-none text-sm transition-all"
                 />
                 <button
                     type="button"
                     onClick={addDraft}
-                    className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:opacity-90"
+                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 text-sm font-semibold shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
                 >
                     추가
                 </button>
@@ -79,11 +79,11 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
                     {value.map((v) => (
                         <span
                             key={v}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gray-100 text-gray-800 text-xs border border-gray-200"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-yellow-50 to-amber-50 text-gray-800 text-xs border border-yellow-200/50"
                         >
                             {v}
                             <button
-                                className="ml-1 text-gray-400 hover:text-gray-600"
+                                className="ml-1 text-gray-400 hover:text-gray-600 transition-colors"
                                 onClick={() => onChange(value.filter((x) => x !== v))}
                             >
                                 <X className="w-3 h-3" />
@@ -186,15 +186,18 @@ export default function OnboardingModal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-                {/* 헤더 */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+            <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-white/50">
+                {/* 헤더 - 솜사탕 그라데이션 */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/50 bg-gradient-to-r from-pink-50/50 via-yellow-50/50 to-sky-50/50">
                     <div className="flex items-center gap-2">
                         {[1, 2].map((n) => (
                             <div
                                 key={n}
-                                className={`h-2 rounded-full transition-all ${n <= step ? "bg-gray-900" : "bg-gray-200"} ${n === step ? "w-8" : "w-2"}`}
+                                className={`h-2 rounded-full transition-all ${n <= step
+                                    ? "bg-gradient-to-r from-yellow-400 to-amber-400"
+                                    : "bg-gray-200"
+                                    } ${n === step ? "w-8" : "w-2"}`}
                             />
                         ))}
                     </div>
@@ -219,7 +222,7 @@ export default function OnboardingModal({
                             </ul>
                             <button
                                 onClick={() => setStep(2)}
-                                className="w-full px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-2xl font-bold"
+                                className="w-full px-6 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 rounded-2xl font-bold shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
                             >
                                 다음
                             </button>
@@ -228,9 +231,9 @@ export default function OnboardingModal({
 
                     {step === 2 && (
                         <div className="space-y-6">
-                            {/* ✅ 기본 정보 섹션 */}
-                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                                <h3 className="text-sm font-bold text-blue-900 mb-3">📋 기본 정보</h3>
+                            {/* ✅ 기본 정보 섹션 - 솜사탕 그라데이션 */}
+                            <div className="bg-gradient-to-br from-pink-50/50 via-yellow-50/50 to-sky-50/50 backdrop-blur-sm border border-white/50 rounded-xl p-4">
+                                <h3 className="text-sm font-bold text-gray-900 mb-3">📋 기본 정보</h3>
                                 <div className="space-y-3">
                                     {/* 이메일 */}
                                     <div>
@@ -241,7 +244,7 @@ export default function OnboardingModal({
                                             value={email}
                                             onChange={(e) => setEmail(e.target.value)}
                                             placeholder="your@email.com"
-                                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none text-sm"
+                                            className="w-full px-3 py-2 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 outline-none text-sm transition-all"
                                         />
                                     </div>
 
@@ -254,7 +257,7 @@ export default function OnboardingModal({
                                             value={brandName}
                                             onChange={(e) => setBrandName(e.target.value)}
                                             placeholder="브랜드/매장명"
-                                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none text-sm"
+                                            className="w-full px-3 py-2 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 outline-none text-sm transition-all"
                                         />
                                     </div>
 
@@ -266,7 +269,7 @@ export default function OnboardingModal({
                                         <select
                                             value={industry}
                                             onChange={(e) => setIndustry(e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none"
+                                            className="w-full px-3 py-2 border border-gray-200/50 rounded-lg bg-white/80 backdrop-blur-sm text-sm focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 outline-none transition-all"
                                         >
                                             {INDUSTRY_OPTIONS.map((opt) => (
                                                 <option key={opt.code} value={opt.code}>
@@ -288,7 +291,7 @@ export default function OnboardingModal({
                                             value={address}
                                             onChange={(e) => setAddress(e.target.value)}
                                             placeholder="서울시 강남구..."
-                                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 outline-none text-sm"
+                                            className="w-full px-3 py-2 bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-lg focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 outline-none text-sm transition-all"
                                         />
                                     </div>
                                 </div>
@@ -328,12 +331,12 @@ export default function OnboardingModal({
                     )}
                 </div>
 
-                {/* 풋터 */}
-                <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-white">
+                {/* 풋터 - 솜사탕 그라데이션 */}
+                <div className="flex items-center justify-between px-6 py-4 border-t border-white/50 bg-gradient-to-r from-pink-50/30 via-yellow-50/30 to-sky-50/30 backdrop-blur-sm">
                     {step === 2 ? (
                         <button
                             onClick={() => setStep(1)}
-                            className="px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                            className="px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-white/60 flex items-center gap-2 transition-colors"
                         >
                             <ChevronLeft className="w-4 h-4" />
                             이전
@@ -346,9 +349,9 @@ export default function OnboardingModal({
                         <button
                             onClick={finish}
                             disabled={submitting || !email || !brandName}
-                            className={`px-5 py-2 rounded-xl text-sm font-semibold ${submitting || !email || !brandName
+                            className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${submitting || !email || !brandName
                                 ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                                : "bg-gray-900 text-white hover:opacity-90"
+                                : "bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 shadow-sm hover:shadow-md hover:-translate-y-0.5"
                                 }`}
                         >
                             {submitting ? "설정 중..." : "완료하고 시작하기 🚀"}
@@ -356,7 +359,7 @@ export default function OnboardingModal({
                     ) : (
                         <button
                             onClick={() => setStep(2)}
-                            className="px-5 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:opacity-90"
+                            className="px-5 py-2 rounded-xl bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 text-sm font-semibold shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
                         >
                             다음
                         </button>
