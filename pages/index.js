@@ -755,7 +755,7 @@ export default function TenantPortal() {
             alt="야무"
             className="w-20 h-20 object-contain mx-auto mb-6"
           />
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">나의 맞춤형 운영 비서</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">나만의 맞춤형 운영 비서</h1>
           <p className="text-gray-600">로그인이 필요합니다</p>
         </div>
       </div>
