@@ -621,30 +621,62 @@ export default function TenantPortal() {
   async function verifyToken(token) {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/auth/verify?token=${token}`);
+      const res = await fetch(`/api/auth/verify-token?token=${token}`);  // ✅ 올바른 엔드포인트
       if (!res.ok) throw new Error('토큰 검증 실패');
 
       const data = await res.json();
+      console.log('🔍 verify-token 응답:', data);
+
+      // ✅ Slack 로그인: tenants 배열에서 첫 번째 테넌트 사용
+      if (data.tenants && data.tenants.length > 0) {
+        const tenant = data.tenants[0];
+        localStorage.setItem('userEmail', tenant.email);
+        localStorage.setItem('tenantId', tenant.id);
+
+        setCurrentTenant({
+          id: tenant.id,
+          brandName: tenant.brandName || tenant.name,
+          email: tenant.email,
+          plan: tenant.plan,
+          status: tenant.status,
+          faqCount: tenant.faqCount || 0,
+          showOnboarding: tenant.showOnboarding || false,
+        });
+        setIsLoggedIn(true);
+        setShowOnboarding(tenant.showOnboarding || false);
+        setCanDismissOnboarding(true);
+
+        console.log('✅ Slack 로그인 성공:', tenant.brandName);
+        setIsLoading(false);
+        window.history.replaceState({}, document.title, '/');
+        return;
+      }
+
+      // ✅ 레거시 로직 (email, tenantId 직접 반환되는 경우)
       const { email, tenantId } = data;
 
-      localStorage.setItem('userEmail', email);
-      localStorage.setItem('tenantId', tenantId);
+      if (tenantId) {
+        localStorage.setItem('userEmail', email);
+        localStorage.setItem('tenantId', tenantId);
 
-      const tRes = await fetch(`/api/tenants/${tenantId}`);
-      if (!tRes.ok) throw new Error('테넌트 조회 실패');
+        const tRes = await fetch(`/api/tenants/${tenantId}`);
+        if (!tRes.ok) throw new Error('테넌트 조회 실패');
 
-      const tenant = await tRes.json();
-      setCurrentTenant(tenant);
-      setIsLoggedIn(true);
+        const tenant = await tRes.json();
+        setCurrentTenant(tenant);
+        setIsLoggedIn(true);
 
-      const shouldShowOnboarding = !tenant.onboardingCompleted;
-      setShowOnboarding(shouldShowOnboarding);
-      setCanDismissOnboarding(true);
+        const shouldShowOnboarding = !tenant.onboardingCompleted;
+        setShowOnboarding(shouldShowOnboarding);
+        setCanDismissOnboarding(true);
 
-      console.log('✅ 매직링크 인증 성공');
-      setIsLoading(false);
+        console.log('✅ 매직링크 인증 성공');
+        setIsLoading(false);
 
-      window.history.replaceState({}, document.title, '/');
+        window.history.replaceState({}, document.title, '/');
+      } else {
+        throw new Error('tenantId가 없습니다');
+      }
     } catch (err) {
       console.error('❌ 토큰 검증 실패:', err);
       setIsLoading(false);
