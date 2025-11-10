@@ -1,7 +1,7 @@
 // pages/api/stats/[tenant].js
 // Firestore 기반 통계 API (BigQuery 대신)
 
-import admin from '../../../lib/firebaseAdmin';
+import admin from '../../../lib/firebase';
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {

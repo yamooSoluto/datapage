@@ -62,53 +62,45 @@ export default function MyPageTabs({
             key: "settings" as const,
             label: "설정",
             icon: Settings,
-            description: "상호, 연락처, 채널 연동",
         },
         {
             key: "data" as const,
-            label: "데이터 관리",
+            label: "데이터",
             icon: Database,
-            description: "항목, 시트, 기준 관리",
         },
         {
             key: "library" as const,
             label: "라이브러리",
             icon: Library,
-            description: "링크, 비밀번호, 규정 관리",
         },
     ];
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* 최상위 탭 네비게이션 */}
-            <div className="bg-white border-b sticky top-0 z-30 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6">
-                    <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+            {/* Level 1: 전역 네비게이션 - 가로 꽉 차는 Pill 스타일 */}
+            <div className="bg-white border-b sticky top-0 z-40">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+                    <nav className="flex bg-gray-50 rounded-xl p-1 gap-1">
                         {tabs.map((tab) => {
-                            const Icon = tab.icon;
                             const isActive = activeTab === tab.key;
 
                             return (
                                 <button
                                     key={tab.key}
                                     onClick={() => setActiveTab(tab.key)}
-                                    className={`flex items-center gap-3 px-6 py-4 border-b-2 transition-all whitespace-nowrap ${isActive
-                                        ? "border-gray-900 text-gray-900"
-                                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                                        }`}
+                                    className={`
+                                        flex-1 py-2.5 rounded-lg text-sm font-medium transition-all
+                                        ${isActive
+                                            ? 'bg-white text-gray-900 shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900'
+                                        }
+                                    `}
                                 >
-                                    <Icon className="w-5 h-5" />
-                                    <div className="text-left hidden sm:block">
-                                        <div className="font-semibold">{tab.label}</div>
-                                        <div className="text-xs text-gray-500">{tab.description}</div>
-                                    </div>
-                                    <div className="text-left sm:hidden">
-                                        <div className="font-semibold text-sm">{tab.label}</div>
-                                    </div>
+                                    {tab.label}
                                 </button>
                             );
                         })}
-                    </div>
+                    </nav>
                 </div>
             </div>
 

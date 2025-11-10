@@ -29,31 +29,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { PRESET_ITEMS, SHEET_TEMPLATES } from "./criteriaSheetPresets";
 
-// ────────────────────────────────────────────────────────────
-// 서버 API (기존 유지)
-// ────────────────────────────────────────────────────────────
-const apiCreateItem = async (
-    tenantId: string,
-    data: { sheetId: string; name: string; facetRefs?: { [facetId: string]: string[] } }
-) => {
-    const res = await fetch("/api/items/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId, ...data }),
-    });
-    if (!res.ok) throw new Error("Failed to create item");
-    return res.json();
-};
-
-const apiUpdateItem = async (tenantId: string, itemId: string, updates: any) => {
-    const res = await fetch("/api/items/update", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId, itemId, updates }),
-    });
-    if (!res.ok) throw new Error("Failed to update item");
-    return res.json();
-};
 
 // ────────────────────────────────────────────────────────────
 // 유틸 (기존 유지)
@@ -168,15 +143,6 @@ function useSortableRow(id: string) {
     return { attributes, listeners, setNodeRef, style, isDragging };
 }
 
-function useSortableCol(id: string) {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-    const style: React.CSSProperties = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        ...(isDragging ? { opacity: 0.5 } : {}),
-    };
-    return { attributes, listeners, setNodeRef, style, isDragging };
-}
 
 // ────────────────────────────────────────────────────────────
 // 모바일 바텀시트 (신규 UI 컴포넌트)
@@ -230,150 +196,6 @@ function MobileBottomSheet({ isOpen, onClose, title, children, maxHeight = "85vh
                 </div>
             </div>
         </>
-    );
-}
-
-// ────────────────────────────────────────────────────────────
-// 플로팅 액션 버튼 (신규 UI 컴포넌트)
-// ────────────────────────────────────────────────────────────
-function FloatingActionButton({ onQuickAdd, onColumnManage, onAddEmpty }: any) {
-    const [isOpen, setIsOpen] = React.useState(false);
-
-    return (
-        <>
-            {/* 백드롭 */}
-            {isOpen && (
-                <div
-                    className="fixed inset-0 z-[90]"
-                    onClick={() => setIsOpen(false)}
-                />
-            )}
-
-            {/* 서브 메뉴 */}
-            {isOpen && (
-                <div className="fixed bottom-24 right-5 z-[91] flex flex-col gap-3">
-                    <button
-                        onClick={() => {
-                            onQuickAdd();
-                            setIsOpen(false);
-                        }}
-                        className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                            <Plus className="w-5 h-5 text-blue-600" />
-                        </div>
-                        <span className="font-medium text-gray-700 whitespace-nowrap">프리셋 추가</span>
-                    </button>
-                    <button
-                        onClick={() => {
-                            onColumnManage();
-                            setIsOpen(false);
-                        }}
-                        className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-                            <Settings className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <span className="font-medium text-gray-700 whitespace-nowrap">기준 관리</span>
-                    </button>
-                    <button
-                        onClick={() => {
-                            onAddEmpty();
-                            setIsOpen(false);
-                        }}
-                        className="flex items-center gap-3 px-4 py-3 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                            <Plus className="w-5 h-5 text-green-600" />
-                        </div>
-                        <span className="font-medium text-gray-700 whitespace-nowrap">빈 행 추가</span>
-                    </button>
-                </div>
-            )}
-
-            {/* 메인 버튼 */}
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`fixed bottom-5 right-5 z-[92] w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all ${isOpen
-                    ? 'bg-gray-700 rotate-45'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                    }`}
-            >
-                <Plus className="w-7 h-7 text-white" />
-            </button>
-        </>
-    );
-}
-
-// ────────────────────────────────────────────────────────────
-// 세그먼트 컨트롤 (신규 UI 컴포넌트)
-// ────────────────────────────────────────────────────────────
-function SegmentedControl({ value, onChange, options }: any) {
-    return (
-        <div className="inline-flex bg-gray-100 rounded-xl p-1">
-            {options.map((option: any) => (
-                <button
-                    key={option.value}
-                    onClick={() => onChange(option.value)}
-                    className={`px-5 py-2 text-sm font-medium rounded-lg transition-all ${value === option.value
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-600'
-                        }`}
-                >
-                    {option.label}
-                </button>
-            ))}
-        </div>
-    );
-}
-
-// ────────────────────────────────────────────────────────────
-// SortableOptionButton (편집모드용 정렬 가능한 옵션 버튼)
-// ────────────────────────────────────────────────────────────
-function SortableOptionButton({
-    label,
-    active,
-    isSelected,
-    onToggleSelection
-}: {
-    label: string;
-    active: boolean;
-    isSelected: boolean;
-    onToggleSelection: () => void;
-}) {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: label });
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    };
-
-    return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            className={`relative rounded-lg ${isDragging ? "ring-2 ring-blue-200" : ""}`}
-        >
-            <button
-                onClick={onToggleSelection}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${active
-                    ? "bg-blue-600 text-white shadow"
-                    : isSelected
-                        ? "bg-red-100 text-red-700 ring-1 ring-red-300"
-                        : "bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
-            >
-                <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => { }}
-                    className="w-3 h-3 accent-blue-600"
-                />
-                <span>{label}</span>
-                <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-                    <GripVertical className="w-3 h-3 text-slate-400" />
-                </span>
-            </button>
-        </div>
     );
 }
 
@@ -1703,96 +1525,6 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
     );
 }
 
-// ────────────────────────────────────────────────────────────
-// FacetPivotView (기준 보기)
-// ────────────────────────────────────────────────────────────
-function FacetListItem({ facet, items, onToggle, customOptions, addCustomOption }: any) {
-    const customKey = `pivot::${facet.key}`;
-
-    const grouped = React.useMemo(() => {
-        const map: Record<string, any[]> = {};
-
-        const flatOptions: string[] = [];
-        (facet.options || []).forEach((opt: any) => {
-            if (typeof opt === "string") {
-                flatOptions.push(opt);
-            } else if (opt?.group && Array.isArray(opt.items)) {
-                opt.items.forEach((item: string) => flatOptions.push(item));
-            }
-        });
-
-        const customs = customOptions || [];
-        [...flatOptions, ...customs].forEach((opt) => {
-            map[opt] = [];
-        });
-
-        items.forEach((item: any) => {
-            const values = unpack(item.facetRefs?.[facet.key] || item.facets?.[facet.key]);
-            if (values.length === 0) {
-                if (!map["미지정"]) map["미지정"] = [];
-                map["미지정"].push(item);
-            } else {
-                values.forEach((val) => {
-                    if (!map[val]) map[val] = [];
-                    map[val].push(item);
-                });
-            }
-        });
-
-        return map;
-    }, [facet, items, customOptions]);
-
-    return (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
-            <div className="px-5 py-4 bg-gray-50 border-b">
-                <h3 className="text-lg font-semibold text-gray-900">{facet.label}</h3>
-                <p className="text-sm text-gray-500 mt-1">{facet.key}</p>
-            </div>
-
-            <div className="divide-y divide-gray-100">
-                {Object.entries(grouped).map(([option, optionItems]: [string, any]) => (
-                    <div key={option} className="px-5 py-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                                <span className="text-base font-medium text-gray-900">{option}</span>
-                                <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
-                                    {optionItems.length}
-                                </span>
-                            </div>
-                        </div>
-
-                        {optionItems.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                                {optionItems.map((item: any) => {
-                                    const hasThisOption = unpack(
-                                        item.facetRefs?.[facet.key] || item.facets?.[facet.key]
-                                    ).includes(option);
-
-                                    return (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => onToggle(item.id, facet.key, option, !hasThisOption)}
-                                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${hasThisOption
-                                                ? "bg-blue-600 text-white"
-                                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                                }`}
-                                        >
-                                            {item.icon && <span className="mr-1">{item.icon}</span>}
-                                            {item.name}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <p className="text-sm text-gray-400">해당하는 항목이 없습니다</p>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
 function FacetPivotView({ sheetId, template, items, onToggleMembership, customOptions, addCustomOption, isEditMode, library }: any) {
     // 체크박스 타입 제외한 facet만 사용
     const availableFacets = React.useMemo(() =>
@@ -3107,51 +2839,41 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     // ────────────────────────────────────────────────────────────
     return (
         <div className="min-h-screen bg-gray-50 pb-24 relative">
-            {/* 헤더 - 심플하게 */}
+            {/* Level 2: 페이지 설명 헤더 */}
             <div className="bg-white border-b sticky top-0 z-30 shadow-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">데이터 관리</h1>
-                            {/* CSV 내보내기 버튼 */}
-                            {!isEditMode && activeItems.length > 0 && (
-                                <button
-                                    onClick={exportToCSV}
-                                    className="px-3 py-1.5 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium transition-colors flex items-center gap-1.5"
-                                    title="CSV 내보내기"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    <span className="hidden sm:inline">CSV</span>
-                                </button>
-                            )}
-                            {/* Airtable 동기화 버튼 */}
-                            {!isEditMode && activeItems.length > 0 && (
-                                <button
-                                    onClick={handleSyncToAirtable}
-                                    disabled={isSyncing}
-                                    className="px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    title="Airtable 동기화"
-                                >
-                                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                                    <span className="hidden sm:inline">{isSyncing ? '동기화 중...' : '동기화'}</span>
-                                </button>
-                            )}
-                        </div>
+                        {/* 좌측: 설명 텍스트 */}
+                        <p className="text-sm text-gray-600">
+                            시트별로 항목을 관리하고, 기준을 설정하세요
+                        </p>
+
+                        {/* 우측: 액션 버튼 */}
+                        {!isEditMode && activeItems.length > 0 && (
+                            <button
+                                onClick={handleSyncToAirtable}
+                                disabled={isSyncing}
+                                className="px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                                <span className="hidden sm:inline">{isSyncing ? '동기화 중...' : '동기화'}</span>
+                            </button>
+                        )}
+
+                        {/* 편집 모드 */}
                         {isEditMode && (
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={handleCancelEdits}
-                                    className="flex items-center gap-2 h-10 px-3 sm:px-4 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
+                                    className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
                                 >
-                                    <X className="w-4 h-4" />
-                                    <span className="hidden sm:inline">취소</span>
+                                    취소
                                 </button>
                                 <button
                                     onClick={handleSaveEdits}
-                                    className="flex items-center gap-2 h-10 px-3 sm:px-4 rounded-xl bg-gray-900 text-white font-semibold hover:bg-gray-800 transition-colors shadow-lg"
+                                    className="px-4 py-2 rounded-xl bg-yellow-400 text-gray-900 font-semibold hover:bg-yellow-500 transition-colors"
                                 >
-                                    <Check className="w-4 h-4" />
-                                    <span className="hidden sm:inline">저장</span>
+                                    저장
                                 </button>
                             </div>
                         )}
@@ -3239,26 +2961,29 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                     </div>
                 </div>
 
-                {/* 뷰 모드 - iOS 스타일 세그먼트 컨트롤 */}
-                <div className="bg-white rounded-2xl shadow-sm p-3">
-                    <div className="inline-flex bg-gray-100 rounded-lg p-0.5 w-full sm:w-auto">
+                {/* 🎨 Level 4: 뷰 토글 - 미니 세그먼트 */}
+                <div className="flex justify-center">
+                    <div className="relative inline-flex items-center gap-0.5 p-0.5 bg-black/5 rounded-full">
+                        {/* 슬라이더 */}
+                        <div
+                            className={`absolute top-0.5 bottom-0.5 w-[calc(50%-1px)] transition-all duration-300 ease-out bg-white rounded-full shadow-lg ${viewMode === "item" ? 'left-0.5' : 'left-[calc(50%+1px)]'
+                                }`}
+                        />
+
                         <button
                             onClick={() => setViewMode("item")}
-                            className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "item"
-                                ? "bg-white text-gray-900 shadow-sm"
-                                : "text-gray-600 hover:text-gray-900"
+                            className={`relative z-10 w-20 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${viewMode === "item" ? 'text-gray-900' : 'text-gray-500'
                                 }`}
                         >
-                            항목별 보기
+                            항목별
                         </button>
+
                         <button
                             onClick={() => setViewMode("facet")}
-                            className={`flex-1 sm:flex-none px-6 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "facet"
-                                ? "bg-white text-gray-900 shadow-sm"
-                                : "text-gray-600 hover:text-gray-900"
+                            className={`relative z-10 w-20 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${viewMode === "facet" ? 'text-gray-900' : 'text-gray-500'
                                 }`}
                         >
-                            기준별 보기
+                            기준별
                         </button>
                     </div>
                 </div>

@@ -649,7 +649,7 @@ export default function TenantPortal() {
   async function verifyToken(token) {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/auth/verify?token=${token}`);
+      const res = await fetch(`/api/auth/verify-token?token=${token}`);
       if (!res.ok) throw new Error('토큰 검증 실패');
 
       const data = await expectJSON(res);
