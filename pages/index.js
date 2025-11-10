@@ -649,16 +649,21 @@ export default function TenantPortal() {
   async function verifyToken(token) {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/auth/verify?token=${token}`);
+      const res = await fetch(`/api/auth/verify-token?token=${token}`);
       if (!res.ok) throw new Error('토큰 검증 실패');
 
       const data = await expectJSON(res);
-      const { email, tenantId } = data;
+      const resolvedTenantId = data.tenantId || data.tenants?.[0]?.id;
+      const resolvedEmail = data.email || data.tenants?.[0]?.email || null;
 
-      localStorage.setItem('userEmail', email);
-      localStorage.setItem('tenantId', tenantId);
+      if (!resolvedTenantId) throw new Error('테넌트 정보를 찾을 수 없습니다');
 
-      const tRes = await fetch(`/api/tenants/${tenantId}`);
+      if (resolvedEmail) {
+        localStorage.setItem('userEmail', resolvedEmail);
+      }
+      localStorage.setItem('tenantId', resolvedTenantId);
+
+      const tRes = await fetch(`/api/tenants/${resolvedTenantId}`);
       if (!tRes.ok) throw new Error('테넌트 조회 실패');
 
       const tenant = await expectJSON(tRes);
