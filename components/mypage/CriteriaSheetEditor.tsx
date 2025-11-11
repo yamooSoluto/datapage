@@ -89,6 +89,9 @@ function normalizeHM(token?: string | null) {
     return null;
 }
 
+// === n8n 서버 릴레이(쓰로틀) ===
+// (컴포넌트 내부로 이동됨 - tenantId 접근을 위해)
+
 // ────────────────────────────────────────────────────────────
 // 템플릿 헬퍼 (기존 유지)
 // ────────────────────────────────────────────────────────────
@@ -1239,21 +1242,19 @@ function Row({ row, children, isEditMode = false }: any) {
     const { attributes, listeners, setNodeRef, style, isDragging } = useSortableRow(row.id);
     return (
         <tr ref={setNodeRef} style={style} className={`hover:bg-gray-50 transition-colors ${isDragging ? "opacity-50" : ""}`}>
-            <td className="px-2 align-top">
-                <div className="flex items-center justify-center h-10">
-                    {isEditMode ? (
+            {isEditMode && (
+                <td className="px-1 align-top w-8">
+                    <div className="flex items-center justify-center h-10">
                         <div
                             {...attributes}
                             {...listeners}
-                            className="cursor-grab active:cursor-grabbing p-2 -m-2 touch-none"
+                            className="cursor-grab active:cursor-grabbing p-1 touch-none"
                         >
-                            <GripVertical className="w-5 h-5 text-gray-400" />
+                            <GripVertical className="w-4 h-4 text-gray-400" />
                         </div>
-                    ) : (
-                        <div className="w-5 h-5" />
-                    )}
-                </div>
-            </td>
+                    </div>
+                </td>
+            )}
             {children}
         </tr>
     );
@@ -1305,7 +1306,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
     if (facet.type === "checkbox") {
         const isChecked = value === "true" || value === true;
         return (
-            <td className="px-3 py-2 align-top">
+            <td className="px-3 py-2 align-top min-w-[80px]">
                 <div className="flex items-center justify-center">
                     {isEditMode ? (
                         <input
@@ -1335,7 +1336,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
         };
 
         return (
-            <td className="px-3 py-2 align-top">
+            <td className="px-3 py-2 align-top min-w-[140px] max-w-[200px]">
                 {isEditMode ? (
                     <>
                         <button
@@ -1343,12 +1344,12 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                                 setModalValue(value);
                                 setIsModalOpen(true);
                             }}
-                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-left hover:border-gray-400 transition-colors bg-white min-h-[40px] flex items-center"
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-left hover:border-gray-400 transition-colors bg-white min-h-[40px] max-h-[60px] flex items-center overflow-hidden"
                         >
                             {value ? (
-                                <span className="text-gray-900 truncate">{value}</span>
+                                <span className="text-gray-900 line-clamp-2 w-full">{value}</span>
                             ) : (
-                                <span className="text-gray-400">비고 입력...</span>
+                                <span className="text-gray-400">자유 입력</span>
                             )}
                         </button>
 
@@ -1372,7 +1373,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                                         <textarea
                                             value={modalValue}
                                             onChange={(e) => setModalValue(e.target.value)}
-                                            placeholder="비고를 입력하세요..."
+                                            placeholder="답변시 참고 할 사항이 있다면 입력해주세요."
                                             rows={8}
                                             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none"
                                             autoFocus
@@ -1399,8 +1400,8 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                         )}
                     </>
                 ) : (
-                    <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] flex items-center">
-                        {value || <span className="text-gray-400">-</span>}
+                    <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
+                        <span className="line-clamp-2 w-full">{value || <span className="text-gray-400">-</span>}</span>
                     </div>
                 )}
             </td>
@@ -1410,7 +1411,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
     // single 타입 처리 - 단일 선택 (담당자 전달용)
     if (facet.type === "single") {
         return (
-            <td className="px-3 py-2 align-top">
+            <td className="px-3 py-2 align-top min-w-[140px] max-w-[200px]">
                 {isEditMode ? (
                     <>
                         <button
@@ -1424,7 +1425,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                                     : "border-gray-200 text-gray-400 hover:border-gray-300"
                                 }`}
                         >
-                            <span className="block truncate text-sm">{isDisabled ? "-" : (value || "선택")}</span>
+                            <span className="block text-sm line-clamp-2 flex-1 min-w-0">{isDisabled ? "-" : (value || "선택")}</span>
                             {!isDisabled && <ChevronDown className="w-4 h-4 flex-shrink-0 ml-2" />}
                         </button>
 
@@ -1449,8 +1450,8 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                         )}
                     </>
                 ) : (
-                    <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] flex items-center">
-                        {isDisabled ? "-" : (value || <span className="text-gray-400">-</span>)}
+                    <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
+                        <span className="line-clamp-2 w-full">{isDisabled ? "-" : (value || <span className="text-gray-400">-</span>)}</span>
                     </div>
                 )}
             </td>
@@ -1459,7 +1460,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
 
     // 기본 multi 타입 처리 - existence 비활성화 로직 적용
     return (
-        <td className="px-3 py-2 align-top">
+        <td className="px-3 py-2 align-top min-w-[140px] max-w-[200px]">
             {isEditMode ? (
                 <>
                     <button
@@ -1473,7 +1474,7 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                                 : "border-gray-200 text-gray-400 hover:border-gray-300"
                             }`}
                     >
-                        <span className="block truncate text-sm">{isDisabled ? "-" : displayText}</span>
+                        <span className="block text-sm line-clamp-2 flex-1 min-w-0">{isDisabled ? "-" : displayText}</span>
                         {!isDisabled && <ChevronDown className="w-4 h-4 flex-shrink-0 ml-2" />}
                     </button>
 
@@ -1500,13 +1501,13 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                     )}
                 </>
             ) : (
-                <div className="px-3 py-2 text-sm min-h-[40px] flex items-center">
+                <div className="px-3 py-2 text-sm min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
                     {isDisabled ? (
                         <span className="text-gray-400">-</span>
                     ) : values.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 w-full">
                             {values.map((v: string, idx: number) => (
-                                <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-xs font-medium">
+                                <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-xs font-medium line-clamp-1 max-w-full">
                                     {v}
                                 </span>
                             ))}
@@ -2157,6 +2158,37 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     const [viewMode, setViewMode] = React.useState<"item" | "facet">("item");
     const [openDropdown, setOpenDropdown] = React.useState<any>(null);
 
+    // === n8n 서버 릴레이(쓰로틀) ===
+    const lastSyncedAt = React.useRef<number>(0);
+    const syncTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const SYNC_INTERVAL = 8000; // 과호출 방지
+
+    const requestServerSync = React.useCallback(() => {
+        const run = async () => {
+            try {
+                const res = await fetch("/api/airtable/sync", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ tenantId }),
+                });
+                if (!res.ok) throw new Error(await res.text());
+                lastSyncedAt.current = Date.now();
+                console.log("✅ n8n(server) 전송 OK");
+            } catch (e) {
+                console.error("⚠️ n8n(server) 전송 실패:", e);
+            }
+        };
+
+        const now = Date.now();
+        const remaining = SYNC_INTERVAL - (now - lastSyncedAt.current);
+        if (remaining <= 0) {
+            run();
+        } else {
+            if (syncTimer.current) clearTimeout(syncTimer.current);
+            syncTimer.current = setTimeout(run, remaining);
+        }
+    }, [tenantId]);
+
     // 편집 모드 상태
     const [isEditMode, setIsEditMode] = React.useState(false);
     const [newItemName, setNewItemName] = React.useState("");
@@ -2180,12 +2212,71 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         const mergedIds = Array.from(new Set([...sheetIds, data.activeSheet].filter((s) => s && s !== 'templates' && s !== 'updatedAt')));
         const map: Record<string, any> = {};
         mergedIds.forEach((sid: string) => {
-            const fromTpl = templates?.[sid];
+            // templates prop과 data.templates 모두 확인
+            const fromTpl = templates?.[sid] || data.templates?.[sid];
             const derivedFacets = deriveTemplateFromItems(data?.items?.[sid] || [], sid);
-            map[sid] = ensureTemplateShape(sid, fromTpl, derivedFacets);
+            const baseTemplate = ensureTemplateShape(sid, fromTpl, derivedFacets);
+
+            // SHEET_TEMPLATES에서 모든 기본 facet 가져와서 병합
+            const templateKey = Object.keys(SHEET_TEMPLATES).find(key =>
+                sid.toLowerCase().includes(key) || key.includes(sid.toLowerCase())
+            ) || 'space';
+            const defaultTemplate = SHEET_TEMPLATES[templateKey] || SHEET_TEMPLATES['space'];
+            const defaultFacets = defaultTemplate.facets || [];
+
+            // 기존 facet들과 기본 facet 병합 (중복 제거)
+            const existingKeys = new Set(baseTemplate.facets.map((f: any) => f.key));
+            const mergedFacets = [...baseTemplate.facets];
+
+            defaultFacets.forEach((df: any) => {
+                if (!existingKeys.has(df.key)) {
+                    mergedFacets.push(df);
+                    existingKeys.add(df.key);
+                }
+            });
+
+            // 라이브러리 참조 facet들 - 라이브러리에 항목이 있으면 자동으로 추가
+            const libraryTypes = ['links', 'passwords', 'rules', 'info'];
+            libraryTypes.forEach((libType: string) => {
+                const libraryItems = library?.[libType] || {};
+                const hasItems = Object.keys(libraryItems).length > 0;
+
+                // 라이브러리에 항목이 있고, 해당 facet이 없으면 추가
+                if (hasItems && !existingKeys.has(libType)) {
+                    const libraryFacet = defaultFacets.find((f: any) =>
+                        f.type === 'library-ref' && f.libraryType === libType
+                    );
+
+                    if (libraryFacet) {
+                        mergedFacets.push(libraryFacet);
+                        existingKeys.add(libType);
+                    } else {
+                        // 기본 facet에 없으면 새로 생성
+                        const labels: Record<string, string> = {
+                            links: '링크',
+                            passwords: '비밀번호',
+                            rules: '규정',
+                            info: '공통정보',
+                        };
+
+                        mergedFacets.push({
+                            key: libType,
+                            label: labels[libType] || libType,
+                            type: 'library-ref',
+                            libraryType: libType,
+                        });
+                        existingKeys.add(libType);
+                    }
+                }
+            });
+
+            map[sid] = {
+                ...baseTemplate,
+                facets: mergedFacets,
+            };
         });
         return map;
-    }, [data.sheets, data.activeSheet, data.items, templates]);
+    }, [data.sheets, data.activeSheet, data.items, data.templates, templates, library]);
 
     // 열 가시성 초기값 (기존 로직 유지)
     React.useEffect(() => {
@@ -2315,9 +2406,10 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             }
 
             console.log('✅ n8n 전송 완료:', vectorData.length, '개 항목');
-        } catch (error) {
-            console.error('⚠️ n8n 전송 실패:', error);
-            throw error;
+        } catch (error: any) {
+            // n8n sync 실패는 저장 흐름에 영향을 주지 않도록 조용히 처리
+            console.warn('⚠️ n8n 전송 실패 (무시됨):', error?.message || error);
+            // 에러를 다시 throw하지 않음 - 저장은 정상적으로 완료됨
         }
     };
 
@@ -2329,8 +2421,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
         try {
             const cleanSheets = draftData.sheets.filter((s: string) =>
-                s !== 'templates' &&
-                s !== 'updatedAt'
+                s !== "templates" && s !== "updatedAt"
             );
 
             const payload = {
@@ -2345,14 +2436,13 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
             if (onSave) {
                 await onSave(payload);
+                requestServerSync();
             } else {
                 console.log("📦 저장 (로컬)", payload);
             }
 
-            // n8n 전송 (비동기, 실패해도 저장은 완료)
-            syncToN8n(cleanSheets, draftData.items, library, tenantId).catch(err => {
-                console.error('⚠️ n8n 전송 실패:', err);
-            });
+            // ✅ 저장 성공 → 서버 릴레이로 n8n 전송(쓰로틀)
+            requestServerSync();
 
             // 저장 성공 후 실제 데이터에 반영
             setData(draftData);
@@ -2363,7 +2453,8 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             console.error("Save error:", err);
             alert("❌ 저장 실패");
         }
-    }, [draftData, onSave, library, tenantId]);
+    }, [draftData, onSave, requestServerSync]);
+
 
     const handleCancelEdits = React.useCallback(() => {
         setIsEditMode(false);
@@ -2755,7 +2846,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             });
 
             if (!response.ok) {
-                throw new Error('전송 실패');
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData?.error || errorData?.message || `HTTP ${response.status}`;
+                throw new Error(errorMessage);
             }
 
             const result = await response.json();
@@ -2764,94 +2857,28 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 `• 항목: ${result.data.totalItems}개\n` +
                 `• 질문: ${result.data.totalQuestions}개\n` +
                 `• 시트: ${result.data.sheets.join(', ')}`);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Airtable sync error:', error);
-            alert('❌ 전송 실패\n\n잠시 후 다시 시도해주세요.');
+            const errorMessage = error?.message || '알 수 없는 오류가 발생했습니다';
+            alert(`❌ 전송 실패\n\n${errorMessage}\n\n잠시 후 다시 시도해주세요.`);
         } finally {
             setIsSyncing(false);
         }
     };
 
-    // ────────────────────────────────────────────────────────────
-    // CSV 내보내기
-    // ────────────────────────────────────────────────────────────
-    const exportToCSV = () => {
-        const items = activeItems;
-        if (!items || items.length === 0) {
-            alert("내보낼 데이터가 없습니다.");
-            return;
-        }
-
-        // CSV 헤더 생성
-        const headers = ["항목명"];
-        visibleFacets.forEach((facet: any) => {
-            headers.push(facet.label);
-        });
-
-        // CSV 데이터 생성
-        const rows = items.map((item: any) => {
-            const row = [item.name || ""];
-
-            visibleFacets.forEach((facet: any) => {
-                const value = item.facets?.[facet.key] || "";
-
-                // 라이브러리 참조 타입인 경우 label로 변환
-                if (facet.type === "library-ref") {
-                    const libraryType = facet.libraryType || "links";
-                    const libraryItems = library?.[libraryType] || {};
-                    const keys = String(value).split(',').filter(Boolean);
-                    const labels = keys
-                        .map(k => libraryItems[k]?.label)
-                        .filter(Boolean)
-                        .join(', ');
-                    row.push(labels || "");
-                } else if (facet.type === "checkbox") {
-                    // 체크박스는 O/X로
-                    row.push(value === "true" ? "O" : "X");
-                } else {
-                    // 일반 필드
-                    row.push(String(value).replace(/,/g, '、')); // 쉼표를 점으로 변경
-                }
-            });
-
-            return row;
-        });
-
-        // CSV 문자열 생성
-        const csvContent = [
-            headers.map(h => `"${h}"`).join(','),
-            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-        ].join('\n');
-
-        // BOM 추가 (엑셀에서 한글 깨짐 방지)
-        const BOM = '\uFEFF';
-        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-
-        // 다운로드
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `${template.title}_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
 
     // ────────────────────────────────────────────────────────────
     // 🎨 UI 렌더링 (모바일 최적화)
     // ────────────────────────────────────────────────────────────
     return (
         <div className="min-h-screen bg-gray-50 pb-24 relative">
-            {/* Level 2: 페이지 설명 헤더 - 모바일 최적화 */}
-            <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-                <div className="max-w-7xl mx-auto px-2 sm:px-6 py-2 sm:py-3">
+            {/* 설명 헤더 - 통일된 디자인 */}
+            <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between gap-2">
-                        {/* 좌측: 설명 텍스트 - 모바일에서 숨김 */}
-                        <p className="hidden sm:block text-sm text-gray-600">
+                        <p className="text-sm text-gray-600">
                             시트별로 항목을 관리하고, 기준을 설정하세요
                         </p>
-
                         {/* 우측: 액션 버튼 */}
                         {!isEditMode && activeItems.length > 0 && (
                             <button
@@ -2962,12 +2989,69 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                             alert("이미 존재하는 시트입니다.");
                                             return;
                                         }
+
+                                        // SHEET_TEMPLATES에서 기본 facet 구조 가져오기
+                                        // 시트 이름이 space, facility, seat 등과 매칭되면 해당 템플릿 사용, 아니면 space 템플릿을 기본으로 사용
+                                        const templateKey = Object.keys(SHEET_TEMPLATES).find(key =>
+                                            sheetId.toLowerCase().includes(key) || key.includes(sheetId.toLowerCase())
+                                        ) || 'space';
+
+                                        const defaultTemplate = SHEET_TEMPLATES[templateKey] || SHEET_TEMPLATES['space'];
+                                        const defaultFacets = defaultTemplate.facets || [];
+
+                                        // 빈 행 하나 추가
+                                        const defaultItem = {
+                                            id: `new_${sheetId}_${Date.now()}`,
+                                            name: "",
+                                            facets: {},
+                                            order: 0,
+                                            createdAt: Date.now(),
+                                        };
+
+                                        // 새 시트 데이터 생성
+                                        const newSheetData = {
+                                            sheets: [...data.sheets, sheetId],
+                                            items: { ...data.items, [sheetId]: [defaultItem] },
+                                            visibleFacets: {
+                                                ...data.visibleFacets,
+                                                [sheetId]: defaultFacets.map((f: any) => f.key),
+                                            },
+                                            activeSheet: sheetId,
+                                            // 템플릿 정보도 저장 (allTemplates에서 사용)
+                                            templates: {
+                                                ...(data.templates || {}),
+                                                [sheetId]: {
+                                                    id: sheetId,
+                                                    title: sheetName.trim(),
+                                                    icon: defaultTemplate.icon || "🧩",
+                                                    facets: defaultFacets,
+                                                },
+                                            },
+                                        };
+
+                                        // data 업데이트
                                         setData((prev: any) => ({
                                             ...prev,
-                                            sheets: [...prev.sheets, sheetId],
-                                            items: { ...prev.items, [sheetId]: [] },
-                                            activeSheet: sheetId,
+                                            ...newSheetData,
                                         }));
+
+                                        // 편집 모드일 때는 draftData도 업데이트
+                                        if (isEditMode && draftData) {
+                                            setDraftData((prev: any) => ({
+                                                ...prev,
+                                                ...newSheetData,
+                                            }));
+                                        }
+
+                                        // 편집 모드가 아니면 자동으로 편집 모드 진입
+                                        if (!isEditMode) {
+                                            const updatedData = {
+                                                ...data,
+                                                ...newSheetData,
+                                            };
+                                            setDraftData(JSON.parse(JSON.stringify(updatedData)));
+                                            setIsEditMode(true);
+                                        }
                                     }
                                 }}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 transition-all flex items-center justify-center text-gray-600 shadow-sm z-20"
@@ -3031,7 +3115,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                         setNewItemName('');
                                                     }
                                                 }}
-                                                placeholder="항목명 입력 (예: 현관, 로비, 복도)"
+                                                placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
                                                 className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                                                 autoFocus
                                             />
@@ -3059,10 +3143,10 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                     collisionDetection={closestCenter}
                                     onDragEnd={handleRowDragEnd}
                                 >
-                                    <table className="w-full min-w-[800px]">
+                                    <table className="w-full min-w-[880px]">
                                         <thead className="bg-gray-50 border-b sticky top-0 z-20">
                                             <tr>
-                                                <th className="w-8 bg-gray-50"></th>
+                                                {isEditMode && <th className="w-8 bg-gray-50"></th>}
                                                 <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[280px] sticky left-0 bg-gray-50 z-30 border-r border-gray-200">
                                                     이름
                                                 </th>
@@ -3070,7 +3154,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                     // 컬럼 타입에 따라 너비 조정
                                                     let widthClass = "";
                                                     if (facet.type === "checkbox") {
-                                                        widthClass = "w-20"; // 체크박스는 좁게
+                                                        widthClass = "min-w-[80px]"; // 체크박스는 두 글자 한 줄로 들어가도록 여유 있게
                                                     } else if (facet.key === "notes" || facet.type === "textarea") {
                                                         widthClass = "w-[250px]"; // 비고는 더 넓게
                                                     } else if (facet.key === "location") {
@@ -3106,21 +3190,21 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                             <tbody className="divide-y divide-gray-100">
                                                 {activeItems.map((row: any) => (
                                                     <Row key={row.id} row={row} isEditMode={isEditMode}>
-                                                        <td className="px-3 py-2 align-top sticky left-0 bg-white z-10 border-r border-gray-200">
+                                                        <td className="px-3 py-2 align-top sticky left-0 bg-white z-10 border-r border-gray-200 min-w-[140px] max-w-[200px]">
                                                             {isEditMode ? (
                                                                 <input
                                                                     type="text"
                                                                     value={row.name}
                                                                     onChange={(e) => updateRowName(row.id, e.target.value)}
                                                                     placeholder="항목명"
-                                                                    className={`w-full px-3 py-2 rounded-lg border transition-all text-sm font-medium ${row.name
-                                                                        ? "border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                                        : "border-gray-200 bg-white text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:text-gray-900"
+                                                                    className={`w-full px-3 py-2 rounded-lg border-transparent hover:border-transparent focus:border-transparent transition-all text-sm font-medium ${row.name
+                                                                        ? "bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                        : "bg-white text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:text-gray-900"
                                                                         }`}
                                                                 />
                                                             ) : (
-                                                                <div className="px-3 py-2 text-sm font-medium text-gray-900 min-h-[40px] flex items-center">
-                                                                    {row.name || <span className="text-gray-400">항목명</span>}
+                                                                <div className="px-3 py-2 text-sm font-medium text-gray-900 min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
+                                                                    <span className="line-clamp-2 w-full">{row.name || <span className="text-gray-400">항목명</span>}</span>
                                                                 </div>
                                                             )}
                                                         </td>
@@ -3186,7 +3270,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                         }
                                                     }
                                                 }}
-                                                placeholder="항목명 입력 (예: 현관, 로비, 복도)"
+                                                placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
                                                 className="flex-1 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
                                             />
                                             <button
@@ -3234,7 +3318,63 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 isOpen={columnManageOpen}
                 onClose={() => setColumnManageOpen(false)}
                 sheetId={activeSheetId}
-                allFacets={template.facets}
+                allFacets={React.useMemo(() => {
+                    // SHEET_TEMPLATES에서 모든 기본 facet 가져오기
+                    const templateKey = Object.keys(SHEET_TEMPLATES).find(key =>
+                        activeSheetId.toLowerCase().includes(key) || key.includes(activeSheetId.toLowerCase())
+                    ) || 'space';
+                    const defaultTemplate = SHEET_TEMPLATES[templateKey] || SHEET_TEMPLATES['space'];
+                    const defaultFacets = defaultTemplate.facets || [];
+
+                    // 현재 템플릿의 facet들과 병합 (중복 제거)
+                    const existingKeys = new Set(template.facets.map((f: any) => f.key));
+                    const mergedFacets = [...template.facets];
+
+                    // 기본 facet 중 아직 추가되지 않은 것들 추가
+                    defaultFacets.forEach((df: any) => {
+                        if (!existingKeys.has(df.key)) {
+                            mergedFacets.push(df);
+                            existingKeys.add(df.key);
+                        }
+                    });
+
+                    // 라이브러리 참조 facet들 - 라이브러리에 항목이 있으면 자동으로 추가
+                    const libraryTypes = ['links', 'passwords', 'rules', 'info'];
+                    libraryTypes.forEach((libType: string) => {
+                        const libraryItems = library?.[libType] || {};
+                        const hasItems = Object.keys(libraryItems).length > 0;
+
+                        // 라이브러리에 항목이 있고, 해당 facet이 없으면 추가
+                        if (hasItems && !existingKeys.has(libType)) {
+                            const libraryFacet = defaultFacets.find((f: any) =>
+                                f.type === 'library-ref' && f.libraryType === libType
+                            );
+
+                            if (libraryFacet) {
+                                mergedFacets.push(libraryFacet);
+                                existingKeys.add(libType);
+                            } else {
+                                // 기본 facet에 없으면 새로 생성
+                                const labels: Record<string, string> = {
+                                    links: '링크',
+                                    passwords: '비밀번호',
+                                    rules: '규정',
+                                    info: '공통정보',
+                                };
+
+                                mergedFacets.push({
+                                    key: libType,
+                                    label: labels[libType] || libType,
+                                    type: 'library-ref',
+                                    libraryType: libType,
+                                });
+                                existingKeys.add(libType);
+                            }
+                        }
+                    });
+
+                    return mergedFacets;
+                }, [template.facets, activeSheetId, library])}
                 visibleKeys={visibleFacetKeys}
                 onToggle={toggleFacetVisible}
                 onCreate={createFacetToSheet}

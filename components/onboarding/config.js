@@ -203,13 +203,13 @@ export function generateInitialSheetData(industryCode, selectedItems) {
         visibleFacets: {},
         facets: {
             space: [
-                { key: "existence", label: "유무", type: "select", options: ["있음", "없음"] }
+                { key: "existence", label: "보유", type: "checkbox" }
             ],
             facility: [
-                { key: "existence", label: "유무", type: "select", options: ["있음", "없음"] }
+                { key: "existence", label: "보유", type: "checkbox" }
             ],
             seat: [
-                { key: "existence", label: "유무", type: "select", options: ["있음", "없음"] }
+                { key: "existence", label: "보유", type: "checkbox" }
             ]
         }
     };
@@ -221,7 +221,7 @@ export function generateInitialSheetData(industryCode, selectedItems) {
         const items = [];
         const now = Date.now();
 
-        // 1. 선택된 항목들 → "있음"으로 추가
+        // 1. 선택된 항목들 → "true" (있음)으로 추가
         selected.forEach((itemName, index) => {
             const preset = sheetPresets.find((p) => p.name === itemName);
             const isRequired = preset?.required || false;
@@ -231,14 +231,14 @@ export function generateInitialSheetData(industryCode, selectedItems) {
                 type: sheetId,
                 name: itemName,
                 icon: preset?.icon || "🧩",
-                facets: { existence: "있음" },  // ✅ pack 제거, 직접 "있음" 할당
+                facets: { existence: "true" },  // ✅ checkbox는 "true"/"false" 사용
                 order: index + 1,
                 createdAt: now,
                 isRequired: isRequired,  // ✅ 선택된 항목도 required 표시
             });
         });
 
-        // 2. required인데 선택 안 된 항목들 → "없음"으로 추가
+        // 2. required인데 선택 안 된 항목들 → "false" (없음)으로 추가
         const selectedNames = new Set(selected);
         sheetPresets
             .filter((p) => p.required && !selectedNames.has(p.name))
@@ -248,7 +248,7 @@ export function generateInitialSheetData(industryCode, selectedItems) {
                     type: sheetId,
                     name: preset.name,
                     icon: preset.icon || "🧩",
-                    facets: { existence: "없음" },  // ✅ pack 제거
+                    facets: { existence: "false" },  // ✅ checkbox는 "false" 사용
                     order: 1000 + index, // 맨 뒤로
                     createdAt: now,
                     isRequired: true,  // ✅ required 표시

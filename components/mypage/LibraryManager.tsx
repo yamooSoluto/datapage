@@ -299,11 +299,10 @@ export default function LibraryManager({ initialData, onSave }: LibraryManagerPr
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-            {/* 헤더 - 미니멀 */}
-            <div className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-                    <h1 className="text-2xl font-bold text-gray-900">라이브러리 관리</h1>
-                    <p className="text-sm text-gray-500 mt-1">
+            {/* 설명 헤더 - 통일된 디자인 */}
+            <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+                    <p className="text-sm text-gray-600">
                         링크, 비밀번호, 규정 등을 중앙에서 관리하고 여러 항목에서 재사용하세요
                     </p>
                 </div>

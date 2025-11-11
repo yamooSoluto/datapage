@@ -2,7 +2,7 @@
 // 테넌트 설정 메인 페이지
 
 import React from "react";
-import { Building2, Mail, Phone, User, CreditCard, Link as LinkIcon, MessageSquare, Save, Edit3, Check, X, Globe, MapPin, Briefcase } from "lucide-react";
+import { Building2, Mail, Phone, User, CreditCard, Link as LinkIcon, MessageSquare, Globe, MapPin, Briefcase } from "lucide-react";
 import { INDUSTRY_OPTIONS } from "../onboarding/config";
 
 interface TenantSettings {
@@ -36,7 +36,6 @@ interface SettingsPageProps {
 }
 
 export default function SettingsPage({ tenantId, initialSettings, onSave }: SettingsPageProps) {
-    const [isEditMode, setIsEditMode] = React.useState(false);
     const [settings, setSettings] = React.useState<TenantSettings>(
         initialSettings || {
             tenantId: tenantId,
@@ -62,51 +61,44 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
             },
         }
     );
-    const [draftSettings, setDraftSettings] = React.useState<TenantSettings | null>(null);
 
-    const handleEdit = () => {
-        setDraftSettings({ ...settings });
-        setIsEditMode(true);
-    };
+    const [isSaving, setIsSaving] = React.useState(false);
+    const saveTimer = React.useRef<NodeJS.Timeout | null>(null);
 
-    const handleSave = async () => {
-        if (!draftSettings) return;
-
-        try {
-            await onSave?.(draftSettings);
-            setSettings(draftSettings);
-            setIsEditMode(false);
-            setDraftSettings(null);
-            alert("✅ 설정이 저장되었습니다.");
-        } catch (error) {
-            console.error("설정 저장 실패:", error);
-            alert("❌ 설정 저장에 실패했습니다.");
+    const handleSave = async (updatedSettings: TenantSettings) => {
+        if (saveTimer.current) {
+            clearTimeout(saveTimer.current);
         }
-    };
 
-    const handleCancel = () => {
-        setDraftSettings(null);
-        setIsEditMode(false);
-    };
+        setIsSaving(true);
 
-    const currentSettings = isEditMode ? draftSettings : settings;
+        saveTimer.current = setTimeout(async () => {
+            try {
+                await onSave?.(updatedSettings);
+                setIsSaving(false);
+            } catch (error) {
+                console.error("설정 저장 실패:", error);
+                setIsSaving(false);
+            }
+        }, 500); // 500ms 디바운스
+    };
 
     const updateField = (field: string, value: any) => {
-        if (!isEditMode || !draftSettings) return;
+        const updatedSettings = { ...settings };
 
         if (field.includes('.')) {
             // nested field (e.g., "slack.defaultChannelId")
             const [parent, child] = field.split('.');
-            setDraftSettings((prev) => prev ? {
-                ...prev,
-                [parent]: {
-                    ...(prev[parent as keyof TenantSettings] as any),
-                    [child]: value
-                }
-            } : null);
+            updatedSettings[parent as keyof TenantSettings] = {
+                ...(updatedSettings[parent as keyof TenantSettings] as any),
+                [child]: value
+            } as any;
         } else {
-            setDraftSettings((prev) => prev ? { ...prev, [field]: value } : null);
+            (updatedSettings as any)[field] = value;
         }
+
+        setSettings(updatedSettings);
+        handleSave(updatedSettings);
     };
 
     // 구독 플랜 한글 변환
@@ -138,40 +130,17 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* 헤더 */}
-            <div className="bg-white border-b sticky top-0 z-20 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+            {/* 설명 헤더 - 통일된 디자인 */}
+            <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-900">설정</h1>
-                            <p className="text-sm text-gray-500 mt-1">
-                                상호, 연락처, 채널 연동 등 기본 설정을 관리합니다
-                            </p>
-                        </div>
-                        {!isEditMode ? (
-                            <button
-                                onClick={handleEdit}
-                                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
-                            >
-                                <Edit3 className="w-4 h-4" />
-                                수정
-                            </button>
-                        ) : (
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={handleCancel}
-                                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-                                >
-                                    <X className="w-4 h-4" />
-                                    취소
-                                </button>
-                                <button
-                                    onClick={handleSave}
-                                    className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
-                                >
-                                    <Check className="w-4 h-4" />
-                                    저장
-                                </button>
+                        <p className="text-sm text-gray-600">
+                            상호, 연락처, 채널 연동 등 기본 설정을 관리합니다
+                        </p>
+                        {isSaving && (
+                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                저장 중...
                             </div>
                         )}
                     </div>
@@ -191,19 +160,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                 <Mail className="w-4 h-4" />
                                 이메일
                             </label>
-                            {isEditMode ? (
-                                <input
-                                    type="email"
-                                    value={currentSettings?.email || ""}
-                                    onChange={(e) => updateField("email", e.target.value)}
-                                    placeholder="example@company.com"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                                />
-                            ) : (
-                                <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
-                                    {settings.email || "-"}
-                                </p>
-                            )}
+                            <input
+                                type="email"
+                                value={settings.email || ""}
+                                onChange={(e) => updateField("email", e.target.value)}
+                                placeholder="example@company.com"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                            />
                         </div>
 
                         {/* 상호 (brandName) */}
@@ -212,19 +175,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                 <Building2 className="w-4 h-4" />
                                 상호명
                             </label>
-                            {isEditMode ? (
-                                <input
-                                    type="text"
-                                    value={currentSettings?.brandName || ""}
-                                    onChange={(e) => updateField("brandName", e.target.value)}
-                                    placeholder="브랜드/매장명을 입력하세요"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                                />
-                            ) : (
-                                <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
-                                    {settings.brandName || "-"}
-                                </p>
-                            )}
+                            <input
+                                type="text"
+                                value={settings.brandName || ""}
+                                onChange={(e) => updateField("brandName", e.target.value)}
+                                placeholder="브랜드/매장명을 입력하세요"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                            />
                         </div>
 
                         {/* ✅ 업종 (읽기 전용) */}
@@ -247,19 +204,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                 <MapPin className="w-4 h-4" />
                                 매장 주소
                             </label>
-                            {isEditMode ? (
-                                <input
-                                    type="text"
-                                    value={currentSettings?.address || ""}
-                                    onChange={(e) => updateField("address", e.target.value)}
-                                    placeholder="서울시 강남구..."
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                                />
-                            ) : (
-                                <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg">
-                                    {settings.address || "-"}
-                                </p>
-                            )}
+                            <input
+                                type="text"
+                                value={settings.address || ""}
+                                onChange={(e) => updateField("address", e.target.value)}
+                                placeholder="서울시 강남구..."
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+                            />
                         </div>
                     </div>
                 </div>
@@ -279,19 +230,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                 </div>
                                 <p className="text-xs text-gray-500 ml-6">메신저 카드를 받을 Slack 채널 ID</p>
                             </label>
-                            {isEditMode ? (
-                                <input
-                                    type="text"
-                                    value={currentSettings?.slack?.defaultChannelId || ""}
-                                    onChange={(e) => updateField("slack.defaultChannelId", e.target.value)}
-                                    placeholder="C01234ABCDE"
-                                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900"
-                                />
-                            ) : (
-                                <p className="text-gray-900 px-3 py-2.5 bg-gray-50 rounded-lg font-mono text-sm">
-                                    {settings.slack?.defaultChannelId || "-"}
-                                </p>
-                            )}
+                            <input
+                                type="text"
+                                value={settings.slack?.defaultChannelId || ""}
+                                onChange={(e) => updateField("slack.defaultChannelId", e.target.value)}
+                                placeholder="C01234ABCDE"
+                                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent text-gray-900"
+                            />
                         </div>
 
                         {/* 구분선 */}
@@ -407,19 +352,13 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                                     </div>
                                     <p className="text-xs text-gray-500 ml-6">네이버 톡톡 파트너센터에서 발급받은 인증 키</p>
                                 </label>
-                                {isEditMode ? (
-                                    <input
-                                        type="text"
-                                        value={currentSettings?.naverAuthorization || ""}
-                                        onChange={(e) => updateField("naverAuthorization", e.target.value)}
-                                        placeholder="/M9pqNnnQhyRmbS2ICCx"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent font-mono text-sm"
-                                    />
-                                ) : (
-                                    <p className="text-gray-900 px-3 py-2 bg-gray-50 rounded-lg font-mono text-sm">
-                                        {settings.naverAuthorization || "-"}
-                                    </p>
-                                )}
+                                <input
+                                    type="text"
+                                    value={settings.naverAuthorization || ""}
+                                    onChange={(e) => updateField("naverAuthorization", e.target.value)}
+                                    placeholder="/M9pqNnnQhyRmbS2ICCx"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent font-mono text-sm"
+                                />
                                 <p className="text-xs text-gray-500 mt-1">
                                     네이버 톡톡 파트너센터에서 발급받은 Authorization 값을 입력하세요
                                 </p>
@@ -516,13 +455,6 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
                     </div>
                 </div>
 
-                {isEditMode && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                        <p className="text-sm text-amber-800">
-                            ⚠️ 수정 중입니다. 변경사항을 저장하려면 우측 상단의 <strong>저장</strong> 버튼을 클릭하세요.
-                        </p>
-                    </div>
-                )}
             </div>
         </div>
     );
