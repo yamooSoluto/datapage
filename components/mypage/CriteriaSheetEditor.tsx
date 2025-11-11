@@ -2912,9 +2912,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-2 sm:px-6 py-2 sm:py-4 space-y-3 sm:space-y-4">
+            <div className="w-full px-0 py-2 sm:py-4 space-y-3 sm:space-y-4">
                 {/* Level 3: 시트 탭 - 조건부 정렬 + 마스크 */}
-                <div className="bg-white rounded-2xl shadow-sm p-2 sm:p-3 sticky top-[57px] sm:top-[73px] z-30 overflow-visible">
+                <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2 sm:py-3 sticky top-[57px] sm:top-[73px] z-30 overflow-visible">
                     <div className="relative overflow-visible">
                         {/* 마스크 블러 - 편집 중에만 표시 */}
                         {isEditMode && (
@@ -3064,7 +3064,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 </div>
 
                 {/* Level 4: 뷰 토글 - 모바일 최적화 */}
-                <div className="flex justify-center py-2">
+                <div className="flex justify-center py-2 px-4 sm:px-6">
                     <div className="relative inline-flex items-center gap-0.5 p-0.5 bg-black/5 rounded-full">
                         {/* 슬라이더 */}
                         <div
@@ -3092,7 +3092,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
                 {/* 테이블 영역 */}
                 {viewMode === "item" && (
-                    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                    <div className="bg-white shadow-sm overflow-hidden">
                         {activeItems.length === 0 ? (
                             <div className="px-4 py-20 text-center">
                                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 flex items-center justify-center">
@@ -3137,13 +3137,13 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                             </div>
                         ) : (
 
-                            <div className="overflow-x-auto max-h-[70vh] overflow-y-auto relative">
+                            <div className="w-full max-h-[calc(100vh-200px)] overflow-y-auto relative">
                                 <DndContext
                                     sensors={sensors}
                                     collisionDetection={closestCenter}
                                     onDragEnd={handleRowDragEnd}
                                 >
-                                    <table className="w-full min-w-[880px]">
+                                    <table className="w-full">
                                         <thead className="bg-gray-50 border-b sticky top-0 z-20">
                                             <tr>
                                                 {isEditMode && <th className="w-8 bg-gray-50"></th>}
