@@ -240,57 +240,79 @@ function ReplyComposer({ plan, value, onChange, onSend, sending, onOpenCorrectio
     const isStarter = plan === 'starter';
 
     return (
-        <div className="rounded-xl border border-gray-200 p-3">
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-800">답변 작성</span>
-                <span className="text-[11px] text-gray-400">Enter=전송 · Shift+Enter=줄바꿈</span>
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-100 shadow-sm">
+            {/* 헤더 영역 - 더 미니멀하게 */}
+            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-600">답변 작성</span>
+                <span className="text-[10px] text-gray-400">Enter 전송 · Shift+Enter 줄바꿈</span>
             </div>
 
-            <textarea
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        onSend();
-                    }
-                }}
-                placeholder="회원에게 보낼 답변을 입력하세요..."
-                className="w-full resize-none min-h-[88px] max-h-[28vh] rounded-lg border border-gray-200 focus:border-gray-300 focus:ring-0 px-3 py-2 text-sm bg-white"
-            />
+            {/* 입력 영역 - 깔끔한 스타일 */}
+            <div className="px-3 pb-3">
+                <textarea
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            onSend();
+                        }
+                    }}
+                    placeholder="회원에게 보낼 답변을 입력하세요..."
+                    className="w-full resize-none min-h-[80px] max-h-[24vh] rounded-xl 
+                             bg-gray-50 border-0 focus:bg-white focus:ring-1 focus:ring-gray-200
+                             px-4 py-3 text-sm placeholder-gray-400 transition-all duration-200"
+                />
 
-            <div className="mt-3 flex items-center justify-between">
-                {/* 좌측: 보조 */}
-                <div className="flex items-center gap-2">
+                {/* 하단 버튼 영역 - Apple 스타일 */}
+                <div className="mt-3 flex items-center justify-between">
+                    {/* 왼쪽: AI 보정 버튼 */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onOpenCorrection}
+                            disabled={isStarter}
+                            className={`group relative h-8 px-3 rounded-full text-xs font-medium 
+                                      transition-all duration-200 flex items-center gap-1.5
+                                      ${isStarter
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-purple-50 text-purple-600 hover:bg-purple-100 active:scale-95'
+                                }`}
+                            title={isStarter ? 'Starter 플랜에서는 보정하기를 사용할 수 없습니다' : 'AI 보정하기'}
+                        >
+                            <Wand2 className="w-3.5 h-3.5" />
+                            <span>AI 보정</span>
+                        </button>
+                        {isStarter && (
+                            <span className="text-[10px] text-gray-400">Pro 이상</span>
+                        )}
+                    </div>
+
+                    {/* 오른쪽: 전송 버튼 */}
                     <button
                         type="button"
-                        onClick={onOpenCorrection}
-                        disabled={isStarter}
-                        className={`h-9 px-3 rounded-lg border text-sm flex items-center gap-1.5 transition ${isStarter
-                            ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                            : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                        onClick={onSend}
+                        disabled={sending || !value.trim()}
+                        className={`h-8 px-4 rounded-full text-xs font-medium 
+                                  transition-all duration-200 flex items-center gap-1.5
+                                  ${sending || !value.trim()
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'bg-blue-500 text-white hover:bg-blue-600 active:scale-95 shadow-sm'
                             }`}
-                        title={isStarter ? 'Starter 플랜에서는 보정하기를 사용할 수 없습니다' : 'AI 보정하기'}
                     >
-                        <Wand2 className="w-4 h-4" /> 보정하기
+                        {sending ? (
+                            <>
+                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                <span>전송 중</span>
+                            </>
+                        ) : (
+                            <>
+                                <Send className="w-3.5 h-3.5" />
+                                <span>전송</span>
+                            </>
+                        )}
                     </button>
-                    {isStarter && (
-                        <span className="text-[11px] text-gray-400">(Starter: 보정 불가)</span>
-                    )}
                 </div>
-
-                {/* 우측: 전송 */}
-                <button
-                    type="button"
-                    onClick={onSend}
-                    disabled={sending || !value.trim()}
-                    className={`h-9 px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 transition ${sending || !value.trim()
-                        ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                        : 'bg-gray-900 text-white hover:bg-black'
-                        }`}
-                >
-                    <Send className="w-4 h-4" /> {sending ? '전송 중...' : '전송'}
-                </button>
             </div>
         </div>
     );
