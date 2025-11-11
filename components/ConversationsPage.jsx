@@ -2,7 +2,7 @@
 // 애플 스타일 - 깔끔하고 직관적인 대화 목록 페이지
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, ChevronLeft, ChevronRight, RefreshCw, X, ExternalLink, User, Bot, UserCheck } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, RefreshCw, X, ExternalLink, User, Bot, UserCheck, Send, Wand2 } from 'lucide-react';
 import ConversationCard from './ConversationCard';
 
 export default function ConversationsPage({ tenantId }) {
@@ -316,11 +316,45 @@ export default function ConversationsPage({ tenantId }) {
 
 // 대화 상세 모달 컴포넌트
 function ConversationDetailModal({ conversation, detailData, onClose }) {
+    const [draft, setDraft] = useState('');
+    const [sending, setSending] = useState(false);
+    const [confirmSend, setConfirmSend] = useState(false);
+
+    const tenantId = conversation.id?.split('_')[0] || 'default';
+
+    const sendNow = async () => {
+        if (!draft.trim()) return;
+        if (!confirmSend) {
+            setConfirmSend(true);
+            setTimeout(() => setConfirmSend(false), 3500);
+            return;
+        }
+
+        setSending(true);
+        try {
+            const res = await fetch('/api/conversations/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tenantId, chatId: conversation.chatId, content: draft })
+            });
+            if (!res.ok) throw new Error('send fail');
+            setDraft('');
+            setConfirmSend(false);
+            // 페이지 새로고침으로 최신 메시지 가져오기
+            window.location.reload();
+        } catch (e) {
+            console.error(e);
+            alert('전송 중 문제가 발생했습니다.');
+        } finally {
+            setSending(false);
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-200">
                 {/* 헤더 */}
-                <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200">
+                <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 flex-shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
                             <span className="text-white text-sm font-semibold">
@@ -374,11 +408,11 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
                     )}
                 </div>
 
-                {/* 하단 정보 - 배경 투명 */}
-                <div className="px-6 py-4">
+                {/* 하단: 통계 + 답변 컴포저 */}
+                <div className="px-6 py-4 space-y-4 flex-shrink-0 bg-white border-t border-gray-200">
                     {/* 통계 */}
                     {detailData.stats && (
-                        <div className="grid grid-cols-3 gap-4 mb-4">
+                        <div className="grid grid-cols-3 gap-4">
                             <div className="text-center">
                                 <div className="text-2xl font-bold text-gray-900">
                                     {detailData.stats.userChats}
@@ -409,17 +443,42 @@ function ConversationDetailModal({ conversation, detailData, onClose }) {
                         </div>
                     )}
 
-                    {/* 메타 정보 */}
-                    {detailData.conversation && (
-                        <div className="space-y-3">
-                            {/* 요약 - 깔끔하게 */}
-                            {detailData.conversation.summary && (
-                                <div className="text-sm text-gray-700">
-                                    <span className="font-semibold">요약</span> {detailData.conversation.summary}
-                                </div>
-                            )}
+                    {/* 답변 작성 컴포저 */}
+                    <div className="rounded-xl border border-gray-200 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-800">답변 작성</span>
+                            <span className="text-[11px] text-gray-400">Enter=전송 · Shift+Enter=줄바꿈</span>
                         </div>
-                    )}
+
+                        <textarea
+                            value={draft}
+                            onChange={(e) => setDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    sendNow();
+                                }
+                            }}
+                            placeholder="회원에게 보낼 답변을 입력하세요..."
+                            className="w-full resize-none min-h-[88px] max-h-[28vh] rounded-lg border border-gray-200 focus:border-gray-300 focus:ring-0 px-3 py-2 text-sm bg-white"
+                        />
+
+                        <div className="mt-3 flex items-center justify-end">
+                            <button
+                                type="button"
+                                onClick={sendNow}
+                                disabled={sending || !draft.trim()}
+                                className={`h-9 px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 transition ${sending || !draft.trim()
+                                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                    : confirmSend
+                                        ? 'bg-green-600 text-white hover:bg-green-700'
+                                        : 'bg-gray-900 text-white hover:bg-black'
+                                    }`}
+                            >
+                                <Send className="w-4 h-4" /> {sending ? '전송 중...' : confirmSend ? '다시 클릭하여 전송' : '전송'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
