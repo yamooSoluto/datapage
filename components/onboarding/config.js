@@ -2,15 +2,15 @@
 // CriteriaSheetEditor와 연동되는 온보딩 설정
 
 export const INDUSTRY_OPTIONS = [
-    { code: "study_cafe", label: "스터디카페 / 독서실" },
-    { code: "self_store", label: "무인매장 / 셀프운영 매장" },
-    { code: "cafe_restaurant", label: "카페 / 음식점" },
-    { code: "fitness", label: "피트니스 / 운동공간" },
-    { code: "beauty", label: "뷰티 / 미용" },
-    { code: "education", label: "교육 / 학원" },
-    { code: "rental_space", label: "공간대여 / 숙박" },
-    { code: "retail_business", label: "소매 / 유통 / 판매업" },
-    { code: "other", label: "기타" },
+    { code: "study_cafe", label: "스터디카페 / 독서실", value: "study_cafe" },
+    { code: "self_store", label: "무인매장 / 셀프운영 매장", value: "self_store" },
+    { code: "cafe_restaurant", label: "카페 / 음식점", value: "cafe_restaurant" },
+    { code: "fitness", label: "피트니스 / 운동공간", value: "fitness" },
+    { code: "beauty", label: "뷰티 / 미용", value: "beauty" },
+    { code: "education", label: "교육 / 학원", value: "education" },
+    { code: "rental_space", label: "공간대여 / 숙박", value: "rental_space" },
+    { code: "retail_business", label: "소매 / 유통 / 판매업", value: "retail_business" },
+    { code: "other", label: "기타", value: "other" },
 ];
 
 // ────────────────────────────────────────────────────────────
@@ -201,6 +201,17 @@ export function generateInitialSheetData(industryCode, selectedItems) {
         items: {},
         customOptions: {},
         visibleFacets: {},
+        facets: {
+            space: [
+                { key: "existence", label: "유무", type: "select", options: ["있음", "없음"] }
+            ],
+            facility: [
+                { key: "existence", label: "유무", type: "select", options: ["있음", "없음"] }
+            ],
+            seat: [
+                { key: "existence", label: "유무", type: "select", options: ["있음", "없음"] }
+            ]
+        }
     };
 
     // 각 시트별로 아이템 생성
@@ -213,14 +224,17 @@ export function generateInitialSheetData(industryCode, selectedItems) {
         // 1. 선택된 항목들 → "있음"으로 추가
         selected.forEach((itemName, index) => {
             const preset = sheetPresets.find((p) => p.name === itemName);
+            const isRequired = preset?.required || false;
+
             items.push({
                 id: `${sheetId}_${now}_${index}`,
                 type: sheetId,
                 name: itemName,
                 icon: preset?.icon || "🧩",
-                facets: { existence: pack("있음") },
+                facets: { existence: "있음" },  // ✅ pack 제거, 직접 "있음" 할당
                 order: index + 1,
                 createdAt: now,
+                isRequired: isRequired,  // ✅ 선택된 항목도 required 표시
             });
         });
 
@@ -234,10 +248,10 @@ export function generateInitialSheetData(industryCode, selectedItems) {
                     type: sheetId,
                     name: preset.name,
                     icon: preset.icon || "🧩",
-                    facets: { existence: pack("없음") },
+                    facets: { existence: "없음" },  // ✅ pack 제거
                     order: 1000 + index, // 맨 뒤로
                     createdAt: now,
-                    isRequired: true,
+                    isRequired: true,  // ✅ required 표시
                 });
             });
 

@@ -1,27 +1,44 @@
 // pages/api/stats/[tenant].js
-// Firestore 기반 통계 API (BigQuery 대신)
+// ✅ Firestore 기반 통계 API
+// ✅ index.js 호환 보장
+export const config = { regions: ['icn1'] };
 
-import admin from '../../../lib/firebase';
+import admin from "firebase-admin";
+
+// ✅ ConversationsPage와 동일한 초기화 방식
+if (!admin.apps.length) {
+    admin.initializeApp({
+        credential: admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+        }),
+    });
+}
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { tenant } = req.query;
+    // ✅ tenant 파라미터를 여러 방식으로 받을 수 있도록 개선
+    const { tenant, tenantId } = req.query;
+    const actualTenant = tenant || tenantId;
+
     const { view = 'conversations', limit = 50, range = '7d' } = req.query;
 
-    if (!tenant) {
+    if (!actualTenant) {
+        console.error('❌ tenant 파라미터 누락:', req.query);
         return res.status(400).json({ error: 'tenant is required' });
     }
 
-    console.log(`📊 통계 조회: ${tenant}, range: ${range}`);
+    console.log(`📊 통계 조회 시작: ${actualTenant}, range: ${range}`);
 
     try {
         const db = admin.firestore();
 
         // 날짜 범위 계산
-        const days = parseInt(range.replace('d', '')) || 7;
+        const days = parseInt(String(range).replace('d', '')) || 7;
         const endDate = new Date();
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
@@ -33,14 +50,14 @@ export default async function handler(req, res) {
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const conversationsQuery = db
             .collection('FAQ_realtime_cw')
-            .where('tenant_id', '==', tenant)
+            .where('tenant_id', '==', actualTenant)
             .where('lastMessageAt', '>=', admin.firestore.Timestamp.fromDate(startDate))
             .where('lastMessageAt', '<=', admin.firestore.Timestamp.fromDate(endDate))
-            .limit(parseInt(limit) * 2); // 여유롭게 조회
+            .limit(parseInt(limit) * 2);
 
         const conversationsSnapshot = await conversationsQuery.get();
 
-        // chat_id 중복 제거 (같은 대화의 여러 문서)
+        // chat_id 중복 제거
         const chatMap = new Map();
         conversationsSnapshot.forEach(doc => {
             const data = doc.data();
@@ -76,7 +93,7 @@ export default async function handler(req, res) {
         uniqueConversations.forEach(({ data }) => {
             const messages = Array.isArray(data.messages) ? data.messages : [];
 
-            // AI 자동 응답 카운트 (agent 메시지 없음)
+            // AI 자동 응답 카운트
             const hasAgentMessage = messages.some(m => {
                 const sender = String(m.sender || '').toLowerCase();
                 return sender === 'agent' || sender === 'admin';
@@ -149,7 +166,7 @@ export default async function handler(req, res) {
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const aiVsAgentData = [
             { name: 'AI 자동', value: aiAutoCount },
-            { name: 'AI 보조', value: 0 }, // TODO: CONFIRM 모드 구분
+            { name: 'AI 보조', value: 0 },
             { name: '상담원', value: agentMessages }
         ];
 
@@ -172,7 +189,7 @@ export default async function handler(req, res) {
         console.log(`✅ 일별 추이: ${dailyTrend.length}일`);
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 6. 태그 집계 (선택적)
+        // 6. 태그 집계
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const tagCounts = {};
         uniqueConversations.forEach(({ data }) => {
@@ -193,7 +210,7 @@ export default async function handler(req, res) {
         console.log(`✅ 태그 집계: ${tagData.length}개`);
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // 7. 최근 대화 목록 (limit 적용)
+        // 7. 최근 대화 목록
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         const conversations = uniqueConversations
             .slice(0, parseInt(limit))
@@ -247,7 +264,7 @@ export default async function handler(req, res) {
         console.error('❌ 통계 조회 실패:', error);
 
         // Fallback: 빈 데이터 반환
-        const days = parseInt(range.replace('d', '')) || 7;
+        const days = parseInt(String(range).replace('d', '')) || 7;
 
         return res.status(200).json({
             stats: {

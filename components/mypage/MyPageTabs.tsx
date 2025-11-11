@@ -77,10 +77,10 @@ export default function MyPageTabs({
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* Level 1: 전역 네비게이션 - 가로 꽉 차는 Pill 스타일 */}
+            {/* Level 1: 전역 네비게이션 - 모바일 최적화 */}
             <div className="bg-white border-b sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
-                    <nav className="flex bg-gray-50 rounded-xl p-1 gap-1">
+                <div className="max-w-7xl mx-auto px-2 sm:px-6 py-2">
+                    <nav className="flex bg-gray-50 rounded-xl p-0.5 sm:p-1 gap-0.5 sm:gap-1">
                         {tabs.map((tab) => {
                             const isActive = activeTab === tab.key;
 
@@ -89,7 +89,7 @@ export default function MyPageTabs({
                                     key={tab.key}
                                     onClick={() => setActiveTab(tab.key)}
                                     className={`
-                                        flex-1 py-2.5 rounded-lg text-sm font-medium transition-all
+                                        flex-1 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all
                                         ${isActive
                                             ? 'bg-white text-gray-900 shadow-sm'
                                             : 'text-gray-600 hover:text-gray-900'

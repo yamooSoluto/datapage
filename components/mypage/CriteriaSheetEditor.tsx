@@ -397,7 +397,11 @@ function InlineDropdown({
     const addTextInput = () => {
         const text = textInput.trim();
         if (!text) return;
-        setSelected((prev) => uniqNormPush(prev, text));
+        setSelected((prev) => {
+            // ✅ IME 꼬리(마지막 1글자) 방어: 기존 선택값의 마지막 글자와 동일한 1글자면 무시
+            if (text.length === 1 && prev.some(v => v?.endsWith?.(text))) return prev;
+            return uniqNormPush(prev, text);
+        });
         setTextInput("");
         setMode(null);
     };
@@ -502,11 +506,6 @@ function InlineDropdown({
             .filter((opt: any) => opt !== null); // null 제거
 
         onUpdateFacetOptions(facet.key, newOptions);
-    };
-
-    const handleReorderOptions = (newOrder: any[]) => {
-        if (!onUpdateFacetOptions) return;
-        onUpdateFacetOptions(facet.key, newOrder);
     };
 
     const handleOptionDragEnd = (event: DragEndEvent, groupIndex: number) => {
@@ -1008,49 +1007,6 @@ function InlineDropdown({
     );
 }
 
-// ────────────────────────────────────────────────────────────
-// QuickAddBottomSheet - 간소화 버전 (프리셋 제거)
-// ────────────────────────────────────────────────────────────
-function QuickAddBottomSheet({ isOpen, onClose, sheetId, onAdd, onAddAll }: any) {
-    const [customName, setCustomName] = React.useState("");
-
-    const add = (name?: string) => {
-        if (!name?.trim()) return;
-        onAdd(name.trim());
-        setCustomName("");
-    };
-
-    return (
-        <MobileBottomSheet isOpen={isOpen} onClose={onClose} title="항목 추가">
-            <div className="space-y-3">
-                <div className="flex gap-2">
-                    <input
-                        value={customName}
-                        onChange={(e) => setCustomName(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                                add(customName);
-                            }
-                        }}
-                        placeholder="항목명 입력 (예: 현관, 로비, 복도)"
-                        className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
-                        autoFocus
-                    />
-                    <button
-                        onClick={() => add(customName)}
-                        disabled={!customName.trim()}
-                        className="px-5 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    >
-                        추가
-                    </button>
-                </div>
-                <p className="text-xs text-gray-500">
-                    Enter 키를 눌러 빠르게 추가할 수 있습니다
-                </p>
-            </div>
-        </MobileBottomSheet>
-    );
-}
 
 // ────────────────────────────────────────────────────────────
 // ColumnManageBottomSheet - 미니멀 & 모던 디자인
@@ -1208,32 +1164,6 @@ function SortableColumnItem({ id, facet, isVisible, onToggle, onDelete }: any) {
     const coreRequiredFacets = ['existence', 'handover', 'notes'];
     const isDeletable = !coreRequiredFacets.includes(facet.key);
 
-    // 타입별 아이콘 표시
-    const getTypeIcon = () => {
-        if (facet.type === 'library-ref') {
-            return '📚'; // 라이브러리 참조
-        }
-        if (facet.type === 'multi') {
-            return '☐'; // 멀티셀렉
-        }
-        if (facet.type === 'checkbox') {
-            return '✓'; // 체크박스
-        }
-        return '○'; // 단일
-    };
-
-    const getTypeLabel = () => {
-        if (facet.type === 'library-ref') {
-            return '라이브러리';
-        }
-        if (facet.type === 'multi') {
-            return '멀티';
-        }
-        if (facet.type === 'checkbox') {
-            return '체크';
-        }
-        return '단일';
-    };
 
     return (
         <div
@@ -1242,18 +1172,17 @@ function SortableColumnItem({ id, facet, isVisible, onToggle, onDelete }: any) {
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${isVisible
-                ? 'bg-white hover:bg-gray-50'
-                : 'bg-gray-50 hover:bg-gray-100 opacity-60'
+                ? 'bg-white hover:bg-gray-50 border border-gray-200'
+                : 'bg-gray-50 hover:bg-gray-100 opacity-60 border border-gray-200'
                 }`}
         >
-            {/* 드래그 핸들 - hover 시에만 표시 */}
+            {/* 드래그 핸들 - 항상 표시 */}
             <div
                 {...attributes}
                 {...listeners}
-                className={`cursor-grab active:cursor-grabbing transition-opacity ${isHovered ? 'opacity-100' : 'opacity-0'
-                    }`}
+                className="cursor-grab active:cursor-grabbing touch-none"
             >
-                <GripVertical className="w-4 h-4 text-gray-400" />
+                <GripVertical className="w-5 h-5 text-gray-400" />
             </div>
 
             {/* 열 정보 */}
@@ -1313,11 +1242,15 @@ function Row({ row, children, isEditMode = false }: any) {
             <td className="px-2 align-top">
                 <div className="flex items-center justify-center h-10">
                     {isEditMode ? (
-                        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-                            <GripVertical className="w-4 h-4 text-gray-400" />
+                        <div
+                            {...attributes}
+                            {...listeners}
+                            className="cursor-grab active:cursor-grabbing p-2 -m-2 touch-none"
+                        >
+                            <GripVertical className="w-5 h-5 text-gray-400" />
                         </div>
                     ) : (
-                        <div className="w-4 h-4" />
+                        <div className="w-5 h-5" />
                     )}
                 </div>
             </td>
@@ -1391,18 +1324,80 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
         );
     }
 
-    // 텍스트에어리어 타입 처리 (비고는 항상 활성화, 다른 셀과 동일한 높이)
+    // 텍스트에어리어 타입 처리 (클릭 시 모달로 입력)
     if (facet.type === "textarea") {
+        const [isModalOpen, setIsModalOpen] = React.useState(false);
+        const [modalValue, setModalValue] = React.useState(value);
+
+        const handleSave = () => {
+            updateCell(row.id, facet.key, modalValue);
+            setIsModalOpen(false);
+        };
+
         return (
             <td className="px-3 py-2 align-top">
                 {isEditMode ? (
-                    <input
-                        type="text"
-                        value={value}
-                        onChange={(e) => updateCell(row.id, facet.key, e.target.value)}
-                        placeholder="비고 입력..."
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    <>
+                        <button
+                            onClick={() => {
+                                setModalValue(value);
+                                setIsModalOpen(true);
+                            }}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-left hover:border-gray-400 transition-colors bg-white min-h-[40px] flex items-center"
+                        >
+                            {value ? (
+                                <span className="text-gray-900 truncate">{value}</span>
+                            ) : (
+                                <span className="text-gray-400">비고 입력...</span>
+                            )}
+                        </button>
+
+                        {/* 모달 */}
+                        {isModalOpen && (
+                            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
+                                <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                    {/* 헤더 */}
+                                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                                        <h3 className="text-lg font-semibold text-gray-900">비고</h3>
+                                        <button
+                                            onClick={() => setIsModalOpen(false)}
+                                            className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors"
+                                        >
+                                            <X className="w-5 h-5 text-gray-500" />
+                                        </button>
+                                    </div>
+
+                                    {/* 내용 */}
+                                    <div className="p-6">
+                                        <textarea
+                                            value={modalValue}
+                                            onChange={(e) => setModalValue(e.target.value)}
+                                            placeholder="비고를 입력하세요..."
+                                            rows={8}
+                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none"
+                                            autoFocus
+                                        />
+                                    </div>
+
+                                    {/* 하단 버튼 */}
+                                    <div className="flex items-center gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200">
+                                        <button
+                                            onClick={() => setIsModalOpen(false)}
+                                            className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                        >
+                                            취소
+                                        </button>
+                                        <button
+                                            onClick={handleSave}
+                                            className="flex-1 px-4 py-2.5 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
+                                        >
+                                            저장
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] flex items-center">
                         {value || <span className="text-gray-400">-</span>}
@@ -1627,19 +1622,21 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
     }
 
     return (
-        <div className="space-y-4">
-            {/* 헤더 */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+        <div className="space-y-3 sm:space-y-4">
+            {/* 헤더 - 모바일 최적화 */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 sm:p-4 bg-gray-50 rounded-xl">
                 <div className="flex items-center gap-2">
-                    <Columns className="w-5 h-5 text-gray-600" />
-                    <span className="font-semibold text-gray-900">기준별 보기</span>
+                    <Columns className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+                    <span className="text-sm sm:text-base font-semibold text-gray-900">기준별 보기</span>
                 </div>
-                <div className="flex items-center gap-3">
+
+                {/* 컨트롤 영역 - 모바일에서 세로 정렬 */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     {/* 뷰 타입 토글 */}
                     <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
                         <button
                             onClick={() => setViewType("card")}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewType === "card"
+                            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewType === "card"
                                 ? "bg-white text-gray-900 shadow-sm"
                                 : "text-gray-600 hover:text-gray-900"
                                 }`}
@@ -1648,7 +1645,7 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                         </button>
                         <button
                             onClick={() => setViewType("grid")}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewType === "grid"
+                            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewType === "grid"
                                 ? "bg-white text-gray-900 shadow-sm"
                                 : "text-gray-600 hover:text-gray-900"
                                 }`}
@@ -1658,11 +1655,11 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">보기 기준:</label>
+                        <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">보기 기준:</label>
                         <select
                             value={facet?.key || ""}
                             onChange={(e) => setFacetKey(e.target.value)}
-                            className="h-10 px-3 pr-8 rounded-lg border border-gray-300 bg-white text-sm font-medium focus:ring-2 focus:ring-gray-900 focus:border-transparent min-w-[150px]"
+                            className="flex-1 h-9 sm:h-10 px-2 sm:px-3 pr-8 rounded-lg border border-gray-300 bg-white text-xs sm:text-sm font-medium focus:ring-2 focus:ring-gray-900 focus:border-transparent min-w-[120px] sm:min-w-[150px]"
                         >
                             {availableFacets.map((f: any) => (
                                 <option key={f.key} value={f.key}>
@@ -1751,7 +1748,7 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                                         setOptionError("");
                                     }}
                                     onKeyDown={(e) => e.key === "Enter" && addOpt()}
-                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (실제 이용하는 명칭을 적어주세요)`}
+                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (예: 6층, 옥상)`}
                                     className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
                                         }`}
                                 />
@@ -1787,18 +1784,18 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                 </div>
             )}
 
-            {/* 그리드 뷰 */}
+            {/* 그리드 뷰 - 스크롤 시 헤더/첫열 고정 */}
             {viewType === "grid" && (
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-[70vh] overflow-y-auto relative">
                         <table className="w-full">
-                            <thead className="bg-gray-50 border-b">
+                            <thead className="bg-gray-50 border-b sticky top-0 z-20">
                                 <tr>
-                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[140px] sticky left-0 bg-gray-50 z-10">
+                                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[140px] sticky left-0 bg-gray-50 z-30 border-r border-gray-200">
                                         {facet?.label || "기준"}
                                     </th>
                                     {items.map((it: any) => (
-                                        <th key={it.id} className="px-2 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-[100px]">
+                                        <th key={it.id} className="px-2 py-3 text-center text-xs font-semibold text-gray-600 uppercase w-[100px] bg-gray-50">
                                             {it.name || "(이름 없음)"}
                                         </th>
                                     ))}
@@ -1807,14 +1804,14 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                             <tbody className="divide-y divide-gray-100">
                                 {options.map((opt) => (
                                     <tr key={opt} className="hover:bg-gray-50">
-                                        <td className="px-3 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10">
+                                        <td className="px-3 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r border-gray-200">
                                             {getOptionLabel(opt)}
                                         </td>
                                         {items.map((it: any) => {
                                             const values = unpack(it.facets?.[facet.key] || "");
                                             const active = values.some((v: string) => normalize(v) === normalize(opt));
                                             return (
-                                                <td key={it.id + opt} className="px-2 py-2">
+                                                <td key={it.id + opt} className="px-2 py-2 bg-white">
                                                     <button
                                                         onClick={() => isEditMode && onToggleMembership(it.id, facet.key, opt, !active)}
                                                         disabled={!isEditMode}
@@ -1845,7 +1842,7 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                                         setOptionError("");
                                     }}
                                     onKeyDown={(e) => e.key === "Enter" && addOpt()}
-                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (실제 이용하는 명칭을 적어주세요)`}
+                                    placeholder={`새 ${facet?.label || '옵션'} 추가 (예: 6층, 옥상)`}
                                     className={`flex-1 px-3 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent ${optionError ? 'border-red-300 focus:ring-red-500' : 'border-gray-300'
                                         }`}
                                 />
@@ -2162,10 +2159,10 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
     // 편집 모드 상태
     const [isEditMode, setIsEditMode] = React.useState(false);
+    const [newItemName, setNewItemName] = React.useState("");
     const [draftData, setDraftData] = React.useState<any>(null);
 
     // 모바일 UI 상태
-    const [quickAddOpen, setQuickAddOpen] = React.useState(false);
     const [columnManageOpen, setColumnManageOpen] = React.useState(false);
     const [linkLibraryOpen, setLinkLibraryOpen] = React.useState(false); // 링크 라이브러리 모달
 
@@ -2234,7 +2231,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     }, [data]);
 
     // ────────────────────────────────────────────────────────────
-    // n8n 데이터 전송 함수
+    // n8n 전송 함수
     // ────────────────────────────────────────────────────────────
     const prepareForVectorization = (sheets: string[], items: any, lib: any) => {
         const result: any[] = [];
@@ -2317,9 +2314,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 throw new Error(`n8n sync failed: ${response.status}`);
             }
 
-            console.log('✅ n8n 데이터 전송 완료:', vectorData.length, '개 항목');
+            console.log('✅ n8n 전송 완료:', vectorData.length, '개 항목');
         } catch (error) {
-            console.error('⚠️ n8n 데이터 전송 실패:', error);
+            console.error('⚠️ n8n 전송 실패:', error);
             throw error;
         }
     };
@@ -2352,9 +2349,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 console.log("📦 저장 (로컬)", payload);
             }
 
-            // n8n 데이터 전송 (비동기, 실패해도 저장은 완료)
+            // n8n 전송 (비동기, 실패해도 저장은 완료)
             syncToN8n(cleanSheets, draftData.items, library, tenantId).catch(err => {
-                console.error('⚠️ n8n 데이터 전송 실패:', err);
+                console.error('⚠️ n8n 전송 실패:', err);
             });
 
             // 저장 성공 후 실제 데이터에 반영
@@ -2495,10 +2492,17 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     };
 
     const removeRow = (rowId: string, rowName: string) => {
-        // 프리셋에서 required 체크
+        const currentItems = getCurrentData().items[activeSheetId] || [];
+        // 실제 아이템의 isRequired 체크 (우선순위 1)
+        const currentItem = currentItems.find((r: any) => r.id === rowId);
+        if (currentItem?.isRequired === true) {
+            alert(`"${rowName}"은(는) 필수 항목이라 삭제할 수 없습니다.`);
+            return;
+        }
+
+        // 프리셋에서 required 체크 (우선순위 2)
         const presets = PRESET_ITEMS[activeSheetId] || [];
         const preset = presets.find((p: any) => p.name === rowName);
-
         if (preset?.required === true) {
             alert(`"${rowName}"은(는) 필수 항목이라 삭제할 수 없습니다.`);
             return;
@@ -2732,7 +2736,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     };
 
     // ────────────────────────────────────────────────────────────
-    // Airtable 데이터 전송
+    // Airtable 전송
     // ────────────────────────────────────────────────────────────
     const [isSyncing, setIsSyncing] = React.useState(false);
 
@@ -2751,18 +2755,18 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             });
 
             if (!response.ok) {
-                throw new Error('데이터 전송 실패');
+                throw new Error('전송 실패');
             }
 
             const result = await response.json();
 
-            alert(`✅ Airtable 데이터 전송 완료!\n\n` +
+            alert(`✅ Airtable 전송 완료!\n\n` +
                 `• 항목: ${result.data.totalItems}개\n` +
                 `• 질문: ${result.data.totalQuestions}개\n` +
                 `• 시트: ${result.data.sheets.join(', ')}`);
         } catch (error) {
             console.error('Airtable sync error:', error);
-            alert('❌ 데이터 전송 실패\n\n잠시 후 다시 시도해주세요.');
+            alert('❌ 전송 실패\n\n잠시 후 다시 시도해주세요.');
         } finally {
             setIsSyncing(false);
         }
@@ -2839,12 +2843,12 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     // ────────────────────────────────────────────────────────────
     return (
         <div className="min-h-screen bg-gray-50 pb-24 relative">
-            {/* Level 2: 페이지 설명 헤더 */}
-            <div className="bg-white border-b sticky top-0 z-30 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
-                    <div className="flex items-center justify-between">
-                        {/* 좌측: 설명 텍스트 */}
-                        <p className="text-sm text-gray-600">
+            {/* Level 2: 페이지 설명 헤더 - 모바일 최적화 */}
+            <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
+                <div className="max-w-7xl mx-auto px-2 sm:px-6 py-2 sm:py-3">
+                    <div className="flex items-center justify-between gap-2">
+                        {/* 좌측: 설명 텍스트 - 모바일에서 숨김 */}
+                        <p className="hidden sm:block text-sm text-gray-600">
                             시트별로 항목을 관리하고, 기준을 설정하세요
                         </p>
 
@@ -2853,25 +2857,25 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                             <button
                                 onClick={handleSyncToAirtable}
                                 disabled={isSyncing}
-                                className="px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                                className="ml-auto px-2 sm:px-3 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs sm:text-sm font-medium transition-colors flex items-center gap-1 disabled:opacity-50"
                             >
-                                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                                <span className="hidden sm:inline">{isSyncing ? '데이터 전송 중...' : '데이터 전송'}</span>
+                                <RefreshCw className={`w-3 h-3 sm:w-4 sm:h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                                <span>{isSyncing ? '전송 중' : '전송'}</span>
                             </button>
                         )}
 
-                        {/* 편집 모드 */}
+                        {/* 편집 모드 - 모바일 최적화 */}
                         {isEditMode && (
-                            <div className="flex items-center gap-2">
+                            <div className="ml-auto flex items-center gap-1 sm:gap-2">
                                 <button
                                     onClick={handleCancelEdits}
-                                    className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-gray-100 text-gray-700 text-xs sm:text-sm font-medium hover:bg-gray-200 transition-colors"
                                 >
                                     취소
                                 </button>
                                 <button
                                     onClick={handleSaveEdits}
-                                    className="px-4 py-2 rounded-xl bg-yellow-400 text-gray-900 font-semibold hover:bg-yellow-500 transition-colors"
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-yellow-400 text-gray-900 text-xs sm:text-sm font-semibold hover:bg-yellow-500 transition-colors"
                                 >
                                     저장
                                 </button>
@@ -2881,59 +2885,73 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 space-y-4">
-                {/* 시트 탭 - 애플 스타일 */}
-                <div className="bg-white rounded-2xl shadow-sm p-3 sticky top-[73px] z-20">
-                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-                        {(data.sheets || []).map((sheetId: string) => {
-                            const t = allTemplates[sheetId] || { icon: "🧩", title: sheetId };
-                            const isActive = activeSheetId === sheetId;
-                            const itemCount = data.items[sheetId]?.length || 0;
-                            return (
-                                <div key={sheetId} className="flex items-center gap-1 flex-shrink-0">
-                                    <button
-                                        onClick={() => {
-                                            setData((prev: any) => ({ ...prev, activeSheet: sheetId }));
-                                        }}
-                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${isActive
-                                            ? "bg-gray-900 text-white"
-                                            : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
-                                            }`}
-                                    >
-                                        {t.title}
-                                        {itemCount > 0 && (
-                                            <span className={`ml-2 text-xs ${isActive ? "text-gray-300" : "text-gray-400"}`}>
-                                                {itemCount}
-                                            </span>
-                                        )}
-                                    </button>
-                                    {/* 편집 모드에서 삭제 버튼 표시 */}
-                                    {isEditMode && data.sheets.length > 1 && (
+            <div className="max-w-7xl mx-auto px-2 sm:px-6 py-2 sm:py-4 space-y-3 sm:space-y-4">
+                {/* Level 3: 시트 탭 - 조건부 정렬 + 마스크 */}
+                <div className="bg-white rounded-2xl shadow-sm p-2 sm:p-3 sticky top-[57px] sm:top-[73px] z-30 overflow-visible">
+                    <div className="relative overflow-visible">
+                        {/* 마스크 블러 - 편집 중에만 표시 */}
+                        {isEditMode && (
+                            <>
+                                {/* 좌측 마스크 */}
+                                <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-white to-transparent pointer-events-none z-10"></div>
+
+                                {/* 우측 마스크 (+ 버튼 배경) */}
+                                <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-white via-white to-transparent pointer-events-none z-10"></div>
+                            </>
+                        )}
+
+                        {/* 스크롤 컨테이너 - 조건부 정렬 */}
+                        <div className={`flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-hide ${isEditMode ? 'justify-start px-8 pr-20' : 'justify-center px-4'}`}>
+                            {(data.sheets || []).map((sheetId: string) => {
+                                const t = allTemplates[sheetId] || { icon: "🧩", title: sheetId };
+                                const isActive = activeSheetId === sheetId;
+                                const itemCount = data.items[sheetId]?.length || 0;
+                                return (
+                                    <div key={sheetId} className="flex items-center gap-1 flex-shrink-0 relative">
                                         <button
                                             onClick={() => {
-                                                if (confirm(`"${t.title}" 시트를 삭제하시겠습니까?\n\n모든 데이터가 삭제됩니다.`)) {
-                                                    const newSheets = data.sheets.filter((s: string) => s !== sheetId);
-                                                    const newItems = { ...data.items };
-                                                    delete newItems[sheetId];
-                                                    setData((prev: any) => ({
-                                                        ...prev,
-                                                        sheets: newSheets,
-                                                        items: newItems,
-                                                        activeSheet: prev.activeSheet === sheetId ? newSheets[0] : prev.activeSheet,
-                                                    }));
-                                                }
+                                                setData((prev: any) => ({ ...prev, activeSheet: sheetId }));
                                             }}
-                                            className="w-8 h-8 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors flex items-center justify-center flex-shrink-0"
-                                            title="시트 삭제"
+                                            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${isActive
+                                                ? "bg-gray-900 text-white"
+                                                : "bg-white text-gray-700 hover:bg-gray-100 border border-gray-200"
+                                                }`}
                                         >
-                                            <X className="w-4 h-4" />
+                                            {t.title}
+                                            {itemCount > 0 && (
+                                                <span className={`ml-1 sm:ml-2 text-xs ${isActive ? "text-gray-300" : "text-gray-400"}`}>
+                                                    {itemCount}
+                                                </span>
+                                            )}
                                         </button>
-                                    )}
-                                </div>
-                            );
-                        })}
+                                        {/* 편집 모드에서 삭제 뱃지 - 우측 상단 (안쪽!) */}
+                                        {isEditMode && data.sheets.length > 1 && (
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm(`"${t.title}" 시트를 삭제하시겠습니까?\n\n모든 데이터가 삭제됩니다.`)) {
+                                                        const newSheets = data.sheets.filter((s: string) => s !== sheetId);
+                                                        const newItems = { ...data.items };
+                                                        delete newItems[sheetId];
+                                                        setData((prev: any) => ({
+                                                            ...prev,
+                                                            sheets: newSheets,
+                                                            items: newItems,
+                                                            activeSheet: prev.activeSheet === sheetId ? newSheets[0] : prev.activeSheet,
+                                                        }));
+                                                    }
+                                                }}
+                                                className="absolute top-0 right-0 w-5 h-5 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center justify-center shadow-md z-20"
+                                                title="시트 삭제"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
 
-                        {/* 시트 추가 버튼 */}
+                        {/* 작고 미니멀한 + 버튼 - 편집 중에만 */}
                         {isEditMode && (
                             <button
                                 onClick={() => {
@@ -2952,17 +2970,17 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                         }));
                                     }
                                 }}
-                                className="flex-shrink-0 w-9 h-9 rounded-lg border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all flex items-center justify-center text-gray-600"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 transition-all flex items-center justify-center text-gray-600 shadow-sm z-20"
                                 title="시트 추가"
                             >
-                                <Plus className="w-4 h-4" />
+                                <Plus className="w-3.5 h-3.5" />
                             </button>
                         )}
                     </div>
                 </div>
 
-                {/* 🎨 Level 4: 뷰 토글 - 미니 세그먼트 */}
-                <div className="flex justify-center">
+                {/* Level 4: 뷰 토글 - 모바일 최적화 */}
+                <div className="flex justify-center py-2">
                     <div className="relative inline-flex items-center gap-0.5 p-0.5 bg-black/5 rounded-full">
                         {/* 슬라이더 */}
                         <div
@@ -2972,7 +2990,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
                         <button
                             onClick={() => setViewMode("item")}
-                            className={`relative z-10 w-20 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${viewMode === "item" ? 'text-gray-900' : 'text-gray-500'
+                            className={`relative z-10 w-16 sm:w-20 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${viewMode === "item" ? 'text-gray-900' : 'text-gray-500'
                                 }`}
                         >
                             항목별
@@ -2980,7 +2998,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
                         <button
                             onClick={() => setViewMode("facet")}
-                            className={`relative z-10 w-20 px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${viewMode === "facet" ? 'text-gray-900' : 'text-gray-500'
+                            className={`relative z-10 w-16 sm:w-20 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${viewMode === "facet" ? 'text-gray-900' : 'text-gray-500'
                                 }`}
                         >
                             기준별
@@ -3001,28 +3019,51 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                     첫 번째 항목을 추가해보세요
                                 </p>
                                 {isEditMode && (
-                                    <button
-                                        onClick={() => setQuickAddOpen(true)}
-                                        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm"
-                                    >
-                                        <Plus className="w-5 h-5" />
-                                        항목 추가
-                                    </button>
+                                    <div className="max-w-md mx-auto">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={newItemName}
+                                                onChange={(e) => setNewItemName(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' && newItemName.trim()) {
+                                                        addRow(newItemName.trim());
+                                                        setNewItemName('');
+                                                    }
+                                                }}
+                                                placeholder="항목명 입력 (예: 현관, 로비, 복도)"
+                                                className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                                autoFocus
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    if (newItemName.trim()) {
+                                                        addRow(newItemName.trim());
+                                                        setNewItemName('');
+                                                    }
+                                                }}
+                                                disabled={!newItemName.trim()}
+                                                className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                                            >
+                                                추가
+                                            </button>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         ) : (
 
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto max-h-[70vh] overflow-y-auto relative">
                                 <DndContext
                                     sensors={sensors}
                                     collisionDetection={closestCenter}
                                     onDragEnd={handleRowDragEnd}
                                 >
                                     <table className="w-full min-w-[800px]">
-                                        <thead className="bg-gray-50 border-b">
+                                        <thead className="bg-gray-50 border-b sticky top-0 z-20">
                                             <tr>
-                                                <th className="w-8"></th>
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[180px]">
+                                                <th className="w-8 bg-gray-50"></th>
+                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[280px] sticky left-0 bg-gray-50 z-30 border-r border-gray-200">
                                                     이름
                                                 </th>
                                                 {visibleFacets.map((facet: any) => {
@@ -3031,7 +3072,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                     if (facet.type === "checkbox") {
                                                         widthClass = "w-20"; // 체크박스는 좁게
                                                     } else if (facet.key === "notes" || facet.type === "textarea") {
-                                                        widthClass = "w-[200px]"; // 비고는 넓게
+                                                        widthClass = "w-[250px]"; // 비고는 더 넓게
                                                     } else if (facet.key === "location") {
                                                         widthClass = "w-[120px]"; // 위치는 중간
                                                     }
@@ -3040,24 +3081,22 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                     return (
                                                         <th
                                                             key={facet.key}
-                                                            className={`px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase ${widthClass}`}
+                                                            className={`px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase ${widthClass} bg-gray-50`}
                                                         >
                                                             {facet.label}
                                                         </th>
                                                     );
                                                 })}
-                                                {isEditMode && (
-                                                    <th className="w-16 px-2">
-                                                        <button
-                                                            onClick={() => setColumnManageOpen(true)}
-                                                            className="w-8 h-8 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors mx-auto"
-                                                            title="열 관리"
-                                                        >
-                                                            <Settings className="w-4 h-4 text-gray-600" />
-                                                        </button>
-                                                    </th>
-                                                )}
-                                                <th className="w-12"></th>
+                                                <th className="w-16 px-2 bg-gray-50">
+                                                    <button
+                                                        onClick={() => setColumnManageOpen(true)}
+                                                        className="w-8 h-8 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors mx-auto"
+                                                        title="열 관리"
+                                                    >
+                                                        <Settings className="w-4 h-4 text-gray-600" />
+                                                    </button>
+                                                </th>
+                                                <th className="w-12 bg-gray-50"></th>
                                             </tr>
                                         </thead>
                                         <SortableContext
@@ -3067,7 +3106,7 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                             <tbody className="divide-y divide-gray-100">
                                                 {activeItems.map((row: any) => (
                                                     <Row key={row.id} row={row} isEditMode={isEditMode}>
-                                                        <td className="px-3 py-2 align-top">
+                                                        <td className="px-3 py-2 align-top sticky left-0 bg-white z-10 border-r border-gray-200">
                                                             {isEditMode ? (
                                                                 <input
                                                                     type="text"
@@ -3106,8 +3145,12 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                             {isEditMode && (
                                                                 <button
                                                                     onClick={() => removeRow(row.id, row.name)}
-                                                                    className="w-9 h-9 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
-                                                                    title="삭제"
+                                                                    disabled={row.isRequired === true}
+                                                                    className={`w-9 h-9 rounded-lg transition-colors ${row.isRequired
+                                                                        ? 'text-gray-300 cursor-not-allowed'
+                                                                        : 'text-red-600 hover:bg-red-50'
+                                                                        }`}
+                                                                    title={row.isRequired ? "필수 항목 (삭제 불가)" : "삭제"}
                                                                 >
                                                                     <X className="w-4 h-4 mx-auto" />
                                                                 </button>
@@ -3120,16 +3163,45 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                     </table>
                                 </DndContext>
 
-                                {/* 인라인 행 추가 버튼 - 편집 모드에서만 표시 */}
+                                {/* 인라인 행 추가 - 편집 모드에서만 표시 */}
                                 {isEditMode && (
-                                    <div className="border-t p-3">
-                                        <button
-                                            onClick={() => setQuickAddOpen(true)}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-gray-700 hover:border-gray-900 hover:bg-gray-50 transition-all font-medium"
-                                        >
-                                            <Plus className="w-5 h-5" />
-                                            <span>항목 추가</span>
-                                        </button>
+                                    <div className="border-t bg-gray-50 p-3">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={newItemName}
+                                                onChange={(e) => setNewItemName(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        // ✅ 한글 IME 조합 중이면 Enter 무시
+                                                        // (브라우저별: e.nativeEvent.isComposing 지원)
+                                                        // 타입체크 피하려면 any 캐스팅 사용
+                                                        // @ts-ignore
+                                                        if (e.nativeEvent?.isComposing) return;
+                                                        if (newItemName.trim()) {
+                                                            addRow(newItemName.trim());
+                                                            setNewItemName('');
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                        }
+                                                    }
+                                                }}
+                                                placeholder="항목명 입력 (예: 현관, 로비, 복도)"
+                                                className="flex-1 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    if (newItemName.trim()) {
+                                                        addRow(newItemName.trim());
+                                                        setNewItemName('');
+                                                    }
+                                                }}
+                                                disabled={!newItemName.trim()}
+                                                className="px-4 py-2.5 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
+                                            >
+                                                + 추가
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -3158,14 +3230,6 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             {/* 플로팅 액션 버튼 제거 - 인라인 버튼으로 대체 */}
 
             {/* 바텀시트들 */}
-            <QuickAddBottomSheet
-                isOpen={quickAddOpen}
-                onClose={() => setQuickAddOpen(false)}
-                sheetId={activeSheetId}
-                onAdd={addRow}
-                onAddAll={addRowsBulk}
-            />
-
             <ColumnManageBottomSheet
                 isOpen={columnManageOpen}
                 onClose={() => setColumnManageOpen(false)}
@@ -3198,14 +3262,14 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 }
             `}</style>
 
-            {/* FAB - 편집 버튼 (애플 스타일) */}
+            {/* FAB - 편집 버튼 (모바일 최적화) */}
             {!isEditMode && (
                 <button
                     onClick={handleEnterEditMode}
-                    className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition-all hover:scale-105 active:scale-95 z-40 flex items-center justify-center"
+                    className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gray-900 text-white shadow-lg hover:bg-gray-800 transition-all hover:scale-105 active:scale-95 z-40 flex items-center justify-center"
                     aria-label="편집 모드"
                 >
-                    <Edit3 className="w-5 h-5" />
+                    <Edit3 className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
             )}
         </div>
