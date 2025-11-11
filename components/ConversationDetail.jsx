@@ -130,8 +130,8 @@ export default function ConversationDetail({ conversation, onClose }) {
                         </button>
                     </div>
 
-                    {/* 메시지 영역 */}
-                    <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+                    {/* 메시지 영역 - 전체 화면 활용 */}
+                    <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 bg-white">
                         {loading ? (
                             <div className="flex items-center justify-center py-20">
                                 <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600" />
@@ -162,29 +162,37 @@ export default function ConversationDetail({ conversation, onClose }) {
                                 <p className="text-gray-500">메시지가 없습니다</p>
                             </div>
                         )}
-                    </div>
 
-                    {/* 하단: 통계 + (요약 →) 답변 컴포저 */}
-                    <div className="px-6 py-4 space-y-4 flex-shrink-0 bg-white">
-                        {/* 통계 (기존 유지) */}
+                        {/* 통계 - 인라인 표시 */}
                         {detail?.stats && (
-                            <div className="grid grid-cols-3 gap-4">
-                                <Stat label="사용자" value={detail.stats.userChats} icon={User} valueClass="text-gray-900" />
-                                <Stat label="AI" value={detail.stats.aiChats} icon={Bot} valueClass="text-blue-600" />
-                                <Stat label="상담원" value={detail.stats.agentChats} icon={UserCheck} valueClass="text-purple-600" />
+                            <div className="mt-4 mb-2 flex justify-center">
+                                <div className="inline-flex gap-4 px-4 py-2 bg-gray-50 rounded-full text-xs">
+                                    <div className="flex items-center gap-1">
+                                        <User className="w-3 h-3 text-gray-500" />
+                                        <span className="text-gray-700">{detail.stats.userChats}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Bot className="w-3 h-3 text-blue-500" />
+                                        <span className="text-blue-600">{detail.stats.aiChats}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <UserCheck className="w-3 h-3 text-purple-500" />
+                                        <span className="text-purple-600">{detail.stats.agentChats}</span>
+                                    </div>
+                                </div>
                             </div>
                         )}
-
-                        {/* 요약 제거됨 — 그 자리에 답변 컴포저 삽입 */}
-                        <ReplyComposer
-                            plan={plan}
-                            value={draft}
-                            onChange={setDraft}
-                            onSend={sendNow}
-                            sending={sending}
-                            onOpenCorrection={() => setOpenCorrection(true)}
-                        />
                     </div>
+
+                    {/* 답변 입력창 - 하단 고정 */}
+                    <ReplyComposer
+                        plan={plan}
+                        value={draft}
+                        onChange={setDraft}
+                        onSend={sendNow}
+                        sending={sending}
+                        onOpenCorrection={() => setOpenCorrection(true)}
+                    />
                 </div>
             </div>
 
@@ -240,80 +248,88 @@ function ReplyComposer({ plan, value, onChange, onSend, sending, onOpenCorrectio
     const isStarter = plan === 'starter';
 
     return (
-        <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-100 shadow-sm">
-            {/* 헤더 영역 - 더 미니멀하게 */}
-            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-600">답변 작성</span>
-                <span className="text-[10px] text-gray-400">Enter 전송 · Shift+Enter 줄바꿈</span>
-            </div>
+        <div className="absolute bottom-0 left-0 right-0 bg-white/98 backdrop-blur-xl border-t border-gray-200/50">
+            <div className="px-2 py-2 flex items-end gap-1.5 max-w-4xl mx-auto">
+                {/* Plus 버튼 (AI 보정 / 추가 기능) */}
+                <button
+                    type="button"
+                    onClick={onOpenCorrection}
+                    disabled={isStarter}
+                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
+                              transition-all duration-200 active:scale-90
+                              ${isStarter
+                            ? 'text-gray-300'
+                            : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                    aria-label="AI 보정 및 추가 기능"
+                >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="16" />
+                        <line x1="8" y1="12" x2="16" y2="12" />
+                    </svg>
+                </button>
 
-            {/* 입력 영역 - 깔끔한 스타일 */}
-            <div className="px-3 pb-3">
-                <textarea
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            onSend();
-                        }
-                    }}
-                    placeholder="회원에게 보낼 답변을 입력하세요..."
-                    className="w-full resize-none min-h-[80px] max-h-[24vh] rounded-xl 
-                             bg-gray-50 border-0 focus:bg-white focus:ring-1 focus:ring-gray-200
-                             px-4 py-3 text-sm placeholder-gray-400 transition-all duration-200"
-                />
+                {/* 입력 필드 컨테이너 */}
+                <div className="flex-1 min-w-0">
+                    <div className="relative">
+                        <textarea
+                            value={value}
+                            onChange={(e) => {
+                                onChange(e.target.value);
+                                // 자동 높이 조절
+                                e.target.style.height = '36px';
+                                e.target.style.height = e.target.scrollHeight + 'px';
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    onSend();
+                                }
+                            }}
+                            placeholder="메시지"
+                            className="w-full resize-none bg-gray-100 
+                                     px-4 py-2 pr-12 text-[15px] leading-5
+                                     border-0 focus:outline-none focus:ring-0
+                                     placeholder-gray-500
+                                     transition-all duration-200"
+                            style={{
+                                minHeight: '36px',
+                                maxHeight: '120px',
+                                borderRadius: value && value.split('\n').length > 1 ? '18px' : '18px',
+                                overflowY: 'auto'
+                            }}
+                            rows={1}
+                        />
 
-                {/* 하단 버튼 영역 - Apple 스타일 */}
-                <div className="mt-3 flex items-center justify-between">
-                    {/* 왼쪽: AI 보정 버튼 */}
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={onOpenCorrection}
-                            disabled={isStarter}
-                            className={`group relative h-8 px-3 rounded-full text-xs font-medium 
-                                      transition-all duration-200 flex items-center gap-1.5
-                                      ${isStarter
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'bg-purple-50 text-purple-600 hover:bg-purple-100 active:scale-95'
-                                }`}
-                            title={isStarter ? 'Starter 플랜에서는 보정하기를 사용할 수 없습니다' : 'AI 보정하기'}
-                        >
-                            <Wand2 className="w-3.5 h-3.5" />
-                            <span>AI 보정</span>
-                        </button>
-                        {isStarter && (
-                            <span className="text-[10px] text-gray-400">Pro 이상</span>
+                        {/* 전송 버튼 - 입력 필드 내부 오른쪽 */}
+                        {value.trim() && (
+                            <button
+                                type="button"
+                                onClick={onSend}
+                                disabled={sending}
+                                className={`absolute right-1.5 bottom-1.5 w-7 h-7 rounded-full
+                                          flex items-center justify-center transition-all duration-200
+                                          ${sending
+                                        ? 'bg-gray-400'
+                                        : 'bg-blue-500 hover:bg-blue-600 active:scale-90'
+                                    } text-white shadow-sm`}
+                            >
+                                {sending ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                        <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                )}
+                            </button>
                         )}
                     </div>
-
-                    {/* 오른쪽: 전송 버튼 */}
-                    <button
-                        type="button"
-                        onClick={onSend}
-                        disabled={sending || !value.trim()}
-                        className={`h-8 px-4 rounded-full text-xs font-medium 
-                                  transition-all duration-200 flex items-center gap-1.5
-                                  ${sending || !value.trim()
-                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'bg-blue-500 text-white hover:bg-blue-600 active:scale-95 shadow-sm'
-                            }`}
-                    >
-                        {sending ? (
-                            <>
-                                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                <span>전송 중</span>
-                            </>
-                        ) : (
-                            <>
-                                <Send className="w-3.5 h-3.5" />
-                                <span>전송</span>
-                            </>
-                        )}
-                    </button>
                 </div>
             </div>
+
+            {/* Safe Area 패딩 (iPhone 하단 영역) */}
+            <div className="h-[env(safe-area-inset-bottom,0px)]" />
         </div>
     );
 }
@@ -481,9 +497,33 @@ function MessageBubble({ message, onImageClick }) {
     const isAI = message.sender === 'ai' && !isAgent;
 
     const senderConfig = {
-        user: { name: '사용자', icon: User, align: 'flex-row', bubbleBg: 'bg-blue-600 text-white', bubbleAlign: 'mr-auto', iconBg: 'bg-gray-300', iconColor: 'text-gray-700' },
-        ai: { name: 'AI', icon: Bot, align: 'flex-row-reverse', bubbleBg: 'bg-gray-200 text-gray-900', bubbleAlign: 'ml-auto', iconBg: 'bg-blue-500', iconColor: 'text-white' },
-        agent: { name: '상담원', icon: UserCheck, align: 'flex-row-reverse', bubbleBg: 'bg-purple-100 text-purple-900', bubbleAlign: 'ml-auto', iconBg: 'bg-purple-500', iconColor: 'text-white' },
+        user: {
+            name: '회원',
+            icon: User,
+            align: 'flex-row',
+            bubbleBg: 'bg-blue-500 text-white',
+            bubbleAlign: 'mr-auto',
+            iconBg: 'bg-gray-300',
+            iconColor: 'text-gray-700'
+        },
+        ai: {
+            name: 'AI',
+            icon: Bot,
+            align: 'flex-row-reverse',
+            bubbleBg: 'bg-gray-200 text-gray-900',
+            bubbleAlign: 'ml-auto',
+            iconBg: 'bg-blue-500',
+            iconColor: 'text-white'
+        },
+        agent: {
+            name: '상담원',
+            icon: UserCheck,
+            align: 'flex-row-reverse',
+            bubbleBg: 'bg-purple-100 text-purple-900',
+            bubbleAlign: 'ml-auto',
+            iconBg: 'bg-purple-500',
+            iconColor: 'text-white'
+        },
     }[isUser ? 'user' : isAgent ? 'agent' : 'ai'];
 
     const Icon = senderConfig.icon;
@@ -495,19 +535,19 @@ function MessageBubble({ message, onImageClick }) {
     };
 
     return (
-        <div className={`flex items-end gap-2 ${senderConfig.align}`}>
-            {!isUser && (
-                <div className={`flex-shrink-0 w-7 h-7 rounded-full ${senderConfig.iconBg} flex items-center justify-center`}>
-                    <Icon className={`w-4 h-4 ${senderConfig.iconColor}`} />
+        <div className={`flex items-end gap-2 ${senderConfig.align} mb-1`}>
+            {isUser && (
+                <div className={`flex-shrink-0 w-6 h-6 rounded-full ${senderConfig.iconBg} flex items-center justify-center mb-1`}>
+                    <Icon className={`w-3.5 h-3.5 ${senderConfig.iconColor}`} />
                 </div>
             )}
 
-            <div className={`max-w-[80%] ${senderConfig.bubbleAlign}`}>
-                {!isUser && <div className="text-xs text-gray-500 mb-1 px-1">{senderConfig.name}</div>}
+            <div className={`max-w-[70%] ${senderConfig.bubbleAlign}`}>
+                {isUser && <div className="text-[10px] text-gray-500 mb-1 px-2">{senderConfig.name}</div>}
 
-                <div className={`rounded-2xl px-4 py-2.5 ${senderConfig.bubbleBg}`}>
+                <div className={`rounded-2xl px-3 py-2 ${senderConfig.bubbleBg} ${!isUser ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
                     {message.text && (
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
+                        <p className="text-[14px] leading-[1.4] whitespace-pre-wrap break-words">{message.text}</p>
                     )}
 
                     {message.pics && message.pics.length > 0 && (
@@ -549,7 +589,7 @@ function MessageBubble({ message, onImageClick }) {
                     )}
                 </div>
 
-                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-left' : 'text-right'}`}>{formatTime(message.timestamp)}</div>
+                <div className={`text-[10px] text-gray-400 mt-0.5 px-1 ${!isUser ? 'text-right' : 'text-left'}`}>{formatTime(message.timestamp)}</div>
             </div>
         </div>
     );
