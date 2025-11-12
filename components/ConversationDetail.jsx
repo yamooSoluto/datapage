@@ -76,46 +76,18 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         el.style.height = Math.min(el.scrollHeight, 120) + 'px';
     };
 
-    // ConversationDetail.jsx - handleSend 함수 수정 (352번째 줄 근처)
-
     const handleSend = async () => {
-        if (!inputMessage.trim() || sending) return;
-
+        if (sending) return;
+        const text = (draft || '').trim();
+        if (!text && attachments.length === 0) return;
         setSending(true);
-        setError(null);
-
         try {
-            // ✅ 기존: onSend prop 호출 (FormData 방식)
-            // await onSend({ text: inputMessage.trim(), attachments: [] });
-
-            // ✅ 수정: 직접 API 호출 (JSON 방식)
-            const response = await fetch('/api/conversations/send', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    tenantId: conversation.tenantId || conversation.tenant || tenantId,
-                    chatId: conversation.chatId,
-                    content: inputMessage.trim()  // ⚠️ text가 아니라 content!
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => null);
-                throw new Error(errorData?.error || '메시지 전송에 실패했습니다.');
-            }
-
-            const result = await response.json();
-            console.log('Send result:', result);
-
-            // 성공 시 처리
-            setInputMessage('');
-            await fetchDetail(); // 메시지 목록 새로고침
-
-        } catch (err) {
-            console.error('Send error:', err);
-            setError(err.message || '메시지 전송에 실패했습니다.');
+            // 부모가 전달한 onSend에 위임 (API 호출은 부모에서)
+            await onSend?.({ text, attachments });
+            setDraft('');
+            setAttachments([]);
+            if (textareaRef.current) textareaRef.current.style.height = '40px';
+            await fetchDetail(); // 전송 후 최신 메시지 불러오기
         } finally {
             setSending(false);
         }
