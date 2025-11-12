@@ -1,82 +1,129 @@
 // components/ConversationDetail.jsx
-// 정상 작동 로직 + 아이폰 메시지 스타일 UI
-import { useState, useEffect, useRef } from 'react';
-import { X, ExternalLink, User, Bot, UserCheck, ZoomIn, Wand2, Send } from 'lucide-react';
+// 애플 스타일 대화 상세 모달 - 클라이언트 중심 최적화 (최종본)
 
-export default function ConversationDetail({ conversation, detailData, onClose, onRefresh }) {
+import { useState, useEffect, useRef } from 'react';
+import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
+
+export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector }) {
+    const [detail, setDetail] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [imagePreview, setImagePreview] = useState(null);
-    const [draft, setDraft] = useState('');
-    const [sending, setSending] = useState(false);
-    const [openCorrection, setOpenCorrection] = useState(false);
     const messagesEndRef = useRef(null);
 
-    // 플랜 정보 (detailData에서 가져오기)
-    const plan = detailData?.tenant?.plan || 'business';
+    // 입력바 상태
+    const [draft, setDraft] = useState('');
+    const [attachments, setAttachments] = useState([]); // { file, url }
+    const [sending, setSending] = useState(false);
+    const filePickerRef = useRef(null);
+    const textareaRef = useRef(null);
 
-    // 메시지 스크롤
     useEffect(() => {
-        if (detailData?.messages && messagesEndRef.current) {
+        fetchDetail();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [conversation?.chatId]);
+
+    useEffect(() => {
+        if (detail?.messages && messagesEndRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [detailData?.messages]);
+    }, [detail?.messages]);
 
-    // ESC 키 처리
+    const fetchDetail = async () => {
+        if (!conversation?.chatId) return;
+        setLoading(true);
+        try {
+            const tenantId = conversation.id?.split('_')[0] || 'default';
+            const res = await fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${conversation.chatId}`);
+            const data = await res.json();
+            setDetail(data);
+        } catch (error) {
+            console.error('Failed to fetch detail:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
         const handleEsc = (e) => {
             if (e.key === 'Escape') {
-                if (imagePreview) {
-                    setImagePreview(null);
-                } else if (openCorrection) {
-                    setOpenCorrection(false);
-                } else {
-                    onClose();
-                }
+                if (imagePreview) setImagePreview(null);
+                else onClose();
             }
         };
         window.addEventListener('keydown', handleEsc);
         return () => window.removeEventListener('keydown', handleEsc);
-    }, [onClose, imagePreview, openCorrection]);
+    }, [onClose, imagePreview]);
 
-    const sendMessage = async () => {
-        if (!draft.trim() || sending) return;
+    const canSend = draft.trim().length > 0 || attachments.length > 0;
 
+    const handleFiles = (files) => {
+        const arr = Array.from(files || []);
+        const next = arr.map((file) => ({ file, url: URL.createObjectURL(file) }));
+        setAttachments((prev) => [...prev, ...next].slice(0, 10));
+    };
+
+    const autoResize = (el) => {
+        if (!el) return;
+        el.style.height = '0px';
+        el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    };
+
+    const handleSend = async () => {
+        if (!canSend || sending) return;
         setSending(true);
         try {
-            const tenantId = conversation.id?.split('_')[0];
-            const res = await fetch('/api/conversations/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    tenantId,
-                    chatId: conversation.chatId,
-                    content: draft
-                })
-            });
-
-            if (!res.ok) throw new Error('Send failed');
-
+            if (onSend) {
+                await onSend({ text: draft.trim(), attachments });
+            } else {
+                console.log('send ->', { text: draft.trim(), attachments });
+            }
             setDraft('');
-            // 부모 컴포넌트에 새로고침 요청
-            if (onRefresh) onRefresh(conversation);
-
-        } catch (err) {
-            console.error('Send error:', err);
-            alert('전송 실패');
+            setAttachments([]);
+            if (textareaRef.current) textareaRef.current.style.height = '40px';
+            await fetchDetail();
+        } catch (e) {
+            console.error('send failed', e);
         } finally {
             setSending(false);
         }
     };
 
+    const onKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+    };
+
+    const onPaste = (e) => {
+        // 클립보드 이미지 붙여넣기 지원(선택)
+        const items = e.clipboardData?.items || [];
+        const files = [];
+        for (const it of items) {
+            if (it.kind === 'file') {
+                const f = it.getAsFile();
+                if (f) files.push(f);
+            }
+        }
+        if (files.length) {
+            e.preventDefault();
+            handleFiles(files);
+        }
+    };
+
     return (
         <>
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl max-w-4xl w-full h-[90vh] flex flex-col shadow-2xl">
+            <div
+                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                onClick={(e) => e.target === e.currentTarget && onClose()}
+            >
+                <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
                     {/* 헤더 */}
                     <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
                                 <span className="text-white text-sm font-semibold">
-                                    {conversation.userNameInitial || conversation.userName?.charAt(0) || '?'}
+                                    {conversation.userName?.charAt(0) || '?'}
                                 </span>
                             </div>
                             <div>
@@ -89,159 +136,140 @@ export default function ConversationDetail({ conversation, detailData, onClose, 
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            {detailData?.slack?.slackUrl && (
-                                <a
-                                    href={detailData.slack.slackUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                                >
-                                    <ExternalLink className="w-5 h-5" />
-                                </a>
-                            )}
-                            <button
-                                onClick={onClose}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
+                        <button
+                            onClick={onClose}
+                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
                     </div>
 
-                    {/* 메시지 영역 - 전체 화면 활용, 하단 입력창 공간 확보 */}
-                    <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 bg-white relative">
-                        {detailData?.messages && detailData.messages.length > 0 ? (
+                    {/* 메시지 영역 */}
+                    <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+                        {loading ? (
+                            <div className="flex items-center justify-center py-20">
+                                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600" />
+                            </div>
+                        ) : detail?.messages && detail.messages.length > 0 ? (
                             <div className="space-y-3">
-                                {/* 날짜 표시 */}
-                                {detailData.messages[0]?.timestamp && (
+                                {/* 시작 날짜 표시 */}
+                                {detail.messages[0]?.timestamp && (
                                     <div className="flex items-center justify-center my-4">
                                         <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-                                            {new Date(detailData.messages[0].timestamp).toLocaleDateString('ko-KR', {
-                                                year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+                                            {new Date(detail.messages[0].timestamp).toLocaleDateString('ko-KR', {
+                                                year: 'numeric',
+                                                month: 'long',
+                                                day: 'numeric',
+                                                weekday: 'long',
                                             })}
                                         </div>
                                     </div>
                                 )}
 
-                                {detailData.messages.map((msg, idx) => (
-                                    <MessageBubble
-                                        key={idx}
-                                        message={msg}
-                                        onImageClick={setImagePreview}
-                                    />
+                                {detail.messages.map((msg, idx) => (
+                                    <MessageBubble key={idx} message={msg} onImageClick={(url) => setImagePreview(url)} />
                                 ))}
                                 <div ref={messagesEndRef} />
                             </div>
                         ) : (
                             <div className="text-center py-20">
-                                <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                                <p className="text-gray-500">메시지가 없습니다</p>
-                            </div>
-                        )}
-
-                        {/* 통계 - 메시지 영역 하단에 작게 표시 */}
-                        {detailData?.stats && (
-                            <div className="mt-4 mb-2 flex justify-center">
-                                <div className="inline-flex gap-4 px-4 py-2 bg-gray-50 rounded-full text-xs">
-                                    <div className="flex items-center gap-1">
-                                        <User className="w-3 h-3 text-gray-500" />
-                                        <span className="text-gray-700">{detailData.stats.userChats}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <Bot className="w-3 h-3 text-blue-500" />
-                                        <span className="text-blue-600">{detailData.stats.aiChats}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                        <UserCheck className="w-3 h-3 text-purple-500" />
-                                        <span className="text-purple-600">{detailData.stats.agentChats}</span>
-                                    </div>
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                    <User className="w-8 h-8 text-gray-400" />
                                 </div>
+                                <p className="text-gray-500">메시지가 없습니다</p>
                             </div>
                         )}
                     </div>
 
-                    {/* 답변 입력창 - 아이폰 스타일 하단 고정 */}
-                    <div className="absolute bottom-0 left-0 right-0 bg-white/98 backdrop-blur-xl border-t border-gray-200/50">
-                        <div className="px-2 py-2 flex items-end gap-1.5 max-w-4xl mx-auto">
-                            {/* Plus 버튼 (AI 보정) */}
-                            <button
-                                type="button"
-                                onClick={() => setOpenCorrection(true)}
-                                disabled={plan === 'starter'}
-                                className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
-                                          transition-all duration-200 active:scale-90
-                                          ${plan === 'starter'
-                                        ? 'text-gray-300'
-                                        : 'text-gray-600 hover:bg-gray-100'
-                                    }`}
-                                aria-label="AI 보정"
-                            >
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <circle cx="12" cy="12" r="10" />
-                                    <line x1="12" y1="8" x2="12" y2="16" />
-                                    <line x1="8" y1="12" x2="16" y2="12" />
-                                </svg>
-                            </button>
-
-                            {/* 입력 필드 */}
-                            <div className="flex-1 min-w-0">
-                                <div className="relative">
-                                    <textarea
-                                        value={draft}
-                                        onChange={(e) => {
-                                            setDraft(e.target.value);
-                                            e.target.style.height = '36px';
-                                            e.target.style.height = e.target.scrollHeight + 'px';
-                                        }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                sendMessage();
-                                            }
-                                        }}
-                                        placeholder="메시지"
-                                        className="w-full resize-none bg-gray-100 
-                                                 px-4 py-2 pr-12 text-[15px] leading-5
-                                                 border-0 focus:outline-none focus:ring-0
-                                                 placeholder-gray-500 rounded-[18px]
-                                                 transition-all duration-200"
-                                        style={{
-                                            minHeight: '36px',
-                                            maxHeight: '120px',
-                                            overflowY: 'auto'
-                                        }}
-                                        rows={1}
-                                    />
-
-                                    {/* 전송 버튼 - 텍스트 있을 때만 표시 */}
-                                    {draft.trim() && (
+                    {/* 하단 입력바 + 정보 */}
+                    <div className="px-4 pt-2 pb-3 md:px-6 flex-shrink-0 bg-white">
+                        {/* 첨부 썸네일 (있을 때만 노출) */}
+                        {attachments.length > 0 && (
+                            <div className="mb-2 flex gap-2 overflow-x-auto">
+                                {attachments.map((att, i) => (
+                                    <div key={i} className="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-200">
+                                        <img src={att.url} alt={'att-' + i} className="w-full h-full object-cover" />
                                         <button
-                                            type="button"
-                                            onClick={sendMessage}
-                                            disabled={sending}
-                                            className={`absolute right-1.5 bottom-1.5 w-7 h-7 rounded-full
-                                                      flex items-center justify-center transition-all duration-200
-                                                      ${sending
-                                                    ? 'bg-gray-400'
-                                                    : 'bg-blue-500 hover:bg-blue-600 active:scale-90'
-                                                } text-white shadow-sm`}
+                                            className="absolute -top-1 -right-1 bg-black/70 text-white rounded-full w-5 h-5 text-[10px] leading-5"
+                                            onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                                            aria-label="remove"
                                         >
-                                            {sending ? (
-                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            ) : (
-                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                                                </svg>
-                                            )}
+                                            ×
                                         </button>
-                                    )}
-                                </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* 입력 바 (iOS 느낌, 슬림) */}
+                        <div className="relative">
+                            <div className="pointer-events-none absolute -top-2 left-0 right-0 h-2 bg-gradient-to-b from-gray-50/80 to-transparent" />
+                            <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:bg-white focus-within:border-gray-300 transition">
+                                <button
+                                    onClick={() => filePickerRef.current?.click()}
+                                    className="p-2 rounded-lg hover:bg-gray-100 active:scale-95 transition"
+                                    aria-label="첨부"
+                                >
+                                    <Paperclip className="w-5 h-5 text-gray-600" />
+                                </button>
+                                <textarea
+                                    ref={textareaRef}
+                                    value={draft}
+                                    onChange={(e) => {
+                                        setDraft(e.target.value);
+                                        autoResize(e.target);
+                                    }}
+                                    onKeyDown={onKeyDown}
+                                    onPaste={onPaste}
+                                    placeholder="메시지"
+                                    rows={1}
+                                    className="flex-1 resize-none bg-transparent outline-none text-[15px] leading-6 max-h-[120px] placeholder:text-gray-400"
+                                    style={{ height: 40 }}
+                                />
+                                <button
+                                    onClick={() => (onOpenAICorrector ? onOpenAICorrector() : null)}
+                                    className="p-2 rounded-lg hover:bg-gray-100 active:scale-95 transition"
+                                    aria-label="AI 보정"
+                                    title="AI 보정"
+                                >
+                                    <Sparkles className="w-5 h-5 text-gray-700" />
+                                </button>
+                                <button
+                                    onClick={handleSend}
+                                    disabled={!canSend || sending}
+                                    className={`h-9 w-9 rounded-full flex items-center justify-center transition ${canSend && !sending ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                        }`}
+                                    aria-label="전송"
+                                >
+                                    <Send className="w-4 h-4" />
+                                </button>
+                                <input
+                                    ref={filePickerRef}
+                                    type="file"
+                                    accept="image/*,video/*,application/pdf"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => handleFiles(e.target.files)}
+                                />
                             </div>
                         </div>
 
-                        {/* Safe Area 패딩 */}
-                        <div className="h-[env(safe-area-inset-bottom,0px)]" />
+                        {/* 하단 정보(통계/요약) */}
+                        <div className="mt-3">
+                            {detail?.stats && (
+                                <div className="grid grid-cols-3 gap-4 mb-4">
+                                    <StatBlock label="사용자" value={detail.stats.userChats} Icon={User} valueClass="text-gray-900" />
+                                    <StatBlock label="AI" value={detail.stats.aiChats} Icon={Bot} valueClass="text-blue-600" />
+                                    <StatBlock label="상담원" value={detail.stats.agentChats} Icon={UserCheck} valueClass="text-purple-600" />
+                                </div>
+                            )}
+
+                            {detail?.conversation?.summary && (
+                                <div className="text-sm text-gray-700">
+                                    <span className="font-semibold">요약</span> {detail.conversation.summary}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -254,7 +282,7 @@ export default function ConversationDetail({ conversation, detailData, onClose, 
                 >
                     <button
                         onClick={() => setImagePreview(null)}
-                        className="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-lg"
+                        className="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-lg transition-colors"
                     >
                         <X className="w-6 h-6" />
                     </button>
@@ -266,98 +294,97 @@ export default function ConversationDetail({ conversation, detailData, onClose, 
                     />
                 </div>
             )}
-
-            {/* AI 보정 모달 */}
-            {openCorrection && (
-                <CorrectionModal
-                    plan={plan}
-                    tenantId={conversation.id?.split('_')[0]}
-                    chatId={conversation.chatId}
-                    initialText={draft}
-                    onClose={() => setOpenCorrection(false)}
-                    onDone={(corrected) => {
-                        setDraft(corrected);
-                        setOpenCorrection(false);
-                    }}
-                />
-            )}
         </>
     );
 }
 
-// 메시지 버블 - CS 관점 (회원 문의 왼쪽, AI/상담원 답변 오른쪽)
+function StatBlock({ label, value, Icon, valueClass = '' }) {
+    return (
+        <div className="text-center">
+            <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
+            <div className="text-xs text-gray-500 mt-1 flex items-center justify-center gap-1">
+                <Icon className="w-3 h-3" />
+                {label}
+            </div>
+        </div>
+    );
+}
+
+// 메시지 버블 (user / ai / agent)
 function MessageBubble({ message, onImageClick }) {
     const isUser = message.sender === 'user';
-    const isAgent = message.sender === 'admin' || message.sender === 'agent' || (message.sender === 'ai' && message.modeSnapshot === 'AGENT');
-    const isAI = message.sender === 'ai' && !isAgent;
-
-    const senderConfig = {
+    const isAgent =
+        message.sender === 'admin' ||
+        message.sender === 'agent' ||
+        (message.sender === 'ai' && message.modeSnapshot === 'AGENT');
+    const senderCfg = {
         user: {
-            name: '회원',
+            name: '사용자',
             icon: User,
-            align: 'flex-row',
-            bubbleBg: 'bg-blue-500 text-white',
-            bubbleAlign: 'mr-auto',
+            align: 'flex-row-reverse',
+            bubbleBg: 'bg-blue-600 text-white',
+            bubbleAlign: 'ml-auto',
             iconBg: 'bg-gray-300',
-            iconColor: 'text-gray-700'
+            iconColor: 'text-gray-700',
         },
         ai: {
             name: 'AI',
             icon: Bot,
-            align: 'flex-row-reverse',
+            align: 'flex-row',
             bubbleBg: 'bg-gray-200 text-gray-900',
-            bubbleAlign: 'ml-auto',
+            bubbleAlign: 'mr-auto',
             iconBg: 'bg-blue-500',
-            iconColor: 'text-white'
+            iconColor: 'text-white',
         },
         agent: {
             name: '상담원',
             icon: UserCheck,
-            align: 'flex-row-reverse',
+            align: 'flex-row',
             bubbleBg: 'bg-purple-100 text-purple-900',
-            bubbleAlign: 'ml-auto',
+            bubbleAlign: 'mr-auto',
             iconBg: 'bg-purple-500',
-            iconColor: 'text-white'
+            iconColor: 'text-white',
         },
     }[isUser ? 'user' : isAgent ? 'agent' : 'ai'];
 
-    const Icon = senderConfig.icon;
+    const Icon = senderCfg.icon;
 
-    const formatTime = (timestamp) => {
-        if (!timestamp) return '';
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-    };
+    const fmtTime = (ts) =>
+        ts
+            ? new Date(ts).toLocaleTimeString('ko-KR', {
+                hour: '2-digit',
+                minute: '2-digit',
+            })
+            : '';
 
     return (
-        <div className={`flex items-end gap-2 ${senderConfig.align} mb-1`}>
-            {isUser && (
-                <div className={`flex-shrink-0 w-6 h-6 rounded-full ${senderConfig.iconBg} flex items-center justify-center mb-1`}>
-                    <Icon className={`w-3.5 h-3.5 ${senderConfig.iconColor}`} />
+        <div className={`flex items-end gap-2 ${senderCfg.align}`}>
+            {!isUser && (
+                <div className={`flex-shrink-0 w-7 h-7 rounded-full ${senderCfg.iconBg} flex items-center justify-center`}>
+                    <Icon className={`w-4 h-4 ${senderCfg.iconColor}`} />
                 </div>
             )}
 
-            <div className={`max-w-[70%] ${senderConfig.bubbleAlign}`}>
-                {isUser && <div className="text-[10px] text-gray-500 mb-1 px-2">{senderConfig.name}</div>}
+            <div className={`max-w-[80%] ${senderCfg.bubbleAlign}`}>
+                {!isUser && <div className="text-xs text-gray-500 mb-1 px-1">{senderCfg.name}</div>}
 
-                <div className={`rounded-2xl px-3 py-2 ${senderConfig.bubbleBg} ${!isUser ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
-                    {message.text && (
-                        <p className="text-[14px] leading-[1.4] whitespace-pre-wrap break-words">{message.text}</p>
-                    )}
+                <div className={`rounded-2xl px-4 py-2.5 ${senderCfg.bubbleBg}`}>
+                    {message.text && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>}
 
                     {message.pics && message.pics.length > 0 && (
                         <div className={`${message.text ? 'mt-2' : ''} space-y-2`}>
                             {message.pics.length === 1 ? (
                                 <div
                                     className="relative group cursor-pointer overflow-hidden rounded-lg"
-                                    onClick={() => onImageClick(message.pics[0].url || message.pics[0])}
+                                    onClick={() => onImageClick?.(message.pics[0].url || message.pics[0])}
                                 >
                                     <img
                                         src={message.pics[0].url || message.pics[0]}
                                         alt="첨부 이미지"
                                         className="w-full h-auto max-h-80 object-contain rounded-lg"
                                         onError={(e) => {
-                                            e.target.parentElement.innerHTML = `<div class='w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm'>이미지를 불러올 수 없습니다</div>`;
+                                            e.target.parentElement.innerHTML =
+                                                '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
                                         }}
                                     />
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -372,14 +399,15 @@ function MessageBubble({ message, onImageClick }) {
                                         <div
                                             key={idx}
                                             className="relative group cursor-pointer overflow-hidden rounded-lg aspect-square"
-                                            onClick={() => onImageClick(pic.url || pic)}
+                                            onClick={() => onImageClick?.(pic.url || pic)}
                                         >
                                             <img
                                                 src={pic.url || pic}
                                                 alt={`첨부 ${idx + 1}`}
                                                 className="w-full h-full object-cover"
                                                 onError={(e) => {
-                                                    e.target.parentElement.innerHTML = `<div class='w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs'>오류</div>`;
+                                                    e.target.parentElement.innerHTML =
+                                                        '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
                                                 }}
                                             />
                                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -395,74 +423,7 @@ function MessageBubble({ message, onImageClick }) {
                     )}
                 </div>
 
-                <div className={`text-[10px] text-gray-400 mt-0.5 px-1 ${!isUser ? 'text-right' : 'text-left'}`}>{formatTime(message.timestamp)}</div>
-            </div>
-        </div>
-    );
-}
-
-// AI 보정 모달 (간단 버전)
-function CorrectionModal({ plan, tenantId, chatId, initialText, onClose, onDone }) {
-    const [text, setText] = useState(initialText || '');
-    const [loading, setLoading] = useState(false);
-
-    const request = async () => {
-        if (!text.trim()) return;
-        setLoading(true);
-        try {
-            const res = await fetch('/api/ai/correct', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    tenantId,
-                    chatId,
-                    content: text,
-                    options: { voice: 'agent', contentType: 'tone_correction', toneFlags: [] }
-                }),
-            });
-            if (!res.ok) throw new Error('request fail');
-            const data = await res.json();
-            onDone(data.corrected || text);
-        } catch (err) {
-            alert('보정 요청 실패');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[55]">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold">AI 보정</h3>
-                    <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                <textarea
-                    className="w-full h-32 px-3 py-2 border border-gray-200 rounded-lg resize-none focus:ring-2 focus:ring-blue-500"
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="보정할 메시지..."
-                />
-
-                <div className="mt-4 flex gap-2 justify-end">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                    >
-                        취소
-                    </button>
-                    <button
-                        onClick={request}
-                        disabled={loading || !text.trim()}
-                        className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 flex items-center gap-2"
-                    >
-                        <Wand2 className="w-4 h-4" />
-                        {loading ? '보정 중...' : '보정'}
-                    </button>
-                </div>
+                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-right' : 'text-left'}`}>{fmtTime(message.timestamp)}</div>
             </div>
         </div>
     );
