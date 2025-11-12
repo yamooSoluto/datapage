@@ -1,45 +1,49 @@
-// /pages/api/conversations/send.ts
-import { sendFinal } from "../n8n/send-final";
+// pages/api/conversations/send.ts
+import type { NextApiRequest, NextApiResponse } from "next";
 
-export default async function handler(req, res) {
+export const config = { api: { bodyParser: true } };
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+    if (req.method !== "POST") return res.status(405).end();
+
     try {
-        if (req.method !== "POST") {
-            return res.status(405).json({ error: "method_not_allowed" });
-        }
-
         const { tenantId, chatId, content } = req.body || {};
-
-        // 입력 검증
-        if (!tenantId || !chatId || !String(content || "").trim()) {
+        if (!tenantId || !chatId || !content || !String(content).trim()) {
             return res.status(400).json({ error: "tenantId, chatId, content required" });
         }
 
-        // sendFinal 직접 호출 (reply.js와 동일한 방식)
-        const result = await sendFinal({
-            conversationId: chatId,
-            content: String(content).trim(),
-            attachments: [],
-            via: "agent",
-            sent_as: "agent",
-            tenantId: tenantId,
-            mode: "direct",
-            confirmBypass: true, // 상담원 답장은 CONFIRM 게이트 우회
-        });
-
-        // (드물게 차단된 케이스 — ex. 이미 닫힌 대화 등)
-        if (result?.blocked) {
-            return res.status(200).json({ ok: true, blocked: true, ...result });
+        const base = (process.env.GCLOUD_BASE_URL || "").replace(/\/$/, "");
+        if (!base) {
+            // 안전가드: 환경변수 없으면 명확히 알려주기
+            return res.status(500).json({ error: "GCLOUD_BASE_URL not set" });
         }
 
-        return res.status(200).json({
-            ok: true,
-            messageId: result?.messageId
+        // GCP로 그대로 위임 (Slack 경로에서 쓰던 페이로드와 동일하게 맞춤)
+        const payload = {
+            conversationId: String(chatId),
+            content: String(content),
+            attachments: [],     // (파일 붙일거면 여기 확장)
+            via: "agent",
+            sent_as: "agent",
+            tenantId: String(tenantId),
+            mode: "agent_comment",
+            confirmMode: false,
+            mediatedSource: "agent_comment",
+        };
+
+        const r = await fetch(`${base}/api/n8n/send-final`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
         });
-    } catch (e) {
-        console.error("[conversations/send] error:", e?.message || e);
-        return res.status(500).json({
-            error: "internal_error",
-            detail: e?.message || String(e),
-        });
+
+        if (!r.ok) {
+            const msg = await r.text().catch(() => "");
+            return res.status(502).json({ error: `send-final failed: ${r.status} ${msg}` });
+        }
+
+        return res.status(200).json({ ok: true });
+    } catch (e: any) {
+        return res.status(500).json({ error: e?.message || "unknown error" });
     }
 }
