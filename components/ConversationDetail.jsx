@@ -17,10 +17,20 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const filePickerRef = useRef(null);
     const textareaRef = useRef(null);
 
+    // ✅ tenantId를 상위에서 추출
+    const effectiveTenantId =
+        tenantId ||
+        conversation?.tenant ||
+        conversation?.tenantId ||
+        (typeof conversation?.id === 'string' && conversation.id.includes('_')
+            ? conversation.id.split('_')[0]
+            : null) ||
+        'default';
+
     useEffect(() => {
         fetchDetail();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversation?.chatId, tenantId]);
+    }, [conversation?.chatId, effectiveTenantId]);
 
     useEffect(() => {
         if (detail?.messages && messagesEndRef.current) {
@@ -31,17 +41,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const fetchDetail = async () => {
         setLoading(true);
         try {
-            // ✅ tenant 우선순위: prop → conversation.tenant → conversation.tenantId → id split → 'default'
-            const tenant =
-                tenantId ||
-                conversation?.tenant ||
-                conversation?.tenantId ||
-                (typeof conversation?.id === 'string' && conversation.id.includes('_')
-                    ? conversation.id.split('_')[0]
-                    : null) ||
-                'default';
-
-            const res = await fetch(`/api/conversations/detail?tenant=${tenant}&chatId=${conversation.chatId}`);
+            const res = await fetch(`/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${conversation.chatId}`);
             const data = await res.json();
             setDetail(data);
         } catch (error) {
@@ -83,14 +83,22 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         if (!text && attachments.length === 0) return;
         setSending(true);
         try {
-            // 부모가 전달한 onSend에 위임 (API 호출은 부모에서)
-            await onSend?.({ text, attachments });
+            // ✅ tenantId를 포함하여 전달
+            await onSend?.({
+                text,
+                attachments,
+                tenantId: effectiveTenantId,
+                chatId: conversation.chatId
+            });
             setDraft('');
             setAttachments([]);
             if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto';
             }
             await fetchDetail(); // 전송 후 최신 메시지 불러오기
+        } catch (error) {
+            console.error('[ConversationDetail] Send failed:', error);
+            alert('메시지 전송에 실패했습니다. 다시 시도해주세요.');
         } finally {
             setSending(false);
         }
@@ -185,18 +193,21 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         )}
                     </div>
 
-                    {/* 하단 입력바 + 정보 */}
-                    <div className="px-4 pt-3 pb-4 md:px-6 flex-shrink-0 bg-white border-t border-gray-100">
-                        {/* 첨부 썸네일 */}
+                    {/* 입력 영역 */}
+                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white">
+                        {/* 첨부 이미지 */}
                         {attachments.length > 0 && (
-                            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-                                {attachments.map((att, i) => (
-                                    <div key={i} className="relative w-16 h-16 rounded-2xl overflow-hidden border border-gray-200 flex-shrink-0">
-                                        <img src={att.url} alt={'att-' + i} className="w-full h-full object-cover" />
+                            <div className="flex flex-wrap gap-2 mb-3">
+                                {attachments.map((att, idx) => (
+                                    <div key={idx} className="relative group">
+                                        <img
+                                            src={att.url}
+                                            alt={`첨부 ${idx + 1}`}
+                                            className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                                        />
                                         <button
-                                            className="absolute -top-1.5 -right-1.5 bg-gray-900/80 text-white rounded-full w-5 h-5 flex items-center justify-center text-sm font-medium hover:bg-gray-900 transition-colors"
-                                            onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                                            aria-label="remove"
+                                            onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))}
+                                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                                         >
                                             ×
                                         </button>
@@ -205,40 +216,31 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             </div>
                         )}
 
-                        {/* 입력 바 */}
+                        {/* 입력바 */}
                         <div className="flex items-end gap-2">
                             <button
                                 onClick={() => filePickerRef.current?.click()}
-                                className="flex-shrink-0 w-8 h-8 rounded-full hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center transition-colors"
+                                disabled={sending}
+                                className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 aria-label="첨부"
                             >
-                                <Paperclip className="w-5 h-5 text-gray-600" />
+                                <Paperclip className="w-4 h-4 text-gray-600" />
                             </button>
 
-                            <div className="flex-1 flex items-end gap-2 rounded-[20px] border border-gray-200 bg-white px-3 py-1.5 focus-within:border-gray-300 transition-all">
-                                <textarea
-                                    ref={textareaRef}
-                                    value={draft}
-                                    onChange={(e) => {
-                                        setDraft(e.target.value);
-                                        autoResize(e.target);
-                                    }}
-                                    onKeyDown={onKeyDown}
-                                    onPaste={onPaste}
-                                    placeholder="메시지"
-                                    rows={1}
-                                    className="flex-1 resize-none bg-transparent outline-none text-[15px] leading-[22px] max-h-[120px] placeholder:text-gray-400 py-1.5"
-                                    style={{ height: 'auto', minHeight: '22px' }}
-                                />
-                                <button
-                                    onClick={() => (onOpenAICorrector ? onOpenAICorrector() : null)}
-                                    className="flex-shrink-0 w-7 h-7 rounded-full hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center transition-colors mb-0.5"
-                                    aria-label="AI 보정"
-                                    title="AI 보정"
-                                >
-                                    <Sparkles className="w-4 h-4 text-gray-600" />
-                                </button>
-                            </div>
+                            <textarea
+                                ref={textareaRef}
+                                value={draft}
+                                onChange={(e) => {
+                                    setDraft(e.target.value);
+                                    autoResize(e.target);
+                                }}
+                                onKeyDown={onKeyDown}
+                                onPaste={onPaste}
+                                placeholder="메시지 입력..."
+                                disabled={sending}
+                                className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
+                                rows={1}
+                            />
 
                             <button
                                 onClick={handleSend}
@@ -264,7 +266,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                         {/* 하단 정보 */}
                         <div className="mt-3">
-
                             {detail?.conversation?.summary && (
                                 <div className="bg-transparent text-sm text-gray-700">
                                     <span className="font-semibold">요약</span> {detail.conversation.summary}

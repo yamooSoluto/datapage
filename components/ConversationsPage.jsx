@@ -104,21 +104,34 @@ export default function ConversationsPage({ tenantId }) {
         setCurrentPage(1);
     };
 
-    // 상세 모달 → 전송 핸들러
-    const handleSend = async ({ text, attachments }) => {
-        if (!selectedConv) return;
+    // ✅ 상세 모달 → 전송 핸들러 (ConversationDetail에서 전달하는 형식에 맞춤)
+    const handleSend = async ({ text, attachments, tenantId: detailTenantId, chatId: detailChatId }) => {
+        if (!selectedConv && !detailChatId) {
+            console.error('[handleSend] No conversation selected');
+            throw new Error('대화를 선택해주세요');
+        }
 
-        const tenant =
+        // ✅ tenantId 우선순위: ConversationDetail에서 전달한 값 > prop > selectedConv에서 추출
+        const tenant = detailTenantId ||
             tenantId ||
-            selectedConv.tenant ||
-            selectedConv.tenantId ||
-            (typeof selectedConv.id === 'string' && selectedConv.id.includes('_')
+            selectedConv?.tenant ||
+            selectedConv?.tenantId ||
+            (typeof selectedConv?.id === 'string' && selectedConv.id.includes('_')
                 ? selectedConv.id.split('_')[0]
                 : null) ||
             'default';
 
+        // ✅ chatId: ConversationDetail에서 전달한 값 > selectedConv
+        const chatId = detailChatId || selectedConv?.chatId;
+
+        if (!chatId) {
+            console.error('[handleSend] No chatId found');
+            throw new Error('대화 ID를 찾을 수 없습니다');
+        }
+
+        console.log('[handleSend] Sending message:', { tenant, chatId, text: text?.substring(0, 50) });
+
         try {
-            // ✅ JSON으로 전송
             const res = await fetch('/api/conversations/send', {
                 method: 'POST',
                 headers: {
@@ -126,29 +139,28 @@ export default function ConversationsPage({ tenantId }) {
                 },
                 body: JSON.stringify({
                     tenantId: tenant,
-                    chatId: selectedConv.chatId,
+                    chatId: chatId,
                     content: text || ''
                 })
             });
 
             if (!res.ok) {
                 const error = await res.json().catch(() => ({ error: 'Unknown error' }));
-                throw new Error(error.error || `Send failed: ${res.status}`);
+                console.error('[handleSend] API error:', error);
+                throw new Error(error.error || error.detail || `전송 실패: ${res.status}`);
             }
 
             const result = await res.json();
+            console.log('[handleSend] Success:', result);
 
-            // 성공 후 메시지 목록 새로고침
-            if (selectedConv) {
-                // ConversationDetail 내부에서 fetchDetail() 호출하도록 트리거
-                // 또는 conversations 목록 새로고침
-                await fetchConversations();
-            }
+            // ✅ 성공 후 대화 목록 새로고침 (선택적)
+            // fetchConversations()를 호출하면 전체 목록이 새로고침되어 느릴 수 있음
+            // ConversationDetail 내부에서 fetchDetail()을 호출하므로 여기서는 생략 가능
 
             return result;
         } catch (error) {
-            console.error('Send error:', error);
-            throw error;
+            console.error('[handleSend] Error:', error);
+            throw error; // ConversationDetail에서 catch하여 alert 표시
         }
     };
 
@@ -301,7 +313,7 @@ export default function ConversationsPage({ tenantId }) {
                 </>
             )}
 
-            {/* 상세 모달 (답장 가능) */}
+            {/* ✅ 상세 모달 (답장 가능) */}
             {selectedConv && (
                 <ConversationDetail
                     conversation={selectedConv}
