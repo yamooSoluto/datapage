@@ -108,35 +108,47 @@ export default function ConversationsPage({ tenantId }) {
     const handleSend = async ({ text, attachments }) => {
         if (!selectedConv) return;
 
-        // ✅ tenantId prop을 최우선 사용, 대화 객체의 tenant/tenantId로 폴백
-        const tenant =
+        const tenantId =
             tenantId ||
             selectedConv.tenant ||
             selectedConv.tenantId ||
             (typeof selectedConv.id === 'string' && selectedConv.id.includes('_')
                 ? selectedConv.id.split('_')[0]
-                : null) ||
-            'default';
+                : null);
 
-        const form = new FormData();
-        form.append('tenant', tenant);
-        form.append('chatId', selectedConv.chatId);
-        form.append('text', text || '');
+        try {
+            // ✅ JSON으로 전송
+            const res = await fetch('/api/conversations/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    tenantId: tenantId,
+                    chatId: selectedConv.chatId,
+                    content: text || ''
+                })
+            });
 
-        attachments?.forEach((att, i) => {
-            if (att?.file) form.append('files[]', att.file, att.file.name || `file-${i}`);
-        });
+            if (!res.ok) {
+                const error = await res.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(error.error || `Send failed: ${res.status}`);
+            }
 
-        const res = await fetch('/api/conversations/send', {
-            method: 'POST',
-            body: form,
-        });
+            const result = await res.json();
 
-        if (!res.ok) {
-            const msg = await res.text().catch(() => '');
-            throw new Error(`send failed: ${res.status} ${msg}`);
+            // 성공 후 메시지 목록 새로고침
+            if (selectedConv) {
+                // ConversationDetail 내부에서 fetchDetail() 호출하도록 트리거
+                // 또는 conversations 목록 새로고침
+                await fetchConversations();
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Send error:', error);
+            throw error;
         }
-        // 성공 시 상세 모달 내부에서 fetchDetail() 재호출됨
     };
 
     return (

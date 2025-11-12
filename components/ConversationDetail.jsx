@@ -76,19 +76,46 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         el.style.height = Math.min(el.scrollHeight, 120) + 'px';
     };
 
+    // ConversationDetail.jsx - handleSend 함수 수정 (352번째 줄 근처)
+
     const handleSend = async () => {
-        if (!canSend || sending) return;
+        if (!inputMessage.trim() || sending) return;
+
         setSending(true);
+        setError(null);
+
         try {
-            if (onSend) {
-                await onSend({ text: draft.trim(), attachments });
+            // ✅ 기존: onSend prop 호출 (FormData 방식)
+            // await onSend({ text: inputMessage.trim(), attachments: [] });
+
+            // ✅ 수정: 직접 API 호출 (JSON 방식)
+            const response = await fetch('/api/conversations/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    tenantId: conversation.tenantId || conversation.tenant || tenantId,
+                    chatId: conversation.chatId,
+                    content: inputMessage.trim()  // ⚠️ text가 아니라 content!
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.error || '메시지 전송에 실패했습니다.');
             }
-            setDraft('');
-            setAttachments([]);
-            if (textareaRef.current) textareaRef.current.style.height = '40px';
-            await fetchDetail();
-        } catch (e) {
-            console.error('send failed', e);
+
+            const result = await response.json();
+            console.log('Send result:', result);
+
+            // 성공 시 처리
+            setInputMessage('');
+            await fetchDetail(); // 메시지 목록 새로고침
+
+        } catch (err) {
+            console.error('Send error:', err);
+            setError(err.message || '메시지 전송에 실패했습니다.');
         } finally {
             setSending(false);
         }
@@ -314,54 +341,54 @@ function StatBlock({ label, value, Icon, valueClass = '' }) {
 
 // 메시지 버블 (user / ai / agent)
 function MessageBubble({ message, onImageClick }) {
-    const isUser = message.sender === 'user';
+    const isUser =
+        message.sender === "user";
     const isAgent =
-        message.sender === 'admin' ||
-        message.sender === 'agent' ||
-        (message.sender === 'ai' && message.modeSnapshot === 'AGENT');
+        message.sender === "admin" ||
+        message.sender === "agent" ||
+        (message.sender === "ai" && message.modeSnapshot === "AGENT");
 
+    // 🔁 정렬만 스왑: user=좌측, ai/agent=우측
     const senderCfg = {
         user: {
-            name: '사용자',
+            name: "사용자",
             icon: User,
-            align: 'flex-row-reverse',
-            bubbleBg: 'bg-blue-600 text-white',
-            bubbleAlign: 'ml-auto',
-            iconBg: 'bg-gray-300',
-            iconColor: 'text-gray-700',
+            align: "flex-row",              // ← 좌측
+            bubbleBg: "bg-blue-600 text-white",
+            bubbleAlign: "mr-auto",         // ← 좌측
+            iconBg: "bg-gray-300",
+            iconColor: "text-gray-700",
         },
         ai: {
-            name: 'AI',
+            name: "AI",
             icon: Bot,
-            align: 'flex-row',
-            bubbleBg: 'bg-gray-200 text-gray-900',
-            bubbleAlign: 'mr-auto',
-            iconBg: 'bg-blue-500',
-            iconColor: 'text-white',
+            align: "flex-row-reverse",      // → 우측
+            bubbleBg: "bg-gray-200 text-gray-900",
+            bubbleAlign: "ml-auto",         // → 우측
+            iconBg: "bg-blue-500",
+            iconColor: "text-white",
         },
         agent: {
-            name: '상담원',
+            name: "상담원",
             icon: UserCheck,
-            align: 'flex-row',
-            bubbleBg: 'bg-purple-100 text-purple-900',
-            bubbleAlign: 'mr-auto',
-            iconBg: 'bg-purple-500',
-            iconColor: 'text-white',
+            align: "flex-row-reverse",      // → 우측
+            bubbleBg: "bg-purple-100 text-purple-900",
+            bubbleAlign: "ml-auto",         // → 우측
+            iconBg: "bg-purple-500",
+            iconColor: "text-white",
         },
-    }[isUser ? 'user' : isAgent ? 'agent' : 'ai'];
+    }[isUser ? "user" : isAgent ? "agent" : "ai"];
 
     const Icon = senderCfg.icon;
 
     const fmtTime = (ts) =>
         ts
-            ? new Date(ts).toLocaleTimeString('ko-KR', {
-                hour: '2-digit',
-                minute: '2-digit',
-            })
-            : '';
+            ? new Date(ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+            : "";
 
     return (
         <div className={`flex items-end gap-2 ${senderCfg.align}`}>
+            {/* 아이콘은 기존 로직 유지: user는 아이콘 숨김 */}
             {!isUser && (
                 <div className={`flex-shrink-0 w-7 h-7 rounded-full ${senderCfg.iconBg} flex items-center justify-center`}>
                     <Icon className={`w-4 h-4 ${senderCfg.iconColor}`} />
@@ -372,10 +399,12 @@ function MessageBubble({ message, onImageClick }) {
                 {!isUser && <div className="text-xs text-gray-500 mb-1 px-1">{senderCfg.name}</div>}
 
                 <div className={`rounded-2xl px-4 py-2.5 ${senderCfg.bubbleBg}`}>
-                    {message.text && <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>}
+                    {message.text && (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
+                    )}
 
                     {message.pics && message.pics.length > 0 && (
-                        <div className={`${message.text ? 'mt-2' : ''} space-y-2`}>
+                        <div className={`${message.text ? "mt-2" : ""} space-y-2`}>
                             {message.pics.length === 1 ? (
                                 <div
                                     className="relative group cursor-pointer overflow-hidden rounded-lg"
@@ -390,11 +419,6 @@ function MessageBubble({ message, onImageClick }) {
                                                 '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
                                         }}
                                     />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-2">
-                                            <ZoomIn className="w-5 h-5 text-gray-900" />
-                                        </div>
-                                    </div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 gap-2">
@@ -413,11 +437,6 @@ function MessageBubble({ message, onImageClick }) {
                                                         '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
                                                 }}
                                             />
-                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-1.5">
-                                                    <ZoomIn className="w-4 h-4 text-gray-900" />
-                                                </div>
-                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -426,7 +445,8 @@ function MessageBubble({ message, onImageClick }) {
                     )}
                 </div>
 
-                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-right' : 'text-left'}`}>
+                {/* ⬇️ 시간 정렬도 스왑: user=좌, ai/agent=우 */}
+                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? "text-left" : "text-right"}`}>
                     {fmtTime(message.timestamp)}
                 </div>
             </div>
