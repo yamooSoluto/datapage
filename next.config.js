@@ -4,7 +4,10 @@ const withPWA = require('next-pwa')({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development', // 개발 중에는 비활성화
-  buildExcludes: [/middleware-manifest\.json$/],
+  buildExcludes: [
+    /middleware-manifest\.json$/,
+    /dynamic-css-manifest\.json$/,
+  ],
 });
 
 const nextConfig = {
