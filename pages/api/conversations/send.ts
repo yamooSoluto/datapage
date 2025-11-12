@@ -8,23 +8,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
         const { tenantId, chatId, content, attachments } = req.body || {};
+
+        console.log("[send.ts] Request body:", {
+            tenantId,
+            chatId,
+            hasContent: !!content,
+            contentLength: content?.length,
+            attachmentsCount: attachments?.length || 0,
+        });
+
+        // ✅ 필수 파라미터 검증
         if (!tenantId || !chatId) {
+            console.error("[send.ts] Missing required params:", { tenantId, chatId });
             return res.status(400).json({ error: "tenantId and chatId are required" });
         }
 
-        // 텍스트나 첨부파일 중 하나는 있어야 함
-        if (!content?.trim() && (!attachments || attachments.length === 0)) {
+        // ✅ 텍스트 또는 첨부파일 중 하나는 있어야 함 (더 관대한 검증)
+        const hasText = content && String(content).trim().length > 0;
+        const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+
+        if (!hasText && !hasAttachments) {
+            console.error("[send.ts] No content or attachments");
             return res.status(400).json({ error: "content or attachments required" });
         }
 
         const base = (process.env.GCLOUD_BASE_URL || "").replace(/\/+$/, "");
-        if (!base) return res.status(500).json({ error: "GCLOUD_BASE_URL not set" });
+        if (!base) {
+            console.error("[send.ts] GCLOUD_BASE_URL not set");
+            return res.status(500).json({ error: "GCLOUD_BASE_URL not set" });
+        }
 
         // ✅ GCP 실제 라우트: /api/n8n/send-final
         const url = `${base}/api/n8n/send-final`;
 
         // ✅ 첨부파일 처리
-        const processedAttachments = Array.isArray(attachments)
+        const processedAttachments = hasAttachments
             ? attachments.map(att => ({
                 type: "document",
                 source: {
@@ -39,7 +57,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const payload = {
             conversationId: String(chatId),
-            content: String(content || ''),
+            content: String(content || ''), // ✅ 빈 문자열도 허용
             attachments: processedAttachments,
             via: "agent",
             sent_as: "agent",
@@ -50,9 +68,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
 
         console.log("[send.ts] Sending to:", url);
-        console.log("[send.ts] Payload:", {
-            ...payload,
-            attachments: `${processedAttachments.length} files`,
+        console.log("[send.ts] Payload summary:", {
+            conversationId: payload.conversationId,
+            contentLength: payload.content.length,
+            attachmentsCount: processedAttachments.length,
+            tenantId: payload.tenantId,
         });
 
         const r = await fetch(url, {

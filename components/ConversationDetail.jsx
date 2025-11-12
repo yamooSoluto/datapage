@@ -123,14 +123,28 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     const handleSend = async () => {
         if (sending || uploading) return;
+
         const text = (draft || '').trim();
-        if (!text && attachments.length === 0) return;
+        const hasText = text.length > 0;
+        const hasAttachments = attachments.length > 0;
+
+        // 텍스트 또는 첨부파일이 있어야 함
+        if (!hasText && !hasAttachments) return;
 
         setSending(true);
+
+        console.log('[ConversationDetail] Sending:', {
+            hasText,
+            textLength: text.length,
+            attachmentsCount: attachments.length,
+            tenantId: effectiveTenantId,
+            chatId: conversation.chatId,
+        });
+
         try {
             // ✅ tenantId와 첨부파일 정보를 포함하여 전달
             await onSend?.({
-                text,
+                text: text || '', // ✅ 빈 문자열도 명시적으로 전달
                 attachments: attachments.map(att => ({
                     name: att.name,
                     type: att.type,
