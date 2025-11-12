@@ -233,7 +233,8 @@ export default function ConversationDetail({ conversation, onClose }) {
 // ─────────────────────────────────────────────
 // 하위 구성요소
 // ─────────────────────────────────────────────
-function Stat({ label, value, icon: Icon, valueClass }) {
+// 통계 컴포넌트 - export하여 재사용 가능
+export function Stat({ label, value, icon: Icon, valueClass }) {
     return (
         <div className="text-center">
             <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
@@ -244,7 +245,8 @@ function Stat({ label, value, icon: Icon, valueClass }) {
     );
 }
 
-function ReplyComposer({ plan, value, onChange, onSend, sending, onOpenCorrection }) {
+// 답변 작성 컴포저 - export하여 재사용 가능
+export function ReplyComposer({ plan, value, onChange, onSend, sending, onOpenCorrection }) {
     const isStarter = plan === 'starter';
 
     return (
@@ -334,7 +336,8 @@ function ReplyComposer({ plan, value, onChange, onSend, sending, onOpenCorrectio
     );
 }
 
-function CorrectionModal({ plan, tenantId, chatId, initialText, onClose, onDone }) {
+// AI 보정 모달 - export하여 재사용 가능
+export function CorrectionModal({ plan, tenantId, chatId, initialText, onClose, onDone }) {
     const [text, setText] = useState(initialText || '');
     const [loading, setLoading] = useState(false);
     const isStarter = plan === 'starter';
@@ -490,8 +493,8 @@ function CorrectionModal({ plan, tenantId, chatId, initialText, onClose, onDone 
     );
 }
 
-// 메시지 버블 (원본 구조 유지)
-function MessageBubble({ message, onImageClick }) {
+// 메시지 버블 (원본 구조 유지) - export하여 다른 컴포넌트에서도 사용 가능
+export function MessageBubble({ message, onImageClick }) {
     const isUser = message.sender === 'user';
     const isAgent = message.sender === 'admin' || message.sender === 'agent' || (message.sender === 'ai' && message.modeSnapshot === 'AGENT');
     const isAI = message.sender === 'ai' && !isAgent;
