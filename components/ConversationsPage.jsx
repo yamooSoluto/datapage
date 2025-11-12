@@ -1,10 +1,10 @@
 // components/ConversationsPage.jsx
-// 애플 스타일 - 깔끔하고 직관적인 대화 목록 페이지
+// 기존 작동 로직 유지 + 아이폰 메시지 스타일 디자인 적용
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, RefreshCw, X, ExternalLink, User, Bot, UserCheck, Send, Wand2, ZoomIn } from 'lucide-react';
 import ConversationCard from './ConversationCard';
-import ConversationDetail from './ConversationDetail'; // ConversationDetail_final_complete.jsx
+import ConversationDetail from './ConversationDetail';
 
 export default function ConversationsPage({ tenantId }) {
     const [conversations, setConversations] = useState([]);
@@ -80,7 +80,7 @@ export default function ConversationsPage({ tenantId }) {
         }
     };
 
-    // 메시지 전송 후 상세 정보 새로고침 - 이 함수가 중요!
+    // 메시지 전송 후 새로고침 (추가된 기능)
     const refreshDetail = async (conv) => {
         if (!tenantId || !conv.chatId) return;
 
@@ -89,7 +89,7 @@ export default function ConversationsPage({ tenantId }) {
             const data = await res.json();
             if (!data.error) {
                 setDetailData(data);
-                // 목록도 새로고침하여 최신 메시지 반영
+                // 목록도 새로고침
                 await fetchConversations();
             }
         } catch (error) {
@@ -307,13 +307,13 @@ export default function ConversationsPage({ tenantId }) {
                     </>
                 )}
 
-                {/* 대화 상세 모달 - onRefresh 추가! */}
+                {/* 대화 상세 모달 - onRefresh 추가 */}
                 {selectedConv && detailData && (
                     <ConversationDetail
                         conversation={selectedConv}
                         detailData={detailData}
                         onClose={closeDetail}
-                        onRefresh={refreshDetail}  // ← 이 부분이 중요!
+                        onRefresh={refreshDetail}
                     />
                 )}
             </div>
