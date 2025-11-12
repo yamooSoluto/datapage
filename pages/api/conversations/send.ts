@@ -1,119 +1,97 @@
-// GCP: index.ts or routes.ts
+// /pages/api/conversations/send.ts
+import type { NextApiRequest, NextApiResponse } from 'next';
 
-import express from "express";
-import axios from "axios";
-const app = express();
+export const config = {
+    api: { bodyParser: { sizeLimit: '20mb' } }, // 첨부 base64 대비
+};
 
-// ✅ 첨부 base64가 커서 본문 제한 상향 (기존 100KB → 20MB)
-app.post(
-    "/api/n8n/send-final",
-    express.json({ limit: "20mb", verify: (req: any, _res, buf) => (req.rawBody = buf) }),
-    async (req, res) => {
-        try {
-            const {
-                tenantId,
-                conversationId,
-                content = "",
-                attachments = [],
-                via = "agent",
-                sent_as = "agent",
-                // ...기존 필드 유지 (mode, confirmMode, mediatedSource, slackCleanup 등)
-            } = req.body || {};
+type IncomingAttachment = {
+    name: string;
+    type?: string;
+    size?: number;
+    base64?: string;   // 순수 base64
+    dataUrl?: string;  // data:...;base64,xxxx
+    url?: string;      // 사전 업로드된 파일 URL (옵션)
+};
 
-            if (!tenantId || !conversationId) {
-                return res.status(400).json({ error: "tenantId and conversationId are required" });
-            }
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-            // ✅ attachments 유연 파서: base64 | dataUrl | url 모두 허용
-            type In = { name?: string; type?: string; size?: number; base64?: string; dataUrl?: string; url?: string };
-            const input: In[] = Array.isArray(attachments) ? attachments.slice(0, 10) : [];
+    const { tenantId, chatId, content = '', attachments = [] } = (req.body || {}) as {
+        tenantId?: string;
+        chatId?: string;
+        content?: string;
+        attachments?: IncomingAttachment[];
+    };
 
-            const files = input.map((f, i) => {
-                const name = f?.name || `file-${i + 1}`;
-                const type = f?.type || "application/octet-stream";
-
-                // URL 첨부 (서버 업로드 대신 외부 링크 첨부로 전달할 때)
-                if (f?.url && /^https?:\/\//.test(f.url)) {
-                    return { mode: "url" as const, name, type, url: f.url };
-                }
-
-                // base64 / dataUrl → Buffer
-                let b64 = "";
-                if (f?.base64) b64 = String(f.base64);
-                else if (f?.dataUrl && f.dataUrl.startsWith("data:")) b64 = f.dataUrl.split(",")[1] || "";
-
-                const buf = b64 ? Buffer.from(b64, "base64") : null;
-                return { mode: "buffer" as const, name, type, buffer: buf };
-            });
-
-            const hasContent = (content || "").length > 0;
-            const hasFiles = files.some((f) => (f as any).buffer || (f as any).url);
-
-            // ✅ 내용 없이 첨부만도 허용
-            if (!hasContent && !hasFiles) {
-                return res.status(400).json({ error: "content or attachments required" });
-            }
-
-            // 사이즈 가드 (총 15MB)
-            const totalBytes = files.reduce((s, f: any) => s + (f.buffer?.length || 0), 0);
-            if (totalBytes > 15 * 1024 * 1024) {
-                return res.status(413).json({ error: "attachments too large (limit ~15MB per request)" });
-            }
-
-            // ── Chatwoot 멀티파트 업로드 ─────────────────────────
-            const CHATWOOT_BASE = process.env.CHATWOOT_BASE_URL || "";
-            const CHATWOOT_ACCOUNT_ID = process.env.CHATWOOT_ACCOUNT_ID;
-            const CW_TOKEN =
-                process.env.CW_API_TOKEN ||
-                process.env.CHATWOOT_TOKEN ||
-                process.env.CHATWOOT_API_TOKEN;
-
-            if (!CHATWOOT_BASE || !CHATWOOT_ACCOUNT_ID || !CW_TOKEN) {
-                return res.status(500).json({ error: "Chatwoot ENV missing" });
-            }
-
-            const FormData = (await import("form-data")).default;
-            const form = new FormData();
-
-            // 내용은 비어도 허용
-            form.append("content", content || "");
-
-            for (const f of files) {
-                if ((f as any).mode === "url") {
-                    // 외부 URL 첨부를 Chatwoot content_attributes로 전달
-                    form.append(
-                        "content_attributes[external_attachments][]",
-                        JSON.stringify({ type: "link", url: (f as any).url, name: f.name })
-                    );
-                } else if ((f as any).buffer) {
-                    form.append("attachments[]", (f as any).buffer, {
-                        filename: f.name,
-                        contentType: f.type,
-                    });
-                }
-            }
-
-            const endpoint = `${CHATWOOT_BASE}/api/v1/accounts/${CHATWOOT_ACCOUNT_ID}/conversations/${encodeURIComponent(
-                conversationId
-            )}/messages`;
-
-            const r = await axios.post(endpoint, form, {
-                headers: { api_access_token: CW_TOKEN, ...form.getHeaders() },
-                maxBodyLength: Infinity,
-                maxContentLength: Infinity,
-            });
-
-            return res.status(200).json({
-                ok: true,
-                via,
-                sent_as,
-                data: r.data,
-            });
-        } catch (e: any) {
-            console.error("[send-final] error:", e?.response?.data || e?.message || e);
-            return res
-                .status(e?.response?.status || 500)
-                .json({ error: e?.message || "internal error", detail: e?.response?.data });
-        }
+    if (!tenantId || !chatId) {
+        return res.status(400).json({ error: 'tenantId and chatId are required' });
     }
-);
+
+    const atts = Array.isArray(attachments) ? attachments.slice(0, 10) : [];
+    const hasContent = !!(content && String(content).length > 0);
+    const hasFiles = atts.length > 0;
+
+    // 내용 없이 첨부만 전송도 허용
+    if (!hasContent && !hasFiles) {
+        return res.status(400).json({ error: 'content or attachments required' });
+    }
+
+    // dataUrl → base64 정규화
+    const safeAttachments = atts
+        .map((a) => {
+            const base64 =
+                a?.base64
+                    ? String(a.base64)
+                    : a?.dataUrl && String(a.dataUrl).startsWith('data:')
+                        ? String(a.dataUrl).split(',')[1] ?? ''
+                        : '';
+
+            const out: Record<string, any> = {
+                name: String(a?.name || 'file'),
+                type: String(a?.type || 'application/octet-stream'),
+                size: Number(a?.size || 0),
+            };
+            if (a?.url) out.url = String(a.url);
+            if (base64) out.base64 = base64;
+            return out;
+        })
+        .filter((a) => 'url' in a || 'base64' in a);
+
+    try {
+        const GCLOUD_BASE_URL = process.env.GCLOUD_BASE_URL?.replace(/\/+$/, '');
+        if (!GCLOUD_BASE_URL) {
+            return res.status(500).json({ error: 'GCLOUD_BASE_URL not set' });
+        }
+
+        const payload = {
+            tenantId,
+            conversationId: chatId,
+            content: content || '',       // 비어 있어도 OK (첨부만 전송)
+            attachments: safeAttachments, // [{name,type,size,base64|url}]
+            via: 'agent',
+            sent_as: 'agent',
+            confirmMode: false,
+            mediatedSource: 'agent_comment',
+        };
+
+        const resp = await fetch(`${GCLOUD_BASE_URL}/api/n8n/send-final`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(process.env.N8N_TOKEN ? { 'x-internal-auth': process.env.N8N_TOKEN } : {}),
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            return res.status(resp.status).json({ error: 'send-final failed', detail: data });
+        }
+
+        return res.status(200).json({ ok: true, via: 'gcp', data });
+    } catch (e: any) {
+        console.error('[api/conversations/send] error:', e);
+        return res.status(500).json({ error: e?.message || 'internal error' });
+    }
+}
