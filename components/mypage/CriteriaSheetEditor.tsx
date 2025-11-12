@@ -30,6 +30,32 @@ import { CSS } from "@dnd-kit/utilities";
 import { PRESET_ITEMS, SHEET_TEMPLATES } from "./criteriaSheetPresets";
 
 
+// ---- Portal: 모달/드롭다운 클리핑 방지용 ----
+import { createPortal } from "react-dom";
+
+function Portal({ children }: { children: React.ReactNode }) {
+    const [mounted, setMounted] = React.useState(false);
+    const [el] = React.useState(() => {
+        const div = typeof document !== "undefined" ? document.createElement("div") : null;
+        if (div) {
+            div.style.position = "relative";
+            div.style.zIndex = "9999";
+        }
+        return div;
+    });
+
+    React.useEffect(() => {
+        if (!el || typeof document === "undefined") return;
+        document.body.appendChild(el);
+        setMounted(true);
+        return () => { try { document.body.removeChild(el); } catch { } };
+    }, [el]);
+
+    if (!mounted || !el) return null;
+    return createPortal(children, el);
+}
+
+
 // ────────────────────────────────────────────────────────────
 // 유틸 (기존 유지)
 // ────────────────────────────────────────────────────────────
@@ -244,105 +270,378 @@ function InlineDropdown({
         return () => window.removeEventListener("resize", checkMobile);
     }, []);
 
-    // 라이브러리 참조 타입 처리 - 드롭다운으로
-    if (facet.type === "library-ref") {
-        const libraryType = facet.libraryType || "links";
-        const libraryItems = library?.[libraryType] || {};
-        const libraryOptions = Object.entries(libraryItems).map(([key, item]: any) => ({
-            key,
-            label: item.label,
-            value: item.value,
-        }));
+    // 라이브러리 참조 타입 처리 - hooks는 항상 호출되어야 함 (Rules of Hooks)
+    const isLibraryRef = facet.type === "library-ref";
+    const libraryType = isLibraryRef ? (facet.libraryType || "links") : "links";
 
-        const selectedKeys = value ? String(value).split(',').filter(Boolean) : [];
+    // 디버깅: 모든 InlineDropdown 호출 시 facet 정보 확인
+    React.useEffect(() => {
+        console.log('InlineDropdown - Component rendered:', {
+            facetType: facet.type,
+            facetKey: facet.key,
+            facetLabel: facet.label,
+            isLibraryRef,
+            libraryType,
+            hasLibrary: !!library,
+            libraryKeys: library ? Object.keys(library) : 'library is undefined',
+            libraryValue: library?.[libraryType],
+        });
+    }, [facet.type, facet.key, isLibraryRef, libraryType, library]);
+
+    // library prop이 없거나 구조가 다를 수 있으므로 안전하게 처리
+    const libraryItems = React.useMemo(() => {
+        if (!isLibraryRef) return {};
+
+        console.log('InlineDropdown - Library processing:', {
+            library,
+            libraryType,
+            hasLibrary: !!library,
+            libraryTypeValue: library?.[libraryType],
+            libraryTypeType: typeof library?.[libraryType],
+            allLibraryKeys: library ? Object.keys(library) : []
+        });
+
+        if (!library) {
+            console.warn('InlineDropdown - Library prop is missing or undefined');
+            return {};
+        }
+        if (typeof library[libraryType] === 'object' && library[libraryType] !== null) {
+            const items = library[libraryType];
+            console.log(`InlineDropdown - Found library items for "${libraryType}":`, items, 'Keys:', Object.keys(items));
+            return items;
+        }
+        console.warn(`InlineDropdown - Library type "${libraryType}" not found in library:`, library, 'Available keys:', Object.keys(library));
+        return {};
+    }, [isLibraryRef, library, libraryType]);
+
+    const libraryOptions = React.useMemo(() => {
+        if (!isLibraryRef) return [];
+
+        // libraryItems가 비어있으면 library에서 직접 가져오기
+        const items = Object.keys(libraryItems).length > 0
+            ? libraryItems
+            : (library?.[libraryType] || {});
+
+        console.log('InlineDropdown - libraryOptions creation:', {
+            libraryType,
+            libraryItemsKeys: Object.keys(libraryItems),
+            libraryDirectValue: library?.[libraryType],
+            libraryDirectKeys: library?.[libraryType] ? Object.keys(library[libraryType]) : [],
+            itemsKeys: Object.keys(items),
+            items,
+        });
+
+        return Object.entries(items).map(([key, item]: any) => ({
+            key,
+            label: item?.label || item?.name || key,
+            value: item?.value || item?.url || '',
+        }));
+    }, [isLibraryRef, libraryItems, library, libraryType]);
+
+    const dropdownId = `${row.id}-${facet.key}`;
+    const isDropdownOpen = openDropdown === dropdownId;
+
+    // 드롭다운 위치 계산 (Portal 사용을 위해)
+    const [libDropdownPosition, setLibDropdownPosition] = React.useState<{ top: number; left: number } | null>(null);
+
+    // 디버깅: library 데이터 확인
+    React.useEffect(() => {
+        if (isLibraryRef) {
+            console.log('Library Debug - State check:', {
+                isEditMode,
+                isDropdownOpen,
+                dropdownId,
+                libraryType,
+                libraryOptionsLength: libraryOptions.length,
+                libraryOptions,
+                libDropdownPosition,
+                hasCellRef: !!cellRef.current,
+            });
+        }
+
+        if (isLibraryRef && isEditMode && isDropdownOpen) {
+            console.log('Library Debug - Dropdown opened:', {
+                libraryType,
+                library,
+                libraryItems,
+                libraryOptions,
+                libraryKeys: Object.keys(libraryItems),
+                libraryOptionsLength: libraryOptions.length,
+                libraryStructure: library ? Object.keys(library) : 'library is undefined',
+                libDropdownPosition,
+            });
+        }
+    }, [isLibraryRef, isEditMode, isDropdownOpen, dropdownId, libraryType, library, libraryItems, libraryOptions]);
+
+    React.useLayoutEffect(() => {
+        if (!isLibraryRef || !isDropdownOpen) {
+            setLibDropdownPosition(null);
+            return;
+        }
+
+        const updateLibDropdownPosition = () => {
+            if (!cellRef.current) {
+                console.log('Library Dropdown - cellRef not ready, retrying...');
+                // cellRef가 준비되지 않았으면 약간 지연 후 다시 시도
+                setTimeout(() => {
+                    if (cellRef.current && isDropdownOpen) {
+                        updateLibDropdownPosition();
+                    }
+                }, 10);
+                return;
+            }
+
+            const cellRect = cellRef.current.getBoundingClientRect();
+            const dropdownWidth = 300;
+            const dropdownHeight = libraryOptions.length > 0
+                ? Math.min(300, libraryOptions.length * 60 + 20)
+                : 100; // 안내 메시지 높이
+            const pad = 8;
+            const vh = window.innerHeight;
+            const vw = window.innerWidth;
+
+            let left = cellRect.left;
+            let top = cellRect.bottom + pad;
+
+            // 화면 오른쪽을 벗어나면 왼쪽으로 조정
+            if (left + dropdownWidth > vw - pad) {
+                left = Math.max(pad, vw - dropdownWidth - pad);
+            }
+
+            // 화면 하단을 벗어나면 위로 조정
+            if (top + dropdownHeight > vh - pad) {
+                top = Math.max(pad, cellRect.top - dropdownHeight - pad);
+            }
+
+            const position = { top, left };
+            console.log('Library Dropdown - Position calculated:', {
+                position,
+                cellRect,
+                libraryOptionsLength: libraryOptions.length,
+            });
+            setLibDropdownPosition(position);
+        };
+
+        updateLibDropdownPosition();
+        const handleScroll = () => updateLibDropdownPosition();
+        const handleResize = () => updateLibDropdownPosition();
+
+        window.addEventListener("scroll", handleScroll, true);
+        window.addEventListener("resize", handleResize);
+
+        return () => {
+            window.removeEventListener("scroll", handleScroll, true);
+            window.removeEventListener("resize", handleResize);
+        };
+    }, [isLibraryRef, isDropdownOpen, cellRef, libraryOptions.length]);
+
+    // 라이브러리 참조 타입 처리 - 드롭다운으로
+    if (isLibraryRef) {
+        // 라이브러리에 존재하는 항목만 필터링
+        const selectedKeys = React.useMemo(() => {
+            const keys = value ? String(value).split(',').filter(Boolean) : [];
+            return keys.filter(k => libraryItems[k] != null);
+        }, [value, libraryItems]);
+
         const selectedLabels = selectedKeys
-            .map(k => libraryItems[k]?.label)
+            .map(k => libraryItems[k]?.label || libraryItems[k]?.name || k)
             .filter(Boolean)
             .join(', ');
 
-        const dropdownId = `${row.id}-${facet.key}`;
-        const isDropdownOpen = openDropdown === dropdownId;
+        // 임시 선택 상태 (확인 버튼을 누르기 전까지)
+        const [tempSelectedKeys, setTempSelectedKeys] = React.useState<string[]>(selectedKeys);
+
+        // 드롭다운이 열릴 때마다 현재 선택된 값으로 초기화 (유효한 항목만)
+        React.useEffect(() => {
+            if (isDropdownOpen) {
+                setTempSelectedKeys(selectedKeys);
+            }
+        }, [isDropdownOpen, selectedKeys.join(',')]);
+
+        // 라이브러리 항목이 삭제되었을 때 자동으로 정리
+        React.useEffect(() => {
+            const rawKeys = value ? String(value).split(',').filter(Boolean) : [];
+            const validKeys = rawKeys.filter(k => libraryItems[k] != null);
+            if (validKeys.length !== rawKeys.length && validKeys.join(',') !== value) {
+                // 삭제된 항목이 있으면 자동으로 업데이트
+                onChange(validKeys.join(','));
+            }
+        }, [libraryItems, value, onChange]);
+
+        const handleApply = () => {
+            onChange(tempSelectedKeys.join(','));
+            setOpenDropdown(null);
+        };
 
         return (
-            <div className="relative inline-block w-full">
-                <button
-                    ref={cellRef as any}
-                    onClick={() => {
-                        if (isEditMode) {
-                            setOpenDropdown(isDropdownOpen ? null : dropdownId);
-                        }
-                    }}
-                    disabled={!isEditMode}
-                    className={`w-full px-3 py-2 text-left rounded-lg border transition-all ${isEditMode
-                        ? 'border-gray-300 hover:border-gray-900 hover:bg-gray-50'
-                        : 'border-transparent bg-transparent'
-                        } ${selectedKeys.length > 0 ? 'text-gray-900' : 'text-gray-400'}`}
-                    title={selectedLabels || '선택'}
-                >
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm">
-                            {selectedLabels || '선택'}
-                        </span>
-                        {isEditMode && libraryOptions.length > 0 && (
-                            <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                        )}
-                    </div>
-                </button>
-
-                {isDropdownOpen && libraryOptions.length > 0 && (
-                    <div
-                        ref={dropdownRef}
-                        className="absolute z-50 mt-1 w-full min-w-[200px] max-h-[300px] overflow-y-auto bg-white rounded-lg shadow-lg border border-gray-200"
+            <>
+                <div className="relative inline-block w-full">
+                    <button
+                        ref={cellRef as any}
+                        onClick={() => {
+                            if (isEditMode) {
+                                setOpenDropdown(isDropdownOpen ? null : dropdownId);
+                            }
+                        }}
+                        disabled={!isEditMode}
+                        className={`w-full px-3 py-2 text-left rounded-lg border transition-all duration-200 ${isEditMode
+                            ? 'border-gray-300 hover:border-gray-900 hover:bg-gray-50 active:scale-[0.98]'
+                            : 'border-transparent bg-transparent'
+                            } ${selectedKeys.length > 0 ? 'text-gray-900' : 'text-gray-400'}`}
+                        title={selectedLabels || '선택'}
                     >
-                        <div className="p-2 space-y-1">
-                            {libraryOptions.map((opt: any) => {
-                                const isSelected = selectedKeys.includes(opt.key);
-                                return (
-                                    <label
-                                        key={opt.key}
-                                        className="flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={isSelected}
-                                            onChange={() => {
-                                                const newSelected = isSelected
-                                                    ? selectedKeys.filter((k: string) => k !== opt.key)
-                                                    : [...selectedKeys, opt.key];
-                                                onChange(newSelected.join(','));
-                                            }}
-                                            className="mt-0.5 w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-2 focus:ring-gray-900"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-medium text-gray-900 truncate">
-                                                {opt.label}
-                                            </div>
-                                            <div className="text-xs text-gray-500 truncate" title={opt.value}>
-                                                {opt.value}
-                                            </div>
-                                        </div>
-                                    </label>
-                                );
-                            })}
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm">
+                                {selectedKeys.length > 0
+                                    ? selectedKeys.length === 1
+                                        ? selectedLabels
+                                        : `${selectedKeys.length}개 선택됨`
+                                    : '선택'}
+                            </span>
+                            {isEditMode && (
+                                <ChevronDown className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                            )}
                         </div>
-                    </div>
-                )}
+                    </button>
+                </div>
 
-                {!isDropdownOpen && libraryOptions.length === 0 && isEditMode && (
-                    <div className="absolute z-50 mt-1 w-full p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
-                        📚 라이브러리 탭에서 {facet.label}을 추가하세요
-                    </div>
+                {/* Portal로 드롭다운 렌더링 (테이블 컨테이너 overflow 문제 해결) */}
+                {isDropdownOpen && (
+                    <Portal>
+                        {(() => {
+                            console.log('Library Dropdown Render Check:', {
+                                isDropdownOpen,
+                                libDropdownPosition,
+                                libraryOptionsLength: libraryOptions.length,
+                                libraryOptions,
+                                hasPosition: !!libDropdownPosition,
+                            });
+                            return null;
+                        })()}
+                        {libDropdownPosition && (
+                            libraryOptions.length > 0 ? (
+                                <div
+                                    ref={dropdownRef}
+                                    className="library-dropdown fixed z-[1000] min-w-[200px] max-w-[320px] bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden"
+                                    style={{
+                                        top: `${libDropdownPosition.top}px`,
+                                        left: `${libDropdownPosition.left}px`,
+                                        width: '320px',
+                                        maxHeight: '400px',
+                                        display: 'flex',
+                                        flexDirection: 'column'
+                                    }}
+                                >
+                                    <div className="p-2 space-y-0.5 overflow-y-auto flex-1" style={{ maxHeight: '320px' }}>
+                                        {libraryOptions.map((opt: any) => {
+                                            const isSelected = tempSelectedKeys.includes(opt.key);
+                                            return (
+                                                <label
+                                                    key={opt.key}
+                                                    className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 cursor-pointer transition-all duration-150 active:bg-gray-100"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => {
+                                                            const newSelected = isSelected
+                                                                ? tempSelectedKeys.filter((k: string) => k !== opt.key)
+                                                                : [...tempSelectedKeys, opt.key];
+                                                            setTempSelectedKeys(newSelected);
+                                                        }}
+                                                        className="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer transition-all"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-sm font-medium text-gray-900 truncate">
+                                                            {opt.label}
+                                                        </div>
+                                                        {opt.value && (
+                                                            <div className="text-xs text-gray-500 truncate mt-0.5" title={opt.value}>
+                                                                {opt.value}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="border-t border-gray-200 p-3 bg-gray-50 flex items-center justify-between gap-2">
+                                        <span className="text-xs text-gray-600">
+                                            {tempSelectedKeys.length > 0 ? `${tempSelectedKeys.length}개 선택됨` : '선택 안 함'}
+                                        </span>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setOpenDropdown(null)}
+                                                className="px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-150 active:scale-95"
+                                            >
+                                                취소
+                                            </button>
+                                            <button
+                                                onClick={handleApply}
+                                                className="px-4 py-1.5 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-all duration-150 active:scale-95 font-medium shadow-sm"
+                                            >
+                                                확인
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div
+                                    className="fixed z-[1000] w-[300px] p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800"
+                                    style={{
+                                        top: `${libDropdownPosition.top}px`,
+                                        left: `${libDropdownPosition.left}px`
+                                    }}
+                                >
+                                    📚 라이브러리 탭에서 {facet.label}을 추가하세요
+                                </div>
+                            )
+                        )}
+                    </Portal>
                 )}
-            </div>
+                <style jsx>{`
+                    @keyframes libraryDropdownFadeIn {
+                        from {
+                            opacity: 0;
+                            transform: translateY(-8px) scale(0.98);
+                        }
+                        to {
+                            opacity: 1;
+                            transform: translateY(0) scale(1);
+                        }
+                    }
+                    .library-dropdown {
+                        animation: libraryDropdownFadeIn 0.2s ease-out;
+                    }
+                `}</style>
+            </>
         );
     }
 
-    const [position, setPosition] = React.useState({ top: 0, left: 0 });
-    React.useEffect(() => {
-        if (isMobile) return;
-        if (!cellRef.current || !dropdownRef.current) return;
+    const [position, setPosition] = React.useState<{ top: number; left: number } | null>(null);
+    const [isPositionReady, setIsPositionReady] = React.useState(false);
+
+    React.useLayoutEffect(() => {
+        if (isMobile) {
+            setIsPositionReady(true);
+            return;
+        }
+
+        let retryTimer: NodeJS.Timeout | null = null;
+
         const updatePosition = () => {
-            const cellRect = cellRef.current!.getBoundingClientRect();
+            if (!cellRef.current) {
+                // cellRef가 아직 준비되지 않았으면 약간 지연 후 다시 시도
+                if (retryTimer) clearTimeout(retryTimer);
+                retryTimer = setTimeout(() => {
+                    if (cellRef.current) {
+                        updatePosition();
+                    }
+                }, 5); // 더 빠른 재시도
+                return;
+            }
+
+            const cellRect = cellRef.current.getBoundingClientRect();
             const dropdownHeight = 560;
             const dropdownWidth = 420;
             const pad = 12;
@@ -359,15 +658,24 @@ function InlineDropdown({
             } else {
                 top = Math.min(cellRect.top, vh - dropdownHeight - pad);
             }
+            // viewport 기준으로 위치 설정 (Portal 사용 시)
             setPosition({ top, left });
+            setIsPositionReady(true);
         };
+
+        // useLayoutEffect를 사용하여 DOM 업데이트 전에 위치 계산
         updatePosition();
-        const handleScroll = () => updatePosition();
+
+        const handleScroll = () => {
+            if (cellRef.current) updatePosition();
+        };
         window.addEventListener("scroll", handleScroll, true);
-        window.addEventListener("resize", handleScroll);
+        window.addEventListener("resize", updatePosition);
+
         return () => {
+            if (retryTimer) clearTimeout(retryTimer);
             window.removeEventListener("scroll", handleScroll, true);
-            window.removeEventListener("resize", handleScroll);
+            window.removeEventListener("resize", updatePosition);
         };
     }, [cellRef, isMobile]);
 
@@ -595,11 +903,18 @@ function InlineDropdown({
 
     const containerClass = isMobile
         ? "fixed inset-x-0 bottom-0 z-[1000] px-3 pb-4"
-        : "absolute z-[1000]";
+        : "fixed z-[1000]"; // 데스크톱에서도 fixed로 변경하여 Portal 사용 시 올바른 위치 계산
 
-    const containerStyle = isMobile ? undefined : { top: position.top, left: position.left };
+    const containerStyle = isMobile
+        ? undefined
+        : position
+            ? {
+                top: `${position.top}px`,
+                left: `${position.left}px`
+            }
+            : undefined; // 위치가 계산되기 전까지는 렌더링하지 않으므로 스타일 불필요
 
-    return (
+    const dropdownJSX = (
         <>
             <div className={containerClass} style={containerStyle}>
                 <div className={`w-full ${isMobile ? "max-h-[85vh]" : "w-[420px]"} inline-dropdown-anim`}>
@@ -990,7 +1305,21 @@ function InlineDropdown({
                     </div>
                 </div>
             </div>
+        </>
+    );
 
+    // Portal로 감싸서 테이블 컨테이너 overflow 문제 해결 (모바일 + 데스크톱 모두)
+    // 데스크톱에서는 fixed positioning과 viewport 기준 위치 계산 사용
+    // 위치가 계산되기 전까지는 렌더링하지 않음 (깜빡임 방지)
+    if (!isMobile && !position) {
+        return null;
+    }
+
+    return (
+        <>
+            <Portal>
+                {dropdownJSX}
+            </Portal>
             <style jsx>{`
                 @keyframes inlineDropdownFade {
                     from {
@@ -1353,50 +1682,52 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                             )}
                         </button>
 
-                        {/* 모달 */}
+                        {/* 모달 - Portal로 렌더링하여 테이블 컨테이너 overflow 문제 해결 */}
                         {isModalOpen && (
-                            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
-                                <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                                    {/* 헤더 */}
-                                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-                                        <h3 className="text-lg font-semibold text-gray-900">비고</h3>
-                                        <button
-                                            onClick={() => setIsModalOpen(false)}
-                                            className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors"
-                                        >
-                                            <X className="w-5 h-5 text-gray-500" />
-                                        </button>
-                                    </div>
+                            <Portal>
+                                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
+                                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                        {/* 헤더 */}
+                                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                                            <h3 className="text-lg font-semibold text-gray-900">비고</h3>
+                                            <button
+                                                onClick={() => setIsModalOpen(false)}
+                                                className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center transition-colors"
+                                            >
+                                                <X className="w-5 h-5 text-gray-500" />
+                                            </button>
+                                        </div>
 
-                                    {/* 내용 */}
-                                    <div className="p-6">
-                                        <textarea
-                                            value={modalValue}
-                                            onChange={(e) => setModalValue(e.target.value)}
-                                            placeholder="답변시 참고 할 사항이 있다면 입력해주세요."
-                                            rows={8}
-                                            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none"
-                                            autoFocus
-                                        />
-                                    </div>
+                                        {/* 내용 */}
+                                        <div className="p-6">
+                                            <textarea
+                                                value={modalValue}
+                                                onChange={(e) => setModalValue(e.target.value)}
+                                                placeholder="답변시 참고 할 사항이 있다면 입력해주세요."
+                                                rows={8}
+                                                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent resize-none"
+                                                autoFocus
+                                            />
+                                        </div>
 
-                                    {/* 하단 버튼 */}
-                                    <div className="flex items-center gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200">
-                                        <button
-                                            onClick={() => setIsModalOpen(false)}
-                                            className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-                                        >
-                                            취소
-                                        </button>
-                                        <button
-                                            onClick={handleSave}
-                                            className="flex-1 px-4 py-2.5 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
-                                        >
-                                            저장
-                                        </button>
+                                        {/* 하단 버튼 */}
+                                        <div className="flex items-center gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200">
+                                            <button
+                                                onClick={() => setIsModalOpen(false)}
+                                                className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                            >
+                                                취소
+                                            </button>
+                                            <button
+                                                onClick={handleSave}
+                                                className="flex-1 px-4 py-2.5 rounded-xl bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors"
+                                            >
+                                                저장
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            </Portal>
                         )}
                     </>
                 ) : (
@@ -1452,6 +1783,70 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                 ) : (
                     <div className="px-3 py-2 text-sm text-gray-700 min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
                         <span className="line-clamp-2 w-full">{isDisabled ? "-" : (value || <span className="text-gray-400">-</span>)}</span>
+                    </div>
+                )}
+            </td>
+        );
+    }
+
+    // library-ref 타입 처리 - InlineDropdown에서 직접 버튼과 드롭다운 렌더링
+    if (facet.type === "library-ref") {
+        const libraryType = facet.libraryType || "links";
+        const libraryItems = library?.[libraryType] || {};
+
+        // 라이브러리에 존재하는 항목만 필터링
+        const validValues = React.useMemo(() => {
+            return values.filter((v: string) => libraryItems[v] != null);
+        }, [values, libraryItems]);
+
+        // 라이브러리 항목이 삭제되었을 때 자동으로 정리
+        React.useEffect(() => {
+            if (validValues.length !== values.length && isEditMode) {
+                // 삭제된 항목이 있으면 자동으로 업데이트
+                const cleanedValue = validValues.length > 0 ? pack(validValues) : "";
+                if (cleanedValue !== value) {
+                    updateCell(row.id, facet.key, cleanedValue);
+                }
+            }
+        }, [validValues.length, values.length, isEditMode, value, row.id, facet.key, updateCell]);
+
+        return (
+            <td className="px-3 py-2 align-top min-w-[140px] max-w-[200px]">
+                {isEditMode ? (
+                    <InlineDropdown
+                        row={row}
+                        cellRef={cellRef}
+                        facet={facet}
+                        value={validValues.length > 0 ? pack(validValues) : ""}
+                        onChange={(newValue: string) => {
+                            updateCell(row.id, facet.key, newValue);
+                        }}
+                        onClose={() => setOpenDropdown(null)}
+                        customOptions={[]}
+                        onDeleteCustomOption={() => { }}
+                        onUpdateFacetOptions={onUpdateFacetOptions}
+                        library={library}
+                        openDropdown={openDropdown}
+                        setOpenDropdown={setOpenDropdown}
+                        isEditMode={isEditMode}
+                    />
+                ) : (
+                    <div className="px-3 py-2 text-sm min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
+                        {validValues.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 w-full">
+                                {validValues.map((v: string, idx: number) => {
+                                    const item = libraryItems[v];
+                                    const label = item?.label || item?.name || v;
+                                    return (
+                                        <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-xs font-medium line-clamp-1 max-w-full">
+                                            {label}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <span className="text-gray-400">-</span>
+                        )}
                     </div>
                 )}
             </td>
@@ -1594,15 +1989,23 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
         if (!facet) return {};
         const groups: Record<string, any[]> = {};
 
+        // 라이브러리 참조 타입인 경우 라이브러리 항목 가져오기
+        const libraryType = facet.type === 'library-ref' ? (facet.libraryType || 'links') : null;
+        const libraryItems = libraryType ? (library?.[libraryType] || {}) : null;
+
         options.forEach(option => {
             groups[option] = items.filter((item: any) => {
                 const values = unpack(item.facets?.[facet.key] || "");
-                return values.some((v: string) => normalize(v) === normalize(option));
+                // 라이브러리 참조 타입인 경우 라이브러리에 존재하는 항목만 필터링
+                const validValues = libraryItems
+                    ? values.filter((v: string) => libraryItems[v] != null)
+                    : values;
+                return validValues.some((v: string) => normalize(v) === normalize(option));
             });
         });
 
         return groups;
-    }, [facet, options, items]);
+    }, [facet, options, items, library]);
 
     // 라이브러리 참조 타입의 옵션 라벨 가져오기
     const getOptionLabel = (optionKey: string) => {
@@ -1809,7 +2212,13 @@ function FacetPivotView({ sheetId, template, items, onToggleMembership, customOp
                                             {getOptionLabel(opt)}
                                         </td>
                                         {items.map((it: any) => {
-                                            const values = unpack(it.facets?.[facet.key] || "");
+                                            const rawValues = unpack(it.facets?.[facet.key] || "");
+                                            // 라이브러리 참조 타입인 경우 라이브러리에 존재하는 항목만 필터링
+                                            const libraryType = facet?.type === 'library-ref' ? (facet.libraryType || 'links') : null;
+                                            const libraryItems = libraryType ? (library?.[libraryType] || {}) : null;
+                                            const values = libraryItems
+                                                ? rawValues.filter((v: string) => libraryItems[v] != null)
+                                                : rawValues;
                                             const active = values.some((v: string) => normalize(v) === normalize(opt));
                                             return (
                                                 <td key={it.id + opt} className="px-2 py-2 bg-white">
@@ -2058,6 +2467,19 @@ function LinkLibraryBottomSheet({ isOpen, onClose, linkLibrary, onUpdate }: any)
 // 🚀 메인 컴포넌트 (UI만 개선, 로직은 기존 유지)
 // ─────────────────────────────────────────────────────────────────────
 export default function CriteriaSheetEditor({ tenantId, initialData, templates, onSave, library }: any) {
+    // 디버깅: library prop 확인
+    React.useEffect(() => {
+        console.log('CriteriaSheetEditor - Library prop:', {
+            library,
+            libraryType: typeof library,
+            libraryKeys: library ? Object.keys(library) : 'library is undefined',
+            libraryLinks: library?.links,
+            libraryPasswords: library?.passwords,
+            libraryRules: library?.rules,
+            libraryInfo: library?.info,
+        });
+    }, [library]);
+
     // 기존 상태 관리 로직 그대로 유지
     const [data, setData] = React.useState<any>(() => {
         const defaults = {
@@ -2157,6 +2579,22 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
 
     const [viewMode, setViewMode] = React.useState<"item" | "facet">("item");
     const [openDropdown, setOpenDropdown] = React.useState<any>(null);
+
+    // ---- 레이아웃 계산 ----
+    const headerRef = React.useRef<HTMLDivElement | null>(null);
+    const [headerH, setHeaderH] = React.useState(0);
+    const [scrolled, setScrolled] = React.useState(false);
+
+    // 하단 탭바/액션바 높이 가정(필요시 조절)
+    const TABBAR_H = 64;     // 하단 네비 높이
+    const ACTIONBAR_H = 56;  // 항목 추가 바 높이
+
+    React.useEffect(() => {
+        const r = () => setHeaderH(headerRef.current?.getBoundingClientRect().height || 0);
+        r();
+        window.addEventListener("resize", r);
+        return () => window.removeEventListener("resize", r);
+    }, []);
 
     // 상단 고정 영역 높이 측정
     const fixedTopRef = React.useRef<HTMLDivElement | null>(null);
@@ -2345,98 +2783,6 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     }, [data]);
 
     // ────────────────────────────────────────────────────────────
-    // n8n 전송 함수
-    // ────────────────────────────────────────────────────────────
-    const prepareForVectorization = (sheets: string[], items: any, lib: any) => {
-        const result: any[] = [];
-
-        sheets.forEach((sheetId: string) => {
-            const sheetItems = items[sheetId] || [];
-            const template = allTemplates[sheetId] || {};
-
-            sheetItems.forEach((item: any) => {
-                const vectorItem: any = {
-                    name: item.name,
-                    sheet: template.title || sheetId,
-                };
-
-                template.facets?.forEach((facet: any) => {
-                    const rawValue = item.facets?.[facet.key];
-                    const label = facet.label;
-
-                    if (!rawValue && rawValue !== false && rawValue !== "false") {
-                        return;
-                    }
-
-                    switch (facet.type) {
-                        case "checkbox":
-                            vectorItem[label] = rawValue === "true" || rawValue === true;
-                            break;
-
-                        case "library-ref":
-                            const libraryType = facet.libraryType || "links";
-                            const libraryItems = lib?.[libraryType] || {};
-                            const keys = String(rawValue).split(',').filter(Boolean);
-
-                            const libraryValues: any = {};
-                            keys.forEach((key: string) => {
-                                if (libraryItems[key]) {
-                                    libraryValues[libraryItems[key].label] = libraryItems[key].value;
-                                }
-                            });
-
-                            vectorItem[label] = libraryValues;
-                            break;
-
-                        case "multi":
-                            vectorItem[label] = String(rawValue)
-                                .split(',')
-                                .filter(Boolean)
-                                .map((v: string) => v.trim());
-                            break;
-
-                        case "single":
-                        case "textarea":
-                        default:
-                            vectorItem[label] = String(rawValue);
-                            break;
-                    }
-                });
-
-                result.push(vectorItem);
-            });
-        });
-
-        return result;
-    };
-
-    const syncToN8n = async (sheets: string[], items: any, lib: any, tid: string) => {
-        try {
-            const vectorData = prepareForVectorization(sheets, items, lib);
-
-            const response = await fetch('https://soluto.app.n8n.cloud/webhook/criteria-sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    tenantId: tid,
-                    timestamp: new Date().toISOString(),
-                    items: vectorData
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`n8n sync failed: ${response.status}`);
-            }
-
-            console.log('✅ n8n 전송 완료:', vectorData.length, '개 항목');
-        } catch (error: any) {
-            // n8n sync 실패는 저장 흐름에 영향을 주지 않도록 조용히 처리
-            console.warn('⚠️ n8n 전송 실패 (무시됨):', error?.message || error);
-            // 에러를 다시 throw하지 않음 - 저장은 정상적으로 완료됨
-        }
-    };
-
-    // ────────────────────────────────────────────────────────────
     // 저장/취소
     // ────────────────────────────────────────────────────────────
     const handleSaveEdits = React.useCallback(async () => {
@@ -2580,27 +2926,6 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             items: {
                 ...prev.items,
                 [activeSheetId]: [...(prev.items[activeSheetId] || []), newRow],
-            },
-        }));
-    };
-
-    const addRowsBulk = (names: string[]) => {
-        const presets = PRESET_ITEMS[activeSheetId] || [];
-        const currentItems = getCurrentData().items[activeSheetId] || [];
-        const newRows = names.map((name, idx) => {
-            const preset = presets.find((p: any) => p.name === name);
-            return {
-                id: `row_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 9)}`,
-                name,
-                facets: preset?.facets || {},
-                order: currentItems.length + idx,
-            };
-        });
-        setCurrentData((prev: any) => ({
-            ...prev,
-            items: {
-                ...prev.items,
-                [activeSheetId]: [...(prev.items[activeSheetId] || []), ...newRows],
             },
         }));
     };
@@ -2896,7 +3221,10 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     return (
         <div className="min-h-screen bg-gray-50 pb-24 relative">
             {/* 설명 헤더 - 통일된 디자인 */}
-            <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+            <div
+                ref={headerRef}
+                className={`sticky top-0 z-30 bg-white border-b border-gray-200 ${scrolled ? 'shadow-[0_1px_0_rgba(0,0,0,0.08)]' : ''}`}
+            >
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
                     <div className="flex items-center justify-between gap-2">
                         <p className="text-sm text-gray-600">
@@ -3122,7 +3450,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                         className="fixed inset-x-0 bg-white shadow-sm overflow-hidden z-20"
                         style={{
                             top: fixedTop || 160, // 초기 값(대략치) ; 실제로는 measure로 곧 갱신됨
-                            bottom: 'calc(env(safe-area-inset-bottom) + var(--bottom-nav-h, 64px))'
+                            bottom: isEditMode
+                                ? `calc(env(safe-area-inset-bottom) + var(--bottom-nav-h, 64px) + ${ACTIONBAR_H}px)`
+                                : 'calc(env(safe-area-inset-bottom) + var(--bottom-nav-h, 64px))'
                         }}
                     >
                         {/* 가로가 넘치면 가로 스크롤 허용, 내부만 부드럽게 스크롤 */}
@@ -3134,41 +3464,9 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                             <Plus className="w-8 h-8 text-gray-400" />
                                         </div>
                                         <p className="text-lg font-medium text-gray-900 mb-2">항목이 없습니다</p>
-                                        <p className="text-sm text-gray-500 mb-6">
-                                            첫 번째 항목을 추가해보세요
+                                        <p className="text-sm text-gray-500">
+                                            {isEditMode ? "하단의 항목 추가 바에서 첫 번째 항목을 추가해보세요" : "편집 모드에서 항목을 추가할 수 있습니다"}
                                         </p>
-                                        {isEditMode && (
-                                            <div className="max-w-md mx-auto">
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={newItemName}
-                                                        onChange={(e) => setNewItemName(e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' && newItemName.trim()) {
-                                                                addRow(newItemName.trim());
-                                                                setNewItemName('');
-                                                            }
-                                                        }}
-                                                        placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
-                                                        className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                                        autoFocus
-                                                    />
-                                                    <button
-                                                        onClick={() => {
-                                                            if (newItemName.trim()) {
-                                                                addRow(newItemName.trim());
-                                                                setNewItemName('');
-                                                            }
-                                                        }}
-                                                        disabled={!newItemName.trim()}
-                                                        className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                                                    >
-                                                        추가
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
                                     </div>
                                 ) : (
                                     <>
@@ -3178,10 +3476,10 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                             onDragEnd={handleRowDragEnd}
                                         >
                                             <table className="w-full">
-                                                <thead className="bg-gray-50 border-b sticky top-0 z-20">
+                                                <thead className="bg-gray-50 border-b sticky top-0 z-20 shadow-[0_2px_4px_rgba(0,0,0,0.04)]">
                                                     <tr>
                                                         {isEditMode && <th className="w-8 bg-gray-50"></th>}
-                                                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[280px] sticky left-0 bg-gray-50 z-30 border-r border-gray-200">
+                                                        <th className="px-2 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[100px] sticky left-0 bg-gray-50 z-30 border-r border-gray-200">
                                                             이름
                                                         </th>
                                                         {visibleFacets.map((facet: any) => {
@@ -3224,21 +3522,21 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                     <tbody className="divide-y divide-gray-100">
                                                         {activeItems.map((row: any) => (
                                                             <Row key={row.id} row={row} isEditMode={isEditMode}>
-                                                                <td className="px-3 py-2 align-top sticky left-0 bg-white z-10 border-r border-gray-200 min-w-[140px] max-w-[200px]">
+                                                                <td className="px-2 py-2 align-top sticky left-0 bg-white z-10 border-r border-gray-200 w-[100px]">
                                                                     {isEditMode ? (
                                                                         <input
                                                                             type="text"
                                                                             value={row.name}
                                                                             onChange={(e) => updateRowName(row.id, e.target.value)}
                                                                             placeholder="항목명"
-                                                                            className={`w-full px-3 py-2 rounded-lg border-transparent hover:border-transparent focus:border-transparent transition-all text-sm font-medium ${row.name
+                                                                            className={`w-full px-2 py-1.5 rounded-lg border-transparent hover:border-transparent focus:border-transparent transition-all text-xs font-medium ${row.name
                                                                                 ? "bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                                                 : "bg-white text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:text-gray-900"
                                                                                 }`}
                                                                         />
                                                                     ) : (
-                                                                        <div className="px-3 py-2 text-sm font-medium text-gray-900 min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
-                                                                            <span className="line-clamp-2 w-full">{row.name || <span className="text-gray-400">항목명</span>}</span>
+                                                                        <div className="px-2 py-2 text-xs font-medium text-gray-900 min-h-[32px] flex items-start overflow-hidden">
+                                                                            <span className="line-clamp-3 w-full break-words">{row.name || <span className="text-gray-400">항목명</span>}</span>
                                                                         </div>
                                                                     )}
                                                                 </td>
@@ -3280,48 +3578,6 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                                                 </SortableContext>
                                             </table>
                                         </DndContext>
-
-                                        {/* 인라인 행 추가 - 편집 모드에서만 표시 */}
-                                        {isEditMode && (
-                                            <div className="border-t bg-gray-50 p-3 sticky bottom-0 z-10">
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={newItemName}
-                                                        onChange={(e) => setNewItemName(e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                // ✅ 한글 IME 조합 중이면 Enter 무시
-                                                                // (브라우저별: e.nativeEvent.isComposing 지원)
-                                                                // 타입체크 피하려면 any 캐스팅 사용
-                                                                // @ts-ignore
-                                                                if (e.nativeEvent?.isComposing) return;
-                                                                if (newItemName.trim()) {
-                                                                    addRow(newItemName.trim());
-                                                                    setNewItemName('');
-                                                                    e.preventDefault();
-                                                                    e.stopPropagation();
-                                                                }
-                                                            }
-                                                        }}
-                                                        placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
-                                                        className="flex-1 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
-                                                    />
-                                                    <button
-                                                        onClick={() => {
-                                                            if (newItemName.trim()) {
-                                                                addRow(newItemName.trim());
-                                                                setNewItemName('');
-                                                            }
-                                                        }}
-                                                        disabled={!newItemName.trim()}
-                                                        className="px-4 py-2.5 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
-                                                    >
-                                                        + 추가
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
                                     </>
                                 )}
                             </div>
@@ -3447,6 +3703,52 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                 >
                     <Edit3 className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
+            )}
+
+            {/* 항목 추가 고정 바 - 편집 모드에서만 표시 */}
+            {isEditMode && (
+                <div
+                    className="fixed inset-x-0 bg-white border-t border-gray-200 shadow-lg z-30"
+                    style={{
+                        bottom: 'calc(env(safe-area-inset-bottom) + var(--bottom-nav-h, 64px))',
+                        height: `${ACTIONBAR_H}px`
+                    }}
+                >
+                    <div className="max-w-2xl mx-auto h-full px-4 flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={newItemName}
+                            onChange={(e) => setNewItemName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    // ✅ 한글 IME 조합 중이면 Enter 무시
+                                    // @ts-ignore
+                                    if (e.nativeEvent?.isComposing) return;
+                                    if (newItemName.trim()) {
+                                        addRow(newItemName.trim());
+                                        setNewItemName('');
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }
+                                }
+                            }}
+                            placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
+                            className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
+                        />
+                        <button
+                            onClick={() => {
+                                if (newItemName.trim()) {
+                                    addRow(newItemName.trim());
+                                    setNewItemName('');
+                                }
+                            }}
+                            disabled={!newItemName.trim()}
+                            className="px-5 py-2.5 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
+                        >
+                            추가
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

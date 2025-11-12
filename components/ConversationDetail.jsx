@@ -1,10 +1,10 @@
 // components/ConversationDetail.jsx
-// 애플 스타일 대화 상세 모달 - 클라이언트 중심 최적화 (최종본)
+// 애플 스타일 대화 상세 모달 - 클라이언트 중심 최적화 (tenantId 우선 사용)
 
 import { useState, useEffect, useRef } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
 
-export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector }) {
+export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId }) {
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
     const [imagePreview, setImagePreview] = useState(null);
@@ -20,7 +20,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     useEffect(() => {
         fetchDetail();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversation?.chatId]);
+    }, [conversation?.chatId, tenantId]);
 
     useEffect(() => {
         if (detail?.messages && messagesEndRef.current) {
@@ -29,11 +29,19 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     }, [detail?.messages]);
 
     const fetchDetail = async () => {
-        if (!conversation?.chatId) return;
         setLoading(true);
         try {
-            const tenantId = conversation.id?.split('_')[0] || 'default';
-            const res = await fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${conversation.chatId}`);
+            // ✅ tenant 우선순위: prop → conversation.tenant → conversation.tenantId → id split → 'default'
+            const tenant =
+                tenantId ||
+                conversation?.tenant ||
+                conversation?.tenantId ||
+                (typeof conversation?.id === 'string' && conversation.id.includes('_')
+                    ? conversation.id.split('_')[0]
+                    : null) ||
+                'default';
+
+            const res = await fetch(`/api/conversations/detail?tenant=${tenant}&chatId=${conversation.chatId}`);
             const data = await res.json();
             setDetail(data);
         } catch (error) {
@@ -74,8 +82,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         try {
             if (onSend) {
                 await onSend({ text: draft.trim(), attachments });
-            } else {
-                console.log('send ->', { text: draft.trim(), attachments });
             }
             setDraft('');
             setAttachments([]);
@@ -96,7 +102,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     };
 
     const onPaste = (e) => {
-        // 클립보드 이미지 붙여넣기 지원(선택)
         const items = e.clipboardData?.items || [];
         const files = [];
         for (const it of items) {
@@ -127,9 +132,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 </span>
                             </div>
                             <div>
-                                <h2 className="text-lg font-semibold text-gray-900">
-                                    {conversation.userName || '익명'}
-                                </h2>
+                                <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
                                 <p className="text-xs text-gray-500">
                                     {conversation.channel || 'unknown'} • {conversation.chatId}
                                 </p>
@@ -152,7 +155,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             </div>
                         ) : detail?.messages && detail.messages.length > 0 ? (
                             <div className="space-y-3">
-                                {/* 시작 날짜 표시 */}
                                 {detail.messages[0]?.timestamp && (
                                     <div className="flex items-center justify-center my-4">
                                         <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
@@ -183,7 +185,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                     {/* 하단 입력바 + 정보 */}
                     <div className="px-4 pt-2 pb-3 md:px-6 flex-shrink-0 bg-white">
-                        {/* 첨부 썸네일 (있을 때만 노출) */}
+                        {/* 첨부 썸네일 */}
                         {attachments.length > 0 && (
                             <div className="mb-2 flex gap-2 overflow-x-auto">
                                 {attachments.map((att, i) => (
@@ -201,7 +203,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             </div>
                         )}
 
-                        {/* 입력 바 (iOS 느낌, 슬림) */}
+                        {/* 입력 바 */}
                         <div className="relative">
                             <div className="pointer-events-none absolute -top-2 left-0 right-0 h-2 bg-gradient-to-b from-gray-50/80 to-transparent" />
                             <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:bg-white focus-within:border-gray-300 transition">
@@ -254,7 +256,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             </div>
                         </div>
 
-                        {/* 하단 정보(통계/요약) */}
+                        {/* 하단 정보 */}
                         <div className="mt-3">
                             {detail?.stats && (
                                 <div className="grid grid-cols-3 gap-4 mb-4">
@@ -317,6 +319,7 @@ function MessageBubble({ message, onImageClick }) {
         message.sender === 'admin' ||
         message.sender === 'agent' ||
         (message.sender === 'ai' && message.modeSnapshot === 'AGENT');
+
     const senderCfg = {
         user: {
             name: '사용자',
@@ -423,7 +426,9 @@ function MessageBubble({ message, onImageClick }) {
                     )}
                 </div>
 
-                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-right' : 'text-left'}`}>{fmtTime(message.timestamp)}</div>
+                <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? 'text-right' : 'text-left'}`}>
+                    {fmtTime(message.timestamp)}
+                </div>
             </div>
         </div>
     );

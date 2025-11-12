@@ -107,7 +107,16 @@ export default function ConversationsPage({ tenantId }) {
     // 상세 모달 → 전송 핸들러
     const handleSend = async ({ text, attachments }) => {
         if (!selectedConv) return;
-        const tenant = selectedConv.id?.split('_')[0] || tenantId || 'default';
+
+        // ✅ tenantId prop을 최우선 사용, 대화 객체의 tenant/tenantId로 폴백
+        const tenant =
+            tenantId ||
+            selectedConv.tenant ||
+            selectedConv.tenantId ||
+            (typeof selectedConv.id === 'string' && selectedConv.id.includes('_')
+                ? selectedConv.id.split('_')[0]
+                : null) ||
+            'default';
 
         const form = new FormData();
         form.append('tenant', tenant);
@@ -239,10 +248,10 @@ export default function ConversationsPage({ tenantId }) {
                     <div className="space-y-3">
                         {paginatedConversations.map((conv) => (
                             <ConversationCard
-                                key={conv.id}
+                                key={conv.id || conv.chatId}
                                 conversation={conv}
-                                onClick={() => setSelectedConv(conv)}
-                                isSelected={selectedConv?.id === conv.id}
+                                onClick={() => setSelectedConv({ ...conv, tenant: tenantId /* ✅ tenant 주입 */ })}
+                                isSelected={(selectedConv?.id || selectedConv?.chatId) === (conv.id || conv.chatId)}
                             />
                         ))}
                     </div>
@@ -283,6 +292,7 @@ export default function ConversationsPage({ tenantId }) {
             {selectedConv && (
                 <ConversationDetail
                     conversation={selectedConv}
+                    tenantId={tenantId}
                     onClose={() => setSelectedConv(null)}
                     onSend={handleSend}
                     onOpenAICorrector={() => console.log('open AI corrector modal')}
