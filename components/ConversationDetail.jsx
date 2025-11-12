@@ -264,16 +264,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                         {/* 하단 정보 */}
                         <div className="mt-3">
-                            {detail?.stats && (
-                                <div className="grid grid-cols-3 gap-4 mb-4">
-                                    <StatBlock label="사용자" value={detail.stats.userChats} Icon={User} valueClass="text-gray-900" />
-                                    <StatBlock label="AI" value={detail.stats.aiChats} Icon={Bot} valueClass="text-blue-600" />
-                                    <StatBlock label="상담원" value={detail.stats.agentChats} Icon={UserCheck} valueClass="text-purple-600" />
-                                </div>
-                            )}
 
                             {detail?.conversation?.summary && (
-                                <div className="text-sm text-gray-700">
+                                <div className="bg-transparent text-sm text-gray-700">
                                     <span className="font-semibold">요약</span> {detail.conversation.summary}
                                 </div>
                             )}
