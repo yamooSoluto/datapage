@@ -309,8 +309,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                                 />
                                                 <button
                                                     onClick={() => removeAttachment(idx)}
-                                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                                                >
+                                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-lg"                                                >
                                                     ×
                                                 </button>
                                             </>

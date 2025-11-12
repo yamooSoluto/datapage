@@ -140,7 +140,9 @@ export default function ConversationsPage({ tenantId }) {
                 body: JSON.stringify({
                     tenantId: tenant,
                     chatId: chatId,
-                    content: text || ''
+                    content: text || '',
+                    // ✅ 첨부 전달 (name/type/size/base64 그대로)
+                    attachments: Array.isArray(attachments) ? attachments : []
                 })
             });
 
