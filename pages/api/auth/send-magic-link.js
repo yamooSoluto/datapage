@@ -1,6 +1,9 @@
 // pages/api/auth/send-magic-link.js
+// ════════════════════════════════════════
 // 이메일 매직링크 + 관리자 2단계(비밀키) 바이패스
 // ✅ Firestore 버전
+// ✅ mode 파라미터 추가: 'link' (기본) | 'otp' (PWA용)
+// ════════════════════════════════════════
 
 import jwt from 'jsonwebtoken';
 import admin from 'firebase-admin';
@@ -64,10 +67,15 @@ function safeEqual(input, secret) {
     }
 }
 
+// 6자리 숫자 OTP 생성
+function generateOTP() {
+    return crypto.randomInt(100000, 999999).toString();
+}
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { email, adminSecret } = req.body || {};
+    const { email, adminSecret, mode = 'link' } = req.body || {};
     if (!email) return res.status(400).json({ error: '이메일을 입력해주세요.' });
 
     const portalDomain = process.env.PORTAL_DOMAIN || 'https://app.yamoo.ai.kr';
@@ -148,7 +156,7 @@ export default async function handler(req, res) {
         }
 
         // ─────────────────────────────────────────────────────
-        // B) 일반 사용자: Firestore 조회 → n8n 이메일 발송
+        // B) 일반 사용자: Firestore 조회 → 매직링크 OR OTP
         // ─────────────────────────────────────────────────────
 
         // ✅ Firestore에서 이메일로 테넌트 조회
@@ -173,6 +181,64 @@ export default async function handler(req, res) {
             });
         });
 
+        // ═══════════════════════════════════════════════════════
+        // MODE 분기: 'otp' vs 'link' (기본)
+        // ═══════════════════════════════════════════════════════
+
+        // 🔐 PWA Mode: OTP 코드 발송
+        if (mode === 'otp') {
+            const otp = generateOTP();
+            const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10분 유효
+
+            // Firestore에 OTP 저장
+            await db.collection('otp_codes').add({
+                email: email.toLowerCase(),
+                code: otp,
+                expiresAt: expiresAt.toISOString(),
+                createdAt: new Date().toISOString(),
+                used: false,
+            });
+
+            // n8n으로 OTP 이메일 발송
+            const n8nWebhookUrl = process.env.N8N_EMAIL_WEBHOOK_URL;
+            if (!n8nWebhookUrl) {
+                console.warn('⚠️ [Send OTP] N8N_EMAIL_WEBHOOK_URL not set');
+                return res.status(500).json({ error: '이메일 전송 서비스가 설정되지 않았습니다.' });
+            }
+
+            const emailPayload = {
+                to: email,
+                subject: '🔐 야무 포털 로그인 코드',
+                type: 'otp',
+                otp,
+                expiresIn: '10분',
+                timestamp: new Date().toISOString(),
+            };
+
+            const webhookResponse = await fetch(n8nWebhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(emailPayload),
+            });
+
+            if (!webhookResponse.ok) {
+                console.error('❌ [Send OTP] n8n webhook failed');
+                return res.status(500).json({
+                    error: '이메일 전송에 실패했습니다. 잠시 후 다시 시도해주세요.'
+                });
+            }
+
+            console.log(`📧 [Send OTP] 코드 발송 완료: ${email} (코드: ${otp})`);
+
+            return res.status(200).json({
+                success: true,
+                message: '로그인 코드가 이메일로 전송되었습니다.',
+                mode: 'otp',
+                expiresIn: 600,
+            });
+        }
+
+        // 🔗 기본 Mode: 매직링크 발송
         // ✅ JWT 토큰 생성 (24시간)
         const token = jwt.sign(
             {
@@ -196,7 +262,8 @@ export default async function handler(req, res) {
 
         const emailPayload = {
             to: email,
-            subject: '🔐 야무 포털 로그인 링크',
+            subject: '🔓 야무 포털 로그인 링크',
+            type: 'magic-link',
             magicLink,
             tenantsCount: tenants.length,
             expiresIn: '24시간',
@@ -231,6 +298,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
             success: true,
             message: '로그인 링크가 이메일로 전송되었습니다.',
+            mode: 'link',
             tenantsCount: tenants.length,
             magicLink: process.env.NODE_ENV === 'development' ? magicLink : undefined,
         });

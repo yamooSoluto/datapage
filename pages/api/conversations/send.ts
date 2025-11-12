@@ -1,97 +1,110 @@
-// /pages/api/conversations/send.ts
-import type { NextApiRequest, NextApiResponse } from 'next';
+// pages/api/conversations/send.ts
+import type { NextApiRequest, NextApiResponse } from "next";
 
-export const config = {
-    api: { bodyParser: { sizeLimit: '20mb' } }, // 첨부 base64 대비
-};
-
-type IncomingAttachment = {
-    name: string;
-    type?: string;
-    size?: number;
-    base64?: string;   // 순수 base64
-    dataUrl?: string;  // data:...;base64,xxxx
-    url?: string;      // 사전 업로드된 파일 URL (옵션)
-};
+export const config = { api: { bodyParser: true } };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-    const { tenantId, chatId, content = '', attachments = [] } = (req.body || {}) as {
-        tenantId?: string;
-        chatId?: string;
-        content?: string;
-        attachments?: IncomingAttachment[];
-    };
-
-    if (!tenantId || !chatId) {
-        return res.status(400).json({ error: 'tenantId and chatId are required' });
-    }
-
-    const atts = Array.isArray(attachments) ? attachments.slice(0, 10) : [];
-    const hasContent = !!(content && String(content).length > 0);
-    const hasFiles = atts.length > 0;
-
-    // 내용 없이 첨부만 전송도 허용
-    if (!hasContent && !hasFiles) {
-        return res.status(400).json({ error: 'content or attachments required' });
-    }
-
-    // dataUrl → base64 정규화
-    const safeAttachments = atts
-        .map((a) => {
-            const base64 =
-                a?.base64
-                    ? String(a.base64)
-                    : a?.dataUrl && String(a.dataUrl).startsWith('data:')
-                        ? String(a.dataUrl).split(',')[1] ?? ''
-                        : '';
-
-            const out: Record<string, any> = {
-                name: String(a?.name || 'file'),
-                type: String(a?.type || 'application/octet-stream'),
-                size: Number(a?.size || 0),
-            };
-            if (a?.url) out.url = String(a.url);
-            if (base64) out.base64 = base64;
-            return out;
-        })
-        .filter((a) => 'url' in a || 'base64' in a);
+    if (req.method !== "POST") return res.status(405).end();
 
     try {
-        const GCLOUD_BASE_URL = process.env.GCLOUD_BASE_URL?.replace(/\/+$/, '');
-        if (!GCLOUD_BASE_URL) {
-            return res.status(500).json({ error: 'GCLOUD_BASE_URL not set' });
+        const { tenantId, chatId, content, attachments } = req.body || {};
+
+        console.log("[send.ts] Request body:", {
+            tenantId,
+            chatId,
+            hasContent: !!content,
+            contentLength: content?.length,
+            attachmentsCount: attachments?.length || 0,
+        });
+
+        // ✅ 필수 파라미터 검증
+        if (!tenantId || !chatId) {
+            console.error("[send.ts] Missing required params:", { tenantId, chatId });
+            return res.status(400).json({ error: "tenantId and chatId are required" });
         }
 
+        // ✅ 텍스트 또는 첨부파일 중 하나는 있어야 함 (더 관대한 검증)
+        const hasText = content && String(content).trim().length > 0;
+        const hasAttachments = Array.isArray(attachments) && attachments.length > 0;
+
+        if (!hasText && !hasAttachments) {
+            console.error("[send.ts] No content or attachments");
+            return res.status(400).json({ error: "content or attachments required" });
+        }
+
+        const base = (process.env.GCLOUD_BASE_URL || "").replace(/\/+$/, "");
+        if (!base) {
+            console.error("[send.ts] GCLOUD_BASE_URL not set");
+            return res.status(500).json({ error: "GCLOUD_BASE_URL not set" });
+        }
+
+        // ✅ GCP 실제 라우트: /api/n8n/send-final
+        const url = `${base}/api/n8n/send-final`;
+
+        // ✅ 첨부파일 처리
+        const processedAttachments = hasAttachments
+            ? attachments.map(att => ({
+                type: "document",
+                source: {
+                    type: "base64",
+                    media_type: att.type || "application/octet-stream",
+                    data: att.base64,
+                },
+                // 파일명 포함 (선택적)
+                ...(att.name ? { cache_control: { type: "ephemeral" } } : {}),
+            }))
+            : [];
+
         const payload = {
-            tenantId,
-            conversationId: chatId,
-            content: content || '',       // 비어 있어도 OK (첨부만 전송)
-            attachments: safeAttachments, // [{name,type,size,base64|url}]
-            via: 'agent',
-            sent_as: 'agent',
+            conversationId: String(chatId),
+            content: String(content || ''), // ✅ 빈 문자열도 허용
+            attachments: processedAttachments,
+            via: "agent",
+            sent_as: "agent",
+            tenantId: String(tenantId),
+            mode: "agent_comment",
             confirmMode: false,
-            mediatedSource: 'agent_comment',
+            mediatedSource: "agent_comment",
         };
 
-        const resp = await fetch(`${GCLOUD_BASE_URL}/api/n8n/send-final`, {
-            method: 'POST',
+        console.log("[send.ts] Sending to:", url);
+        console.log("[send.ts] Payload summary:", {
+            conversationId: payload.conversationId,
+            contentLength: payload.content.length,
+            attachmentsCount: processedAttachments.length,
+            tenantId: payload.tenantId,
+        });
+
+        const r = await fetch(url, {
+            method: "POST",
             headers: {
-                'Content-Type': 'application/json',
-                ...(process.env.N8N_TOKEN ? { 'x-internal-auth': process.env.N8N_TOKEN } : {}),
+                "Content-Type": "application/json",
+                // ✅ 토큰 헤더 추가
+                ...(process.env.N8N_PROXY_TOKEN ? { "x-n8n-token": process.env.N8N_PROXY_TOKEN } : {}),
             },
             body: JSON.stringify(payload),
         });
 
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-            return res.status(resp.status).json({ error: 'send-final failed', detail: data });
+        console.log("[send.ts] Response status:", r.status);
+
+        if (!r.ok) {
+            const text = await r.text().catch(() => "");
+            console.error("[send.ts] GCP error:", text);
+            return res.status(502).json({
+                error: `send-final failed: ${r.status}`,
+                detail: text,
+                url: url
+            });
         }
 
-        return res.status(200).json({ ok: true, via: 'gcp', data });
+        const result = await r.json().catch(() => ({}));
+        console.log("[send.ts] Success:", result);
+        return res.status(200).json({ ok: true, ...result });
     } catch (e: any) {
-        console.error('[api/conversations/send] error:', e);
-        return res.status(500).json({ error: e?.message || 'internal error' });
+        console.error("[send.ts] Error:", e);
+        return res.status(500).json({
+            error: e?.message || "unknown error",
+            stack: process.env.NODE_ENV === 'development' ? e?.stack : undefined
+        });
     }
 }
