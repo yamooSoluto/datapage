@@ -20,11 +20,25 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const filePickerRef = useRef(null);
     const textareaRef = useRef(null);
 
-    // ✅ 로컬 스토리지 키
-    const draftKey = `draft_${effectiveTenantId}_${conversation.chatId}`;
+    // ✅ tenantId를 상위에서 추출 (먼저 정의)
+    const effectiveTenantId =
+        tenantId ||
+        conversation?.tenant ||
+        conversation?.tenantId ||
+        (typeof conversation?.id === 'string' && conversation.id.includes('_')
+            ? conversation.id.split('_')[0]
+            : null) ||
+        'default';
+
+    // ✅ chatId 안전하게 추출
+    const chatId = conversation?.chatId || conversation?.id || '';
+
+    // ✅ 로컬 스토리지 키 (effectiveTenantId와 chatId 사용)
+    const draftKey = chatId ? `draft_${effectiveTenantId}_${chatId}` : null;
 
     // ✅ 컴포넌트 마운트 시 저장된 draft 복원
     useEffect(() => {
+        if (!draftKey) return;
         try {
             const savedDraft = localStorage.getItem(draftKey);
             if (savedDraft) {
@@ -38,6 +52,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     // ✅ draft 변경 시 로컬 스토리지에 저장
     useEffect(() => {
+        if (!draftKey) return;
         try {
             if (draft.trim()) {
                 localStorage.setItem(draftKey, draft);
@@ -52,20 +67,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ AI 보정 모달
     const [showAICorrector, setShowAICorrector] = useState(false);
 
-    // ✅ tenantId를 상위에서 추출
-    const effectiveTenantId =
-        tenantId ||
-        conversation?.tenant ||
-        conversation?.tenantId ||
-        (typeof conversation?.id === 'string' && conversation.id.includes('_')
-            ? conversation.id.split('_')[0]
-            : null) ||
-        'default';
-
     useEffect(() => {
+        if (!chatId) {
+            console.error('[ConversationDetail] No chatId available');
+            setLoading(false);
+            return;
+        }
         fetchDetail();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversation?.chatId, effectiveTenantId]);
+    }, [chatId, effectiveTenantId]);
 
     useEffect(() => {
         if (detail?.messages && messagesEndRef.current) {
@@ -74,13 +84,21 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     }, [detail?.messages]);
 
     const fetchDetail = async () => {
+        if (!chatId) {
+            console.error('[ConversationDetail] Cannot fetch detail: chatId is missing');
+            return;
+        }
         setLoading(true);
         try {
-            const res = await fetch(`/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${conversation.chatId}`);
+            const res = await fetch(`/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${chatId}`);
+            if (!res.ok) {
+                throw new Error(`Failed to fetch: ${res.status}`);
+            }
             const data = await res.json();
             setDetail(data);
         } catch (error) {
-            console.error('Failed to fetch detail:', error);
+            console.error('[ConversationDetail] Failed to fetch detail:', error);
+            setDetail(null);
         } finally {
             setLoading(false);
         }
@@ -172,7 +190,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             textLength: text.length,
             attachmentsCount: attachments.length,
             tenantId: effectiveTenantId,
-            chatId: conversation.chatId,
+            chatId: chatId,
         });
 
         try {
@@ -186,7 +204,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     base64: att.base64,
                 })),
                 tenantId: effectiveTenantId,
-                chatId: conversation.chatId,
+                chatId: chatId,
             });
 
             setDraft('');
@@ -276,7 +294,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
                                 <p className="text-xs text-gray-500">
-                                    {conversation.channel || 'unknown'} • {conversation.chatId}
+                                    {conversation.channel || 'unknown'} • {chatId || 'N/A'}
                                 </p>
                             </div>
                         </div>
