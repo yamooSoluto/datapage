@@ -2158,6 +2158,29 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
     const [viewMode, setViewMode] = React.useState<"item" | "facet">("item");
     const [openDropdown, setOpenDropdown] = React.useState<any>(null);
 
+    // 상단 고정 영역 높이 측정
+    const fixedTopRef = React.useRef<HTMLDivElement | null>(null);
+    const [fixedTop, setFixedTop] = React.useState<number>(0);
+
+    // 상단 스택 높이를 측정해 고정 영역의 top으로 사용
+    React.useLayoutEffect(() => {
+        const measure = () => {
+            if (!fixedTopRef.current) return;
+            const rect = fixedTopRef.current.getBoundingClientRect();
+            // viewport 기준 top + 현재 스크롤량 = 문서 기준 절대 top
+            const absoluteTop = rect.top + (window.scrollY || 0);
+            setFixedTop(absoluteTop);
+        };
+
+        measure();
+        window.addEventListener('resize', measure);
+        window.addEventListener('orientationchange', measure);
+        return () => {
+            window.removeEventListener('resize', measure);
+            window.removeEventListener('orientationchange', measure);
+        };
+    }, []);
+
     // === n8n 서버 릴레이(쓰로틀) ===
     const lastSyncedAt = React.useRef<number>(0);
     const syncTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -3090,206 +3113,219 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
                     </div>
                 </div>
 
+                {/* 앵커: 테이블 영역 바로 위 */}
+                <div ref={fixedTopRef} id="sheet-fixed-anchor" />
+
                 {/* 테이블 영역 */}
                 {viewMode === "item" && (
-                    <div className="bg-white shadow-sm overflow-hidden">
-                        {activeItems.length === 0 ? (
-                            <div className="px-4 py-20 text-center">
-                                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 flex items-center justify-center">
-                                    <Plus className="w-8 h-8 text-gray-400" />
-                                </div>
-                                <p className="text-lg font-medium text-gray-900 mb-2">항목이 없습니다</p>
-                                <p className="text-sm text-gray-500 mb-6">
-                                    첫 번째 항목을 추가해보세요
-                                </p>
-                                {isEditMode && (
-                                    <div className="max-w-md mx-auto">
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="text"
-                                                value={newItemName}
-                                                onChange={(e) => setNewItemName(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && newItemName.trim()) {
-                                                        addRow(newItemName.trim());
-                                                        setNewItemName('');
-                                                    }
-                                                }}
-                                                placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
-                                                className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                                                autoFocus
-                                            />
-                                            <button
-                                                onClick={() => {
-                                                    if (newItemName.trim()) {
-                                                        addRow(newItemName.trim());
-                                                        setNewItemName('');
-                                                    }
-                                                }}
-                                                disabled={!newItemName.trim()}
-                                                className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                                            >
-                                                추가
-                                            </button>
+                    <div
+                        className="fixed inset-x-0 bg-white shadow-sm overflow-hidden z-20"
+                        style={{
+                            top: fixedTop || 160, // 초기 값(대략치) ; 실제로는 measure로 곧 갱신됨
+                            bottom: 'calc(env(safe-area-inset-bottom) + var(--bottom-nav-h, 64px))'
+                        }}
+                    >
+                        {/* 가로가 넘치면 가로 스크롤 허용, 내부만 부드럽게 스크롤 */}
+                        <div className="h-full w-full overflow-auto">
+                            <div className="min-w-max">
+                                {activeItems.length === 0 ? (
+                                    <div className="px-4 py-20 text-center">
+                                        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 flex items-center justify-center">
+                                            <Plus className="w-8 h-8 text-gray-400" />
                                         </div>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-
-                            <div className="w-full max-h-[calc(100vh-200px)] overflow-y-auto relative">
-                                <DndContext
-                                    sensors={sensors}
-                                    collisionDetection={closestCenter}
-                                    onDragEnd={handleRowDragEnd}
-                                >
-                                    <table className="w-full">
-                                        <thead className="bg-gray-50 border-b sticky top-0 z-20">
-                                            <tr>
-                                                {isEditMode && <th className="w-8 bg-gray-50"></th>}
-                                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[280px] sticky left-0 bg-gray-50 z-30 border-r border-gray-200">
-                                                    이름
-                                                </th>
-                                                {visibleFacets.map((facet: any) => {
-                                                    // 컬럼 타입에 따라 너비 조정
-                                                    let widthClass = "";
-                                                    if (facet.type === "checkbox") {
-                                                        widthClass = "min-w-[80px]"; // 체크박스는 두 글자 한 줄로 들어가도록 여유 있게
-                                                    } else if (facet.key === "notes" || facet.type === "textarea") {
-                                                        widthClass = "w-[250px]"; // 비고는 더 넓게
-                                                    } else if (facet.key === "location") {
-                                                        widthClass = "w-[120px]"; // 위치는 중간
-                                                    }
-                                                    // 나머지는 자동 너비 (widthClass 없음)
-
-                                                    return (
-                                                        <th
-                                                            key={facet.key}
-                                                            className={`px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase ${widthClass} bg-gray-50`}
-                                                        >
-                                                            {facet.label}
-                                                        </th>
-                                                    );
-                                                })}
-                                                <th className="w-16 px-2 bg-gray-50">
+                                        <p className="text-lg font-medium text-gray-900 mb-2">항목이 없습니다</p>
+                                        <p className="text-sm text-gray-500 mb-6">
+                                            첫 번째 항목을 추가해보세요
+                                        </p>
+                                        {isEditMode && (
+                                            <div className="max-w-md mx-auto">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={newItemName}
+                                                        onChange={(e) => setNewItemName(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && newItemName.trim()) {
+                                                                addRow(newItemName.trim());
+                                                                setNewItemName('');
+                                                            }
+                                                        }}
+                                                        placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
+                                                        className="flex-1 px-4 py-3 rounded-xl border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                                        autoFocus
+                                                    />
                                                     <button
-                                                        onClick={() => setColumnManageOpen(true)}
-                                                        className="w-8 h-8 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors mx-auto"
-                                                        title="열 관리"
+                                                        onClick={() => {
+                                                            if (newItemName.trim()) {
+                                                                addRow(newItemName.trim());
+                                                                setNewItemName('');
+                                                            }
+                                                        }}
+                                                        disabled={!newItemName.trim()}
+                                                        className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                                                     >
-                                                        <Settings className="w-4 h-4 text-gray-600" />
+                                                        추가
                                                     </button>
-                                                </th>
-                                                <th className="w-12 bg-gray-50"></th>
-                                            </tr>
-                                        </thead>
-                                        <SortableContext
-                                            items={activeItems.map((r: any) => r.id)}
-                                            strategy={verticalListSortingStrategy}
-                                        >
-                                            <tbody className="divide-y divide-gray-100">
-                                                {activeItems.map((row: any) => (
-                                                    <Row key={row.id} row={row} isEditMode={isEditMode}>
-                                                        <td className="px-3 py-2 align-top sticky left-0 bg-white z-10 border-r border-gray-200 min-w-[140px] max-w-[200px]">
-                                                            {isEditMode ? (
-                                                                <input
-                                                                    type="text"
-                                                                    value={row.name}
-                                                                    onChange={(e) => updateRowName(row.id, e.target.value)}
-                                                                    placeholder="항목명"
-                                                                    className={`w-full px-3 py-2 rounded-lg border-transparent hover:border-transparent focus:border-transparent transition-all text-sm font-medium ${row.name
-                                                                        ? "bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                                        : "bg-white text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:text-gray-900"
-                                                                        }`}
-                                                                />
-                                                            ) : (
-                                                                <div className="px-3 py-2 text-sm font-medium text-gray-900 min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
-                                                                    <span className="line-clamp-2 w-full">{row.name || <span className="text-gray-400">항목명</span>}</span>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        {visibleFacets.map((facet: any) => (
-                                                            <CellEditor
-                                                                key={facet.key}
-                                                                row={row}
-                                                                facet={facet}
-                                                                sheetId={activeSheetId}
-                                                                openDropdown={openDropdown}
-                                                                setOpenDropdown={setOpenDropdown}
-                                                                updateCell={updateCell}
-                                                                addCustomOption={addCustomOption}
-                                                                deleteCustomOption={deleteCustomOption}
-                                                                customOptions={isEditMode ? draftData?.customOptions : data.customOptions}
-                                                                isEditMode={isEditMode}
-                                                                onUpdateFacetOptions={updateFacetOptions}
-                                                                library={library}
-                                                            />
-                                                        ))}
-                                                        <td className="px-2 text-right align-top">
-                                                            {isEditMode && (
-                                                                <button
-                                                                    onClick={() => removeRow(row.id, row.name)}
-                                                                    disabled={row.isRequired === true}
-                                                                    className={`w-9 h-9 rounded-lg transition-colors ${row.isRequired
-                                                                        ? 'text-gray-300 cursor-not-allowed'
-                                                                        : 'text-red-600 hover:bg-red-50'
-                                                                        }`}
-                                                                    title={row.isRequired ? "필수 항목 (삭제 불가)" : "삭제"}
-                                                                >
-                                                                    <X className="w-4 h-4 mx-auto" />
-                                                                </button>
-                                                            )}
-                                                        </td>
-                                                    </Row>
-                                                ))}
-                                            </tbody>
-                                        </SortableContext>
-                                    </table>
-                                </DndContext>
-
-                                {/* 인라인 행 추가 - 편집 모드에서만 표시 */}
-                                {isEditMode && (
-                                    <div className="border-t bg-gray-50 p-3">
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="text"
-                                                value={newItemName}
-                                                onChange={(e) => setNewItemName(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        // ✅ 한글 IME 조합 중이면 Enter 무시
-                                                        // (브라우저별: e.nativeEvent.isComposing 지원)
-                                                        // 타입체크 피하려면 any 캐스팅 사용
-                                                        // @ts-ignore
-                                                        if (e.nativeEvent?.isComposing) return;
-                                                        if (newItemName.trim()) {
-                                                            addRow(newItemName.trim());
-                                                            setNewItemName('');
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                        }
-                                                    }
-                                                }}
-                                                placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
-                                                className="flex-1 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
-                                            />
-                                            <button
-                                                onClick={() => {
-                                                    if (newItemName.trim()) {
-                                                        addRow(newItemName.trim());
-                                                        setNewItemName('');
-                                                    }
-                                                }}
-                                                disabled={!newItemName.trim()}
-                                                className="px-4 py-2.5 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
-                                            >
-                                                + 추가
-                                            </button>
-                                        </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
+                                ) : (
+                                    <>
+                                        <DndContext
+                                            sensors={sensors}
+                                            collisionDetection={closestCenter}
+                                            onDragEnd={handleRowDragEnd}
+                                        >
+                                            <table className="w-full">
+                                                <thead className="bg-gray-50 border-b sticky top-0 z-20">
+                                                    <tr>
+                                                        {isEditMode && <th className="w-8 bg-gray-50"></th>}
+                                                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase w-[280px] sticky left-0 bg-gray-50 z-30 border-r border-gray-200">
+                                                            이름
+                                                        </th>
+                                                        {visibleFacets.map((facet: any) => {
+                                                            // 컬럼 타입에 따라 너비 조정
+                                                            let widthClass = "";
+                                                            if (facet.type === "checkbox") {
+                                                                widthClass = "min-w-[80px]"; // 체크박스는 두 글자 한 줄로 들어가도록 여유 있게
+                                                            } else if (facet.key === "notes" || facet.type === "textarea") {
+                                                                widthClass = "w-[250px]"; // 비고는 더 넓게
+                                                            } else if (facet.key === "location") {
+                                                                widthClass = "w-[120px]"; // 위치는 중간
+                                                            }
+                                                            // 나머지는 자동 너비 (widthClass 없음)
+
+                                                            return (
+                                                                <th
+                                                                    key={facet.key}
+                                                                    className={`px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase ${widthClass} bg-gray-50`}
+                                                                >
+                                                                    {facet.label}
+                                                                </th>
+                                                            );
+                                                        })}
+                                                        <th className="w-16 px-2 bg-gray-50">
+                                                            <button
+                                                                onClick={() => setColumnManageOpen(true)}
+                                                                className="w-8 h-8 rounded-lg hover:bg-gray-200 flex items-center justify-center transition-colors mx-auto"
+                                                                title="열 관리"
+                                                            >
+                                                                <Settings className="w-4 h-4 text-gray-600" />
+                                                            </button>
+                                                        </th>
+                                                        <th className="w-12 bg-gray-50"></th>
+                                                    </tr>
+                                                </thead>
+                                                <SortableContext
+                                                    items={activeItems.map((r: any) => r.id)}
+                                                    strategy={verticalListSortingStrategy}
+                                                >
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {activeItems.map((row: any) => (
+                                                            <Row key={row.id} row={row} isEditMode={isEditMode}>
+                                                                <td className="px-3 py-2 align-top sticky left-0 bg-white z-10 border-r border-gray-200 min-w-[140px] max-w-[200px]">
+                                                                    {isEditMode ? (
+                                                                        <input
+                                                                            type="text"
+                                                                            value={row.name}
+                                                                            onChange={(e) => updateRowName(row.id, e.target.value)}
+                                                                            placeholder="항목명"
+                                                                            className={`w-full px-3 py-2 rounded-lg border-transparent hover:border-transparent focus:border-transparent transition-all text-sm font-medium ${row.name
+                                                                                ? "bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                                : "bg-white text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:text-gray-900"
+                                                                                }`}
+                                                                        />
+                                                                    ) : (
+                                                                        <div className="px-3 py-2 text-sm font-medium text-gray-900 min-h-[40px] max-h-[60px] flex items-center overflow-hidden">
+                                                                            <span className="line-clamp-2 w-full">{row.name || <span className="text-gray-400">항목명</span>}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </td>
+                                                                {visibleFacets.map((facet: any) => (
+                                                                    <CellEditor
+                                                                        key={facet.key}
+                                                                        row={row}
+                                                                        facet={facet}
+                                                                        sheetId={activeSheetId}
+                                                                        openDropdown={openDropdown}
+                                                                        setOpenDropdown={setOpenDropdown}
+                                                                        updateCell={updateCell}
+                                                                        addCustomOption={addCustomOption}
+                                                                        deleteCustomOption={deleteCustomOption}
+                                                                        customOptions={isEditMode ? draftData?.customOptions : data.customOptions}
+                                                                        isEditMode={isEditMode}
+                                                                        onUpdateFacetOptions={updateFacetOptions}
+                                                                        library={library}
+                                                                    />
+                                                                ))}
+                                                                <td className="px-2 text-right align-top">
+                                                                    {isEditMode && (
+                                                                        <button
+                                                                            onClick={() => removeRow(row.id, row.name)}
+                                                                            disabled={row.isRequired === true}
+                                                                            className={`w-9 h-9 rounded-lg transition-colors ${row.isRequired
+                                                                                ? 'text-gray-300 cursor-not-allowed'
+                                                                                : 'text-red-600 hover:bg-red-50'
+                                                                                }`}
+                                                                            title={row.isRequired ? "필수 항목 (삭제 불가)" : "삭제"}
+                                                                        >
+                                                                            <X className="w-4 h-4 mx-auto" />
+                                                                        </button>
+                                                                    )}
+                                                                </td>
+                                                            </Row>
+                                                        ))}
+                                                    </tbody>
+                                                </SortableContext>
+                                            </table>
+                                        </DndContext>
+
+                                        {/* 인라인 행 추가 - 편집 모드에서만 표시 */}
+                                        {isEditMode && (
+                                            <div className="border-t bg-gray-50 p-3 sticky bottom-0 z-10">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={newItemName}
+                                                        onChange={(e) => setNewItemName(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                // ✅ 한글 IME 조합 중이면 Enter 무시
+                                                                // (브라우저별: e.nativeEvent.isComposing 지원)
+                                                                // 타입체크 피하려면 any 캐스팅 사용
+                                                                // @ts-ignore
+                                                                if (e.nativeEvent?.isComposing) return;
+                                                                if (newItemName.trim()) {
+                                                                    addRow(newItemName.trim());
+                                                                    setNewItemName('');
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                }
+                                                            }
+                                                        }}
+                                                        placeholder="항목명 입력 (실제 이용 중인 명칭을 입력해주세요)"
+                                                        className="flex-1 px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            if (newItemName.trim()) {
+                                                                addRow(newItemName.trim());
+                                                                setNewItemName('');
+                                                            }
+                                                        }}
+                                                        disabled={!newItemName.trim()}
+                                                        className="px-4 py-2.5 rounded-lg bg-gray-900 text-white font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm"
+                                                    >
+                                                        + 추가
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
-                        )}
+                        </div>
                     </div>
                 )}
 

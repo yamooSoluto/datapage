@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, RefreshCw, X, ExternalLink, User, Bot, UserCheck, Send, Wand2, ZoomIn } from 'lucide-react';
 import ConversationCard from './ConversationCard';
-import ConversationDetail, { MessageBubble } from './ConversationDetail';
+import ConversationDetail from './ConversationDetail'; // ConversationDetail_final_complete.jsx
 
 export default function ConversationsPage({ tenantId }) {
     const [conversations, setConversations] = useState([]);
@@ -50,7 +50,8 @@ export default function ConversationsPage({ tenantId }) {
             const data = await res.json();
             setConversations(data.conversations || []);
         } catch (error) {
-            console.error('Failed to fetch conversations:', error);
+            console.error('대화 목록 조회 실패:', error);
+            setConversations([]);
         } finally {
             setLoading(false);
         }
@@ -76,6 +77,23 @@ export default function ConversationsPage({ tenantId }) {
             setDetailData(null);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // 메시지 전송 후 상세 정보 새로고침 - 이 함수가 중요!
+    const refreshDetail = async (conv) => {
+        if (!tenantId || !conv.chatId) return;
+
+        try {
+            const res = await fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${conv.chatId}`);
+            const data = await res.json();
+            if (!data.error) {
+                setDetailData(data);
+                // 목록도 새로고침하여 최신 메시지 반영
+                await fetchConversations();
+            }
+        } catch (error) {
+            console.error('❌ 새로고침 에러:', error);
         }
     };
 
@@ -125,198 +143,180 @@ export default function ConversationsPage({ tenantId }) {
         return result;
     }, [conversations, filters, searchQuery]);
 
-    const totalPages = Math.ceil(filteredConversations.length / itemsPerPage);
     const paginatedConversations = useMemo(() => {
-        const start = (currentPage - 1) * itemsPerPage;
-        const end = start + itemsPerPage;
-        return filteredConversations.slice(start, end);
+        const startIdx = (currentPage - 1) * itemsPerPage;
+        return filteredConversations.slice(startIdx, startIdx + itemsPerPage);
     }, [filteredConversations, currentPage, itemsPerPage]);
 
-    useEffect(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, [currentPage]);
+    const totalPages = Math.ceil(filteredConversations.length / itemsPerPage);
 
-    const resetFilters = () => {
-        setFilters({
-            channel: 'all',
-            category: 'all',
-            dateFrom: '',
-            dateTo: '',
-        });
-        setSearchQuery('');
+    useEffect(() => {
         setCurrentPage(1);
-    };
+    }, [filters, searchQuery]);
 
     return (
-        <div className="space-y-6">
-            {/* 검색 바 */}
-            <div className="flex gap-3">
-                <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => {
-                            setSearchQuery(e.target.value);
-                            setCurrentPage(1);
-                        }}
-                        placeholder="이름, 메시지 내용 검색..."
-                        className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
-                    />
-                </div>
-                <button
-                    onClick={fetchConversations}
-                    disabled={loading}
-                    className="p-3 bg-white border border-gray-200 hover:border-gray-300 rounded-xl transition-colors disabled:opacity-50"
-                >
-                    <RefreshCw className={`w-5 h-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
-                </button>
-            </div>
-
-            {/* 필터 바 */}
-            <div className="flex items-center gap-3 overflow-x-auto pb-2">
-                {/* 카테고리 필터 */}
-                <select
-                    value={filters.category}
-                    onChange={(e) => {
-                        setFilters({ ...filters, category: e.target.value });
-                        setCurrentPage(1);
-                    }}
-                    className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 cursor-pointer"
-                >
-                    <option value="all">전체 카테고리</option>
-                    {availableCategories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                </select>
-
-                {/* 채널 필터 */}
-                <select
-                    value={filters.channel}
-                    onChange={(e) => {
-                        setFilters({ ...filters, channel: e.target.value });
-                        setCurrentPage(1);
-                    }}
-                    className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-yellow-400 cursor-pointer"
-                >
-                    <option value="all">전체 채널</option>
-                    <option value="widget">위젯</option>
-                    <option value="naver">네이버</option>
-                    <option value="kakao">카카오</option>
-                </select>
-
-                {/* 날짜 필터 */}
-                <input
-                    type="date"
-                    value={filters.dateFrom}
-                    onChange={(e) => {
-                        setFilters({ ...filters, dateFrom: e.target.value });
-                        setCurrentPage(1);
-                    }}
-                    className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                />
-                <span className="text-gray-400">~</span>
-                <input
-                    type="date"
-                    value={filters.dateTo}
-                    onChange={(e) => {
-                        setFilters({ ...filters, dateTo: e.target.value });
-                        setCurrentPage(1);
-                    }}
-                    className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                />
-
-                {/* 필터 초기화 */}
-                {(filters.channel !== 'all' || filters.category !== 'all' || filters.dateFrom || filters.dateTo || searchQuery) && (
-                    <button
-                        onClick={resetFilters}
-                        className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors flex items-center gap-2 whitespace-nowrap"
-                    >
-                        <X className="w-4 h-4" />
-                        초기화
-                    </button>
-                )}
-            </div>
-
-            {/* 대화 리스트 */}
-            {loading && conversations.length === 0 ? (
-                <div className="flex items-center justify-center py-20">
-                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-yellow-400" />
-                </div>
-            ) : paginatedConversations.length === 0 ? (
-                <div className="bg-white rounded-2xl p-12 text-center border border-gray-200">
-                    <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500">
-                        {searchQuery || filters.channel !== 'all' || filters.category !== 'all'
-                            ? '검색 결과가 없습니다'
-                            : '대화가 없습니다'}
-                    </p>
-                </div>
-            ) : (
-                <>
-                    {/* 대화 카드 그리드 */}
-                    <div className="space-y-3">
-                        {paginatedConversations.map((conv) => (
-                            <ConversationCard
-                                key={conv.id}
-                                conversation={conv}
-                                onClick={() => fetchConversationDetail(conv)}
-                                isSelected={selectedConv?.id === conv.id}
-                            />
-                        ))}
+        <div className="min-h-screen bg-gray-50 py-6">
+            <div className="max-w-7xl mx-auto px-4">
+                {/* 헤더 */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 p-6">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 className="text-2xl font-bold text-gray-900">대화 관리</h1>
+                            <p className="text-sm text-gray-500 mt-1">
+                                총 {filteredConversations.length}개의 대화
+                            </p>
+                        </div>
+                        <button
+                            onClick={fetchConversations}
+                            disabled={loading}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                            새로고침
+                        </button>
                     </div>
 
-                    {/* 페이지네이션 */}
-                    {totalPages > 1 && (
-                        <div className="flex items-center justify-between pt-6">
-                            <button
-                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                disabled={currentPage === 1}
-                                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                <ChevronLeft className="w-5 h-5" />
-                                이전
-                            </button>
+                    {/* 필터 영역 */}
+                    <div className="space-y-4">
+                        {/* 검색바 */}
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                            <input
+                                type="text"
+                                placeholder="사용자 이름, 메시지, 대화 ID 검색..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                        </div>
 
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-600">
-                                    페이지 {currentPage} / {totalPages}
-                                </span>
-                            </div>
-
-                            <button
-                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                disabled={currentPage === totalPages}
-                                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        {/* 필터 옵션들 */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <select
+                                value={filters.channel}
+                                onChange={(e) => setFilters(prev => ({ ...prev, channel: e.target.value }))}
+                                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
-                                다음
-                                <ChevronRight className="w-5 h-5" />
+                                <option value="all">모든 채널</option>
+                                <option value="naver">네이버</option>
+                                <option value="kakao">카카오</option>
+                                <option value="widget">웹 위젯</option>
+                                <option value="unknown">기타</option>
+                            </select>
+
+                            <select
+                                value={filters.category}
+                                onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
+                                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="all">모든 카테고리</option>
+                                {availableCategories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+
+                            <input
+                                type="date"
+                                value={filters.dateFrom}
+                                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+
+                            <input
+                                type="date"
+                                value={filters.dateTo}
+                                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* 대화 목록 */}
+                {loading && conversations.length === 0 ? (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+                        <div className="flex flex-col items-center justify-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-2 border-gray-200 border-t-blue-600 mb-4" />
+                            <p className="text-gray-500">대화 목록을 불러오는 중...</p>
+                        </div>
+                    </div>
+                ) : filteredConversations.length === 0 ? (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12">
+                        <div className="text-center">
+                            <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-500">검색 결과가 없습니다</p>
+                            <button
+                                onClick={() => {
+                                    setFilters({ channel: 'all', category: 'all', dateFrom: '', dateTo: '' });
+                                    setSearchQuery('');
+                                }}
+                                className="mt-4 text-sm text-blue-600 hover:text-blue-700"
+                            >
+                                필터 초기화
                             </button>
                         </div>
-                    )}
+                    </div>
+                ) : (
+                    <>
+                        <div className="space-y-3">
+                            {paginatedConversations.map((conv) => (
+                                <div
+                                    key={conv.id}
+                                    onClick={() => fetchConversationDetail(conv)}
+                                    className="cursor-pointer"
+                                >
+                                    <ConversationCard conversation={conv} />
+                                </div>
+                            ))}
+                        </div>
 
-                    {/* 페이지 정보 */}
-                    <p className="text-center text-sm text-gray-500 mt-4">
-                        {filteredConversations.length}개 중 {((currentPage - 1) * itemsPerPage) + 1}-
-                        {Math.min(currentPage * itemsPerPage, filteredConversations.length)}개 표시
-                    </p>
-                </>
-            )}
+                        {/* 페이지네이션 */}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-between pt-6">
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft className="w-5 h-5" />
+                                    이전
+                                </button>
 
-            {/* 대화 상세 모달 */}
-            {selectedConv && detailData && (
-                <ConversationDetailModal
-                    conversation={selectedConv}
-                    detailData={detailData}
-                    onClose={closeDetail}
-                />
-            )}
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-600">
+                                        페이지 {currentPage} / {totalPages}
+                                    </span>
+                                </div>
+
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    다음
+                                    <ChevronRight className="w-5 h-5" />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 페이지 정보 */}
+                        <p className="text-center text-sm text-gray-500 mt-4">
+                            {filteredConversations.length}개 중 {((currentPage - 1) * itemsPerPage) + 1}-
+                            {Math.min(currentPage * itemsPerPage, filteredConversations.length)}개 표시
+                        </p>
+                    </>
+                )}
+
+                {/* 대화 상세 모달 - onRefresh 추가! */}
+                {selectedConv && detailData && (
+                    <ConversationDetail
+                        conversation={selectedConv}
+                        detailData={detailData}
+                        onClose={closeDetail}
+                        onRefresh={refreshDetail}  // ← 이 부분이 중요!
+                    />
+                )}
+            </div>
         </div>
     );
-}
-
-// 대화 상세 모달 컴포넌트 - ConversationDetail을 래핑
-function ConversationDetailModal({ conversation, detailData, onClose }) {
-    // ConversationDetail 컴포넌트를 사용
-    return <ConversationDetail conversation={conversation} onClose={onClose} />;
 }
