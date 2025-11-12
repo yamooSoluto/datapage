@@ -72,8 +72,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     const autoResize = (el) => {
         if (!el) return;
-        el.style.height = '0px';
-        el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+        el.style.height = 'auto';
+        const newHeight = Math.min(el.scrollHeight, 120);
+        el.style.height = newHeight + 'px';
     };
 
     const handleSend = async () => {
@@ -86,7 +87,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             await onSend?.({ text, attachments });
             setDraft('');
             setAttachments([]);
-            if (textareaRef.current) textareaRef.current.style.height = '40px';
+            if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+            }
             await fetchDetail(); // 전송 후 최신 메시지 불러오기
         } finally {
             setSending(false);
@@ -183,15 +186,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     </div>
 
                     {/* 하단 입력바 + 정보 */}
-                    <div className="px-4 pt-2 pb-3 md:px-6 flex-shrink-0 bg-white">
+                    <div className="px-4 pt-3 pb-4 md:px-6 flex-shrink-0 bg-white border-t border-gray-100">
                         {/* 첨부 썸네일 */}
                         {attachments.length > 0 && (
-                            <div className="mb-2 flex gap-2 overflow-x-auto">
+                            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
                                 {attachments.map((att, i) => (
-                                    <div key={i} className="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-200">
+                                    <div key={i} className="relative w-16 h-16 rounded-2xl overflow-hidden border border-gray-200 flex-shrink-0">
                                         <img src={att.url} alt={'att-' + i} className="w-full h-full object-cover" />
                                         <button
-                                            className="absolute -top-1 -right-1 bg-black/70 text-white rounded-full w-5 h-5 text-[10px] leading-5"
+                                            className="absolute -top-1.5 -right-1.5 bg-gray-900/80 text-white rounded-full w-5 h-5 flex items-center justify-center text-sm font-medium hover:bg-gray-900 transition-colors"
                                             onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
                                             aria-label="remove"
                                         >
@@ -203,16 +206,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         )}
 
                         {/* 입력 바 */}
-                        <div className="relative">
-                            <div className="pointer-events-none absolute -top-2 left-0 right-0 h-2 bg-gradient-to-b from-gray-50/80 to-transparent" />
-                            <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:bg-white focus-within:border-gray-300 transition">
-                                <button
-                                    onClick={() => filePickerRef.current?.click()}
-                                    className="p-2 rounded-lg hover:bg-gray-100 active:scale-95 transition"
-                                    aria-label="첨부"
-                                >
-                                    <Paperclip className="w-5 h-5 text-gray-600" />
-                                </button>
+                        <div className="flex items-end gap-2">
+                            <button
+                                onClick={() => filePickerRef.current?.click()}
+                                className="flex-shrink-0 w-8 h-8 rounded-full hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center transition-colors"
+                                aria-label="첨부"
+                            >
+                                <Paperclip className="w-5 h-5 text-gray-600" />
+                            </button>
+
+                            <div className="flex-1 flex items-end gap-2 rounded-[20px] border border-gray-200 bg-white px-3 py-1.5 focus-within:border-gray-300 transition-all">
                                 <textarea
                                     ref={textareaRef}
                                     value={draft}
@@ -224,35 +227,39 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     onPaste={onPaste}
                                     placeholder="메시지"
                                     rows={1}
-                                    className="flex-1 resize-none bg-transparent outline-none text-[15px] leading-6 max-h-[120px] placeholder:text-gray-400"
-                                    style={{ height: 40 }}
+                                    className="flex-1 resize-none bg-transparent outline-none text-[15px] leading-[22px] max-h-[120px] placeholder:text-gray-400 py-1.5"
+                                    style={{ height: 'auto', minHeight: '22px' }}
                                 />
                                 <button
                                     onClick={() => (onOpenAICorrector ? onOpenAICorrector() : null)}
-                                    className="p-2 rounded-lg hover:bg-gray-100 active:scale-95 transition"
+                                    className="flex-shrink-0 w-7 h-7 rounded-full hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center transition-colors mb-0.5"
                                     aria-label="AI 보정"
                                     title="AI 보정"
                                 >
-                                    <Sparkles className="w-5 h-5 text-gray-700" />
+                                    <Sparkles className="w-4 h-4 text-gray-600" />
                                 </button>
-                                <button
-                                    onClick={handleSend}
-                                    disabled={!canSend || sending}
-                                    className={`h-9 w-9 rounded-full flex items-center justify-center transition ${canSend && !sending ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                        }`}
-                                    aria-label="전송"
-                                >
-                                    <Send className="w-4 h-4" />
-                                </button>
-                                <input
-                                    ref={filePickerRef}
-                                    type="file"
-                                    accept="image/*,video/*,application/pdf"
-                                    multiple
-                                    className="hidden"
-                                    onChange={(e) => handleFiles(e.target.files)}
-                                />
                             </div>
+
+                            <button
+                                onClick={handleSend}
+                                disabled={!canSend || sending}
+                                className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${canSend && !sending
+                                    ? 'bg-blue-500 hover:bg-blue-600 active:scale-95 text-white shadow-sm'
+                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    }`}
+                                aria-label="전송"
+                            >
+                                <Send className="w-4 h-4" />
+                            </button>
+
+                            <input
+                                ref={filePickerRef}
+                                type="file"
+                                accept="image/*,video/*,application/pdf"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => handleFiles(e.target.files)}
+                            />
                         </div>
 
                         {/* 하단 정보 */}
