@@ -182,11 +182,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             url: n8nUrl,
             tenantId,
             conversationId: actualChatId,
-            requestId,
+            requestId: requestId || 'MISSING!', // ✅ 강조
             hasUserMessage: !!userMessage,
             previousMessagesCount: previousMessages.length,
             hasCsTone: !!csTone,
         });
+
+        // ✅ 페이로드 전체 로그 (디버깅용)
+        console.log("[tone-correction] Full payload:", JSON.stringify(payload, null, 2));
 
         // ✅ 6. n8n webhook 호출 (비동기)
         const response = await fetch(n8nUrl, {
