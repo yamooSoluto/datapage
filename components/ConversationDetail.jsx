@@ -12,8 +12,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     // 입력바 상태
     const [draft, setDraft] = useState('');
-    const [attachments, setAttachments] = useState([]); // { file, url }
+    const [attachments, setAttachments] = useState([]); // { file, url, name, type }
     const [sending, setSending] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const filePickerRef = useRef(null);
     const textareaRef = useRef(null);
 
@@ -64,10 +65,53 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     const canSend = draft.trim().length > 0 || attachments.length > 0;
 
-    const handleFiles = (files) => {
+    const handleFiles = async (files) => {
         const arr = Array.from(files || []);
-        const next = arr.map((file) => ({ file, url: URL.createObjectURL(file) }));
-        setAttachments((prev) => [...prev, ...next].slice(0, 10));
+        if (arr.length === 0) return;
+
+        setUploading(true);
+        try {
+            // 파일을 base64로 변환하거나 미리보기 URL 생성
+            const newAttachments = await Promise.all(
+                arr.map(async (file) => {
+                    // 이미지 파일만 미리보기 지원
+                    const isImage = file.type.startsWith('image/');
+                    const preview = isImage ? URL.createObjectURL(file) : null;
+
+                    // 파일을 base64로 변환 (실제 전송용)
+                    const base64 = await fileToBase64(file);
+
+                    return {
+                        file,
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        preview,
+                        base64,
+                    };
+                })
+            );
+
+            setAttachments((prev) => [...prev, ...newAttachments].slice(0, 10));
+        } catch (error) {
+            console.error('Failed to process files:', error);
+            alert('파일 처리에 실패했습니다.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    // 파일을 base64로 변환하는 헬퍼 함수
+    const fileToBase64 = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64 = reader.result.split(',')[1]; // "data:image/png;base64," 부분 제거
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
     };
 
     const autoResize = (el) => {
@@ -78,18 +122,25 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     };
 
     const handleSend = async () => {
-        if (sending) return;
+        if (sending || uploading) return;
         const text = (draft || '').trim();
         if (!text && attachments.length === 0) return;
+
         setSending(true);
         try {
-            // ✅ tenantId를 포함하여 전달
+            // ✅ tenantId와 첨부파일 정보를 포함하여 전달
             await onSend?.({
                 text,
-                attachments,
+                attachments: attachments.map(att => ({
+                    name: att.name,
+                    type: att.type,
+                    size: att.size,
+                    base64: att.base64,
+                })),
                 tenantId: effectiveTenantId,
-                chatId: conversation.chatId
+                chatId: conversation.chatId,
             });
+
             setDraft('');
             setAttachments([]);
             if (textareaRef.current) {
@@ -105,10 +156,17 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     };
 
     const onKeyDown = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        // ✅ 모바일/작은 화면에서는 Enter를 줄바꿈으로, 데스크톱에서는 전송으로
+        // 768px 미만을 모바일로 간주 (Tailwind의 md 브레이크포인트)
+        const isMobile = window.innerWidth < 768;
+
+        if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+            // 데스크톱: Shift 없는 Enter는 전송
             e.preventDefault();
             handleSend();
         }
+        // 모바일: Enter는 줄바꿈 (기본 동작)
+        // 데스크톱: Shift+Enter는 줄바꿈 (기본 동작)
     };
 
     const onPaste = (e) => {
@@ -124,6 +182,24 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             e.preventDefault();
             handleFiles(files);
         }
+    };
+
+    const removeAttachment = (index) => {
+        setAttachments(prev => {
+            const newAttachments = prev.filter((_, i) => i !== index);
+            // 미리보기 URL 해제
+            const removed = prev[index];
+            if (removed.preview) {
+                URL.revokeObjectURL(removed.preview);
+            }
+            return newAttachments;
+        });
+    };
+
+    const formatFileSize = (bytes) => {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     };
 
     return (
@@ -194,25 +270,66 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     </div>
 
                     {/* 입력 영역 */}
-                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white">
-                        {/* 첨부 이미지 */}
+                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl">
+                        {/* ✅ 요약 정보 - 입력창 위로 이동 + 스타일 개선 */}
+                        {detail?.conversation?.summary && (
+                            <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                                <div className="text-sm text-blue-900">
+                                    <span className="font-semibold">💡 요약:</span> {detail.conversation.summary}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 첨부 파일 미리보기 */}
                         {attachments.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-3">
+                            <div className="mb-3 flex flex-wrap gap-2">
                                 {attachments.map((att, idx) => (
                                     <div key={idx} className="relative group">
-                                        <img
-                                            src={att.url}
-                                            alt={`첨부 ${idx + 1}`}
-                                            className="w-16 h-16 object-cover rounded-lg border border-gray-200"
-                                        />
-                                        <button
-                                            onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))}
-                                            className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            ×
-                                        </button>
+                                        {att.preview ? (
+                                            // 이미지 미리보기
+                                            <>
+                                                <img
+                                                    src={att.preview}
+                                                    alt={att.name}
+                                                    className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                                                />
+                                                <button
+                                                    onClick={() => removeAttachment(idx)}
+                                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                                >
+                                                    ×
+                                                </button>
+                                            </>
+                                        ) : (
+                                            // 일반 파일 (PDF 등)
+                                            <div className="relative">
+                                                <div className="w-20 h-20 bg-gray-100 rounded-lg border border-gray-200 flex flex-col items-center justify-center p-2">
+                                                    <Paperclip className="w-6 h-6 text-gray-400 mb-1" />
+                                                    <span className="text-xs text-gray-600 truncate w-full text-center">
+                                                        {att.name.slice(0, 8)}...
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">
+                                                        {formatFileSize(att.size)}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => removeAttachment(idx)}
+                                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {/* 업로드 중 표시 */}
+                        {uploading && (
+                            <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600" />
+                                <span className="text-sm text-blue-900">파일 처리 중...</span>
                             </div>
                         )}
 
@@ -220,7 +337,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         <div className="flex items-end gap-2">
                             <button
                                 onClick={() => filePickerRef.current?.click()}
-                                disabled={sending}
+                                disabled={sending || uploading}
                                 className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 aria-label="첨부"
                             >
@@ -237,21 +354,26 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 onKeyDown={onKeyDown}
                                 onPaste={onPaste}
                                 placeholder="메시지 입력..."
-                                disabled={sending}
+                                disabled={sending || uploading}
+                                enterKeyHint="send"
                                 className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
                                 rows={1}
                             />
 
                             <button
                                 onClick={handleSend}
-                                disabled={!canSend || sending}
-                                className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${canSend && !sending
+                                disabled={!canSend || sending || uploading}
+                                className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${canSend && !sending && !uploading
                                     ? 'bg-blue-500 hover:bg-blue-600 active:scale-95 text-white shadow-sm'
                                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                     }`}
                                 aria-label="전송"
                             >
-                                <Send className="w-4 h-4" />
+                                {sending ? (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                                ) : (
+                                    <Send className="w-4 h-4" />
+                                )}
                             </button>
 
                             <input
@@ -262,15 +384,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 className="hidden"
                                 onChange={(e) => handleFiles(e.target.files)}
                             />
-                        </div>
-
-                        {/* 하단 정보 */}
-                        <div className="mt-3">
-                            {detail?.conversation?.summary && (
-                                <div className="bg-transparent text-sm text-gray-700">
-                                    <span className="font-semibold">요약</span> {detail.conversation.summary}
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
