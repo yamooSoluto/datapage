@@ -6,7 +6,7 @@ import { Search, ChevronLeft, ChevronRight, RefreshCw, X, User } from 'lucide-re
 import ConversationCard from './ConversationCard';
 import ConversationDetail from './ConversationDetail';
 
-export default function ConversationsPage({ tenantId }) {
+export default function ConversationsPage({ tenantId, planName = 'trial' }) {
     const [conversations, setConversations] = useState([]);
     const [selectedConv, setSelectedConv] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -141,7 +141,6 @@ export default function ConversationsPage({ tenantId }) {
                     tenantId: tenant,
                     chatId: chatId,
                     content: text || '',
-                    // ✅ 첨부 전달 (name/type/size/base64 그대로)
                     attachments: Array.isArray(attachments) ? attachments : []
                 })
             });
@@ -315,11 +314,12 @@ export default function ConversationsPage({ tenantId }) {
                 </>
             )}
 
-            {/* ✅ 상세 모달 (답장 가능) */}
+            {/* ✅ 상세 모달 (답장 가능 + AI 보정) */}
             {selectedConv && (
                 <ConversationDetail
                     conversation={selectedConv}
                     tenantId={tenantId}
+                    planName={planName}
                     onClose={() => setSelectedConv(null)}
                     onSend={handleSend}
                     onOpenAICorrector={() => console.log('open AI corrector modal')}

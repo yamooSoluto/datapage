@@ -3,11 +3,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
+import AIComposerModal from './AIComposerModal';
 
-export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId }) {
+export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId, planName = 'trial' }) {
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
     const [imagePreview, setImagePreview] = useState(null);
+    const [showAIComposer, setShowAIComposer] = useState(false); // ✅ AI 보정 모달 상태
     const messagesEndRef = useRef(null);
 
     // 입력바 상태
@@ -17,6 +19,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [uploading, setUploading] = useState(false);
     const filePickerRef = useRef(null);
     const textareaRef = useRef(null);
+
+    // ✅ AI 보정 모달
+    const [showAICorrector, setShowAICorrector] = useState(false);
 
     // ✅ tenantId를 상위에서 추출
     const effectiveTenantId =
@@ -216,6 +221,18 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     };
 
+    // ✅ AI 보정 결과를 입력창에 전달
+    const handleAIResult = (correctedText) => {
+        setDraft(correctedText);
+        setShowAIComposer(false);
+
+        // 입력창에 포커스
+        if (textareaRef.current) {
+            textareaRef.current.focus();
+            autoResize(textareaRef.current);
+        }
+    };
+
     return (
         <>
             <div
@@ -239,12 +256,25 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             </div>
                         </div>
 
-                        <button
-                            onClick={onClose}
-                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {/* ✅ AI 보정 버튼 */}
+                            {(planName === 'pro' || planName === 'business') && (
+                                <button
+                                    onClick={() => setShowAIComposer(true)}
+                                    className="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all flex items-center gap-2 text-sm font-medium"
+                                >
+                                    <Sparkles className="w-4 h-4" />
+                                    AI 보정
+                                </button>
+                            )}
+
+                            <button
+                                onClick={onClose}
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* 메시지 영역 */}
@@ -309,7 +339,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                                 />
                                                 <button
                                                     onClick={() => removeAttachment(idx)}
-                                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-lg"                                                >
+                                                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                                >
                                                     ×
                                                 </button>
                                             </>
@@ -355,6 +386,17 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 aria-label="첨부"
                             >
                                 <Paperclip className="w-4 h-4 text-gray-600" />
+                            </button>
+
+                            {/* ✅ AI 보정 버튼 - AIComposerModal 연결 */}
+                            <button
+                                onClick={() => setShowAIComposer(true)}
+                                disabled={sending || uploading}
+                                className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                                aria-label="AI 보정"
+                                title="AI 톤 보정"
+                            >
+                                <Sparkles className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
                             </button>
 
                             <textarea
@@ -421,6 +463,31 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         onClick={(e) => e.stopPropagation()}
                     />
                 </div>
+            )}
+
+            {/* ✅ AI Composer 모달 */}
+            {showAIComposer && (
+                <AIComposerModal
+                    conversation={conversation}
+                    tenantId={effectiveTenantId}
+                    planName={planName}
+                    onClose={() => setShowAIComposer(false)}
+                    onResult={handleAIResult}
+                />
+            )}
+
+            {/* ✅ AI 보정 모달 */}
+            {showAICorrector && (
+                <AICorrector
+                    conversation={conversation}
+                    tenantId={effectiveTenantId}
+                    onClose={() => setShowAICorrector(false)}
+                    onSend={async (data) => {
+                        // AI 보정된 메시지 전송
+                        await onSend?.(data);
+                        setShowAICorrector(false);
+                    }}
+                />
             )}
         </>
     );
