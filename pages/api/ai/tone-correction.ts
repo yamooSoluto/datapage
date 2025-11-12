@@ -30,11 +30,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             voice,
             contentType,
             toneFlags,
-            requestId, // ✅ 폴링용 ID
+            requestId: incomingRequestId, // ✅ 폴링용 ID
             source = 'web_portal',
         } = req.body || {};
 
         const actualChatId = conversationId || chatId;
+
+        // ✅ requestId가 없으면 생성 (폴링용)
+        const requestId = incomingRequestId || `${tenantId}_${actualChatId}_${Date.now()}`;
 
         console.log("[tone-correction] Request:", {
             tenantId,
@@ -161,7 +164,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             "https://soluto.app.n8n.cloud/webhook/tone-correction";
 
         // ✅ 5. 페이로드 구성 (슬랙과 동일한 스키마)
-        const payload = {
+        const payload: any = {
             tenantId,
             conversationId: actualChatId,
             userMessage, // ✅ 추가
@@ -169,20 +172,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             mode: "mediated",
             source, // 'web_portal'
             planName: planName || "trial",
-            requestId, // ✅ 폴링용
-            csTone, // ✅ 테넌트 CS 톤
-            previousMessages, // ✅ 최근 5개 메시지
+            requestId, // ✅ 폴링용 (항상 포함)
+            csTone: csTone || null, // ✅ 테넌트 CS 톤 (null로 명시)
+            previousMessages: previousMessages || [], // ✅ 최근 5개 메시지 (빈 배열로 명시)
             ...aiOptions,
             // ✅ 웹포탈 콜백 URL
             callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr'}/api/ai/tone-result`,
             executionMode: "production",
         };
 
+        // ✅ undefined 필드 제거 (명시적으로)
+        Object.keys(payload).forEach(key => {
+            if (payload[key] === undefined) {
+                delete payload[key];
+            }
+        });
+
         console.log("[tone-correction] Calling n8n:", {
             url: n8nUrl,
             tenantId,
             conversationId: actualChatId,
-            requestId: requestId || 'MISSING!', // ✅ 강조
+            requestId, // ✅ 항상 존재함
             hasUserMessage: !!userMessage,
             previousMessagesCount: previousMessages.length,
             hasCsTone: !!csTone,
@@ -190,6 +200,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // ✅ 페이로드 전체 로그 (디버깅용)
         console.log("[tone-correction] Full payload:", JSON.stringify(payload, null, 2));
+
+        // ✅ requestId 확인 로그
+        console.log("[tone-correction] requestId in payload:", payload.requestId);
 
         // ✅ 6. n8n webhook 호출 (비동기)
         const response = await fetch(n8nUrl, {

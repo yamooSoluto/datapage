@@ -9,6 +9,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== "POST") return res.status(405).end();
 
     try {
+        // ✅ 디버깅: 전체 요청 정보 로그
+        console.log("[tone-result] Raw request:", {
+            method: req.method,
+            headers: req.headers,
+            bodyType: typeof req.body,
+            bodyKeys: req.body ? Object.keys(req.body) : [],
+            bodyRaw: JSON.stringify(req.body, null, 2),
+        });
+
+        // ✅ n8n이 보내는 다양한 형식 처리
+        let body = req.body || {};
+
+        // n8n이 body를 중첩해서 보낼 수 있음 (예: { body: { ... } })
+        if (body.body && typeof body.body === 'object') {
+            body = body.body;
+        }
+
+        // n8n이 data 필드로 보낼 수 있음
+        if (body.data && typeof body.data === 'object') {
+            body = body.data;
+        }
+
         const {
             tenantId,
             conversationId,
@@ -16,36 +38,65 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             originalText,
             metadata,
             requestId, // 클라이언트에서 생성한 고유 ID
-        } = req.body || {};
+            // ✅ n8n이 다른 필드명으로 보낼 수 있음
+            conversation_id,
+            corrected_text,
+            original_text,
+            request_id,
+            tenant_id,
+        } = body;
 
-        console.log("[tone-result] Received:", {
-            tenantId,
-            conversationId,
-            requestId,
-            textLength: correctedText?.length,
+        // ✅ 필드명 매핑 (n8n이 snake_case로 보낼 수 있음)
+        const finalConversationId = conversationId || conversation_id;
+        const finalCorrectedText = correctedText || corrected_text;
+        const finalOriginalText = originalText || original_text;
+        const finalRequestId = requestId || request_id;
+        const finalTenantId = tenantId || tenant_id;
+
+        console.log("[tone-result] Parsed data:", {
+            tenantId: finalTenantId,
+            conversationId: finalConversationId,
+            requestId: finalRequestId,
+            correctedTextLength: finalCorrectedText?.length,
+            originalTextLength: finalOriginalText?.length,
+            hasMetadata: !!metadata,
         });
 
-        if (!conversationId || !correctedText) {
-            return res.status(400).json({ error: "conversationId and correctedText required" });
+        if (!finalConversationId || !finalCorrectedText) {
+            console.error("[tone-result] Missing required fields:", {
+                conversationId: finalConversationId,
+                correctedText: finalCorrectedText,
+                rawBody: JSON.stringify(body, null, 2),
+            });
+            return res.status(400).json({
+                error: "conversationId and correctedText required",
+                received: {
+                    conversationId: finalConversationId,
+                    correctedText: finalCorrectedText ? 'present' : 'missing',
+                    bodyKeys: Object.keys(body),
+                }
+            });
         }
 
         // ✅ 결과를 임시 저장소에 저장 (Redis 권장, 없으면 메모리)
         // 클라이언트가 폴링으로 가져가도록
         global.aiResults = global.aiResults || {};
-        global.aiResults[requestId || conversationId] = {
-            conversationId,
-            correctedText,
-            originalText,
+        const storageKey = finalRequestId || finalConversationId;
+
+        global.aiResults[storageKey] = {
+            conversationId: finalConversationId,
+            correctedText: finalCorrectedText,
+            originalText: finalOriginalText,
             metadata,
             timestamp: Date.now(),
         };
 
         // 5분 후 자동 삭제
         setTimeout(() => {
-            delete global.aiResults[requestId || conversationId];
+            delete global.aiResults[storageKey];
         }, 5 * 60 * 1000);
 
-        console.log("[tone-result] Stored result for:", requestId || conversationId);
+        console.log("[tone-result] Stored result for:", storageKey);
 
         return res.status(200).json({
             ok: true,
