@@ -20,6 +20,35 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const filePickerRef = useRef(null);
     const textareaRef = useRef(null);
 
+    // ✅ 로컬 스토리지 키
+    const draftKey = `draft_${effectiveTenantId}_${conversation.chatId}`;
+
+    // ✅ 컴포넌트 마운트 시 저장된 draft 복원
+    useEffect(() => {
+        try {
+            const savedDraft = localStorage.getItem(draftKey);
+            if (savedDraft) {
+                setDraft(savedDraft);
+                console.log('[ConversationDetail] Restored draft from localStorage');
+            }
+        } catch (e) {
+            console.error('[ConversationDetail] Failed to restore draft:', e);
+        }
+    }, [draftKey]);
+
+    // ✅ draft 변경 시 로컬 스토리지에 저장
+    useEffect(() => {
+        try {
+            if (draft.trim()) {
+                localStorage.setItem(draftKey, draft);
+            } else {
+                localStorage.removeItem(draftKey);
+            }
+        } catch (e) {
+            console.error('[ConversationDetail] Failed to save draft:', e);
+        }
+    }, [draft, draftKey]);
+
     // ✅ AI 보정 모달
     const [showAICorrector, setShowAICorrector] = useState(false);
 
@@ -162,6 +191,14 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
             setDraft('');
             setAttachments([]);
+
+            // ✅ 로컬 스토리지에서도 삭제
+            try {
+                localStorage.removeItem(draftKey);
+            } catch (e) {
+                console.error('[ConversationDetail] Failed to clear draft:', e);
+            }
+
             if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto';
             }
@@ -219,18 +256,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    };
-
-    // ✅ AI 보정 결과를 입력창에 전달
-    const handleAIResult = (correctedText) => {
-        setDraft(correctedText);
-        setShowAIComposer(false);
-
-        // 입력창에 포커스
-        if (textareaRef.current) {
-            textareaRef.current.focus();
-            autoResize(textareaRef.current);
-        }
     };
 
     return (
@@ -472,7 +497,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     tenantId={effectiveTenantId}
                     planName={planName}
                     onClose={() => setShowAIComposer(false)}
-                    onResult={handleAIResult}
+                    onSend={onSend}
                 />
             )}
 

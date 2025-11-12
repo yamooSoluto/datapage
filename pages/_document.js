@@ -10,6 +10,7 @@ export default function Document() {
         <meta name="theme-color" content="#FCD34D" />
 
         {/* iOS PWA 지원 */}
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="YAMOO" />

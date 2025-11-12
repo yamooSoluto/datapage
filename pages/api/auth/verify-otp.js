@@ -59,30 +59,37 @@ export default async function handler(req, res) {
     const emailLower = email.toLowerCase();
     const codeStr = String(code).trim();
 
-    // Firestore에서 OTP 코드 조회
+    // Firestore에서 OTP 코드 조회 (인덱스 없이 동작하도록 단순화)
     const otpSnapshot = await db.collection('otp_codes')
       .where('email', '==', emailLower)
       .where('used', '==', false)
-      .orderBy('createdAt', 'desc')
-      .limit(1)
       .get();
 
     if (otpSnapshot.empty) {
       return res.status(401).json({ error: '유효한 코드를 찾을 수 없습니다.' });
     }
 
-    const otpDoc = otpSnapshot.docs[0];
-    const otpData = otpDoc.data();
+    // 가장 최근 코드 찾기 (클라이언트에서 정렬)
+    const validCodes = otpSnapshot.docs
+      .map(doc => ({ doc, data: doc.data() }))
+      .filter(({ data }) => {
+        const expiresAt = new Date(data.expiresAt);
+        return new Date() <= expiresAt; // 만료되지 않은 것만
+      })
+      .sort((a, b) => {
+        // createdAt 기준 내림차순 정렬
+        const aTime = new Date(a.data.createdAt).getTime();
+        const bTime = new Date(b.data.createdAt).getTime();
+        return bTime - aTime;
+      });
 
-    // 만료 시간 확인
-    const expiresAt = new Date(otpData.expiresAt);
-    if (new Date() > expiresAt) {
-      // 만료된 코드는 used로 표시
-      await otpDoc.ref.update({ used: true });
+    if (validCodes.length === 0) {
       return res.status(401).json({ error: '코드가 만료되었습니다.' });
     }
 
-    // 코드 일치 확인
+    const { doc: otpDoc, data: otpData } = validCodes[0];
+
+    // 코드 일치 확인 (만료 시간은 이미 필터링됨)
     if (otpData.code !== codeStr) {
       return res.status(401).json({ error: '코드가 올바르지 않습니다.' });
     }

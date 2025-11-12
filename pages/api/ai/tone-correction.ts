@@ -10,24 +10,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const {
             tenantId,
             chatId,
+            conversationId, // chatId의 alias
             content,
             enableAI,
             planName,
             voice,
             contentType,
-            toneFlags
+            toneFlags,
+            requestId, // ✅ 추가
+            source = 'web_portal', // ✅ 추가
         } = req.body || {};
+
+        const actualChatId = conversationId || chatId;
 
         console.log("[tone-correction] Request:", {
             tenantId,
-            chatId,
+            chatId: actualChatId,
             contentLength: content?.length,
             enableAI,
             planName,
+            requestId,
+            source,
         });
 
         // 필수 파라미터 검증
-        if (!tenantId || !chatId || !content) {
+        if (!tenantId || !actualChatId || !content) {
             return res.status(400).json({ error: "tenantId, chatId, content required" });
         }
 
@@ -53,12 +60,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // ✅ 페이로드 구성 (GCP 함수와 동일한 형식)
         const payload = {
             tenantId,
-            conversationId: chatId,
+            conversationId: actualChatId,
             userMessage: "", // TODO: 실제 사용자 메시지 가져오기
             agentInstruction: content,
             mode: "mediated",
-            source: "web_portal",
+            source, // ✅ 'web_portal' 전달
             planName: planName || "trial",
+            requestId, // ✅ 추가
             // Business 플랜 옵션
             ...(planName === 'business' ? {
                 routing: "agent_mediation",
@@ -75,8 +83,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             } : {}),
             previousMessages: [], // TODO: 최근 5개 메시지 가져오기
             executionMode: "production",
-            // 웹포탈용 콜백 (선택적)
-            webPortalCallback: true,
+            // ✅ 웹포탈 콜백 URL (n8n이 여기로 POST)
+            callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-vercel-app.vercel.app'}/api/ai/tone-result`,
         };
 
         console.log("[tone-correction] Calling n8n:", n8nUrl);

@@ -5,7 +5,6 @@
 
 import jwt from 'jsonwebtoken';
 import admin from 'firebase-admin';
-import { parseCookies } from 'nookies';
 
 // Firebase Admin 초기화
 if (!admin.apps.length) {
@@ -44,7 +43,13 @@ export default async function handler(req, res) {
 
   try {
     // 쿠키에서 세션 토큰 가져오기
-    const cookies = parseCookies({ req });
+    const cookieHeader = req.headers.cookie || '';
+    const cookies = Object.fromEntries(
+      cookieHeader.split(';').map(c => {
+        const [key, ...values] = c.trim().split('=');
+        return [key, values.join('=')];
+      })
+    );
     const sessionToken = cookies.yamoo_session;
 
     if (!sessionToken) {

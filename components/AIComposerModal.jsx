@@ -87,17 +87,22 @@ export default function AIComposerModal({
             return;
         }
 
-        // AI 보정 요청
+        // ✅ AI 보정 요청 (폴링 방식)
         setProcessing(true);
         setStep('processing');
 
         try {
+            // 고유 요청 ID 생성
+            const requestId = `${tenantId}_${conversation.chatId}_${Date.now()}`;
+
             const payload = {
                 tenantId,
-                chatId: conversation.chatId,
+                conversationId: conversation.chatId,
                 content: finalContent,
                 enableAI: true,
                 planName,
+                requestId, // ✅ 추가
+                source: 'web_portal', // ✅ n8n 분기용
                 // Business 플랜 옵션
                 ...(planName === 'business' ? {
                     voice,
@@ -108,27 +113,54 @@ export default function AIComposerModal({
 
             console.log('[AIComposerModal] Requesting AI correction:', payload);
 
-            const response = await fetch('/api/ai/tone-correction', {
+            // n8n에 요청 (비동기)
+            fetch('/api/ai/tone-correction', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
+            }).catch(err => {
+                console.error('[AIComposerModal] Request failed:', err);
             });
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'AI 보정 요청 실패');
-            }
+            // ✅ 폴링 시작 (1초마다 최대 30초)
+            let attempts = 0;
+            const maxAttempts = 30;
 
-            const result = await response.json();
-            console.log('[AIComposerModal] AI result:', result);
+            const pollResult = async () => {
+                attempts++;
 
-            setCorrectedText(result.correctedText || finalContent);
-            setStep('result');
+                try {
+                    const response = await fetch(`/api/ai/tone-poll?requestId=${requestId}`);
+                    const result = await response.json();
+
+                    if (result.ready) {
+                        // 결과 도착!
+                        console.log('[AIComposerModal] AI result received:', result);
+                        setCorrectedText(result.correctedText || finalContent);
+                        setStep('result');
+                        setProcessing(false);
+                        return;
+                    }
+
+                    // 아직 준비 안됨
+                    if (attempts < maxAttempts) {
+                        setTimeout(pollResult, 1000); // 1초 후 재시도
+                    } else {
+                        throw new Error('AI 보정 시간이 초과되었습니다');
+                    }
+                } catch (err) {
+                    console.error('[AIComposerModal] Poll error:', err);
+                    throw err;
+                }
+            };
+
+            // 폴링 시작
+            setTimeout(pollResult, 2000); // 2초 후 첫 폴링
+
         } catch (err) {
             console.error('[AIComposerModal] Error:', err);
             setError(err.message || 'AI 보정 중 오류가 발생했습니다.');
             setStep('compose');
-        } finally {
             setProcessing(false);
         }
     };
