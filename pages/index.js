@@ -15,6 +15,7 @@ import { useTemplates } from '@/hooks/useTemplates';
 import MyPageTabs from '@/components/mypage/MyPageTabs';
 import MinimalHeader from '../components/layout/MinimalHeader';
 import FirstSetupGuide from '../components/onboarding/FirstSetupGuide';
+import LoginPWA from '../components/LoginPWA';
 
 // ════════════════════════════════════════════════════════════
 // 상수 및 설정
@@ -48,9 +49,10 @@ export default function TenantPortal() {
   // ──────────────────────────────────────────────────────────
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentTenant, setCurrentTenant] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [availableTenants, setAvailableTenants] = useState([]);
   const [showTenantSelector, setShowTenantSelector] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   // ──────────────────────────────────────────────────────────
   // 2. 탭 & UI State
@@ -579,43 +581,99 @@ export default function TenantPortal() {
   };
 
   // ──────────────────────────────────────────────────────────
-  // 14. 초기 인증 로직 (useEffect)
+  // 14. 초기 인증 체크 (마운트 시 1회)
   // ──────────────────────────────────────────────────────────
   useEffect(() => {
-    // 개발 환경 Fast Lane
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🧭 Dev Fastlane: 내부 테스트 모드 진입');
-      const devTenant = {
-        id: 't_dev',
-        brandName: '로컬 테스트',
-        email: 'dev@yamoo.ai',
-        plan: 'trial',
-        status: 'active',
-        faqCount: 0,
-        onboardingCompleted: false,
-      };
-      setCurrentTenant(devTenant);
-      setIsLoggedIn(true);
-      setShowOnboarding(true);
-      setCanDismissOnboarding(true);
-      console.log('✅ Dev Fastlane 완료: 온보딩 표시');
-      return;
-    }
+    checkAuth();
+  }, []);
 
-    // 프로덕션 환경 인증 로직
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    const sessionEmail = localStorage.getItem('userEmail');
-    const sessionTenantId = localStorage.getItem('tenantId');
+  async function checkAuth() {
+    setIsLoading(true);
+    try {
+      // 개발 환경 Fast Lane
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🧭 Dev Fastlane: 내부 테스트 모드 진입');
+        const devTenant = {
+          id: 't_dev',
+          brandName: '로컬 테스트',
+          email: 'dev@yamoo.ai',
+          plan: 'trial',
+          status: 'active',
+          faqCount: 0,
+          onboardingCompleted: false,
+        };
+        setCurrentTenant(devTenant);
+        setIsLoggedIn(true);
+        setShowOnboarding(true);
+        setCanDismissOnboarding(true);
+        setAuthChecked(true);
+        setIsLoading(false);
+        console.log('✅ Dev Fastlane 완료: 온보딩 표시');
+        return;
+      }
 
-    if (token) {
-      verifyToken(token);
-    } else if (sessionEmail && sessionTenantId) {
-      fetchTenantByEmail(sessionEmail);
-    } else {
+      // 1) URL에 토큰이 있는지 확인
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlToken = urlParams.get('token');
+      if (urlToken) {
+        const res = await fetch(`/api/auth/verify-token?token=${encodeURIComponent(urlToken)}`);
+        if (res.ok) {
+          const data = await res.json();
+
+          if (data.tenants && data.tenants.length > 0) {
+            if (data.tenants.length === 1) {
+              const tenant = data.tenants[0];
+              setCurrentTenant(tenant);
+              setIsLoggedIn(true);
+              setShowOnboarding(tenant.showOnboarding || false);
+              console.log('✅ 토큰 로그인 성공:', tenant.name);
+            } else {
+              setAvailableTenants(data.tenants);
+              setShowTenantSelector(true);
+            }
+
+            setAuthChecked(true);
+            setIsLoading(false);
+            window.history.replaceState({}, document.title, '/');
+            return;
+          }
+        }
+      }
+
+      // 2) 세션 쿠키 확인
+      const cookieRes = await fetch('/api/auth/verify-session', {
+        credentials: 'include'
+      });
+      if (cookieRes.ok) {
+        const data = await cookieRes.json();
+
+        if (data.tenants && data.tenants.length > 0) {
+          if (data.tenants.length === 1) {
+            const tenant = data.tenants[0];
+            setCurrentTenant(tenant);
+            setIsLoggedIn(true);
+            setShowOnboarding(tenant.showOnboarding || false);
+            console.log('✅ 세션 로그인 성공:', tenant.name);
+          } else {
+            setAvailableTenants(data.tenants);
+            setShowTenantSelector(true);
+          }
+          setAuthChecked(true);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // 3) 로그인 필요
+      console.log('⚠️ 인증 필요 - 로그인 화면 표시');
+      setAuthChecked(true);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('❌ 인증 체크 실패:', error);
+      setAuthChecked(true);
       setIsLoading(false);
     }
-  }, []);
+  }
 
   // 토큰 검증 함수
   async function verifyToken(token) {
@@ -744,21 +802,9 @@ export default function TenantPortal() {
     );
   }
 
-  // 로그인 필요
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-yellow-50 to-amber-50">
-        <div className="text-center">
-          <img
-            src="/logo.png"
-            alt="야무"
-            className="w-20 h-20 object-contain mx-auto mb-6"
-          />
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">나만의 맞춤 AI비서</h1>
-          <p className="text-gray-600">로그인이 필요합니다</p>
-        </div>
-      </div>
-    );
+  // 로그인 필요 - LoginPWA 컴포넌트 표시
+  if (!isLoggedIn && authChecked) {
+    return <LoginPWA />;
   }
 
   // 메인 UI
@@ -802,7 +848,15 @@ export default function TenantPortal() {
         onTabChange={setActiveTab}
         brandName={currentTenant?.brandName}
         plan={currentTenant?.plan}
-        onLogout={handleLogout}
+        onLogout={() => {
+          setIsLoggedIn(false);
+          setCurrentTenant(null);
+          setAuthChecked(false);
+          // 세션 쿠키 삭제
+          fetch('/api/auth/logout', { method: 'POST' }).then(() => {
+            window.location.href = '/';
+          });
+        }}
       />
 
       {/* 메인 컨텐츠 */}
