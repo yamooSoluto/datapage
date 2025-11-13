@@ -125,7 +125,7 @@ export default function AIComposerModal({
             
             console.log('[AIComposerModal] Starting poll with conversationId:', conversationId);
 
-            const maxAttempts = 30; // 최대 30초 대기
+            const maxAttempts = 60; // ✅ 최대 60초 대기 (n8n 처리 시간 고려)
             let attempts = 0;
 
             const pollResult = async () => {
@@ -184,7 +184,20 @@ export default function AIComposerModal({
                             setCorrectedText(extractedCorrectedText);
                             setOriginalText(finalContent); // ✅ 원본 저장
                             setCustomerMessage(pollData.customerMessage || conversation.lastMessage || '');
-                            setRecentMessages(pollData.recentMessages || []); // ✅ 최근 메시지 저장
+                            
+                            // ✅ recentMessages가 배열인지 확인 후 저장
+                            const safeRecentMessages = Array.isArray(pollData.recentMessages) 
+                                ? pollData.recentMessages 
+                                : (Array.isArray(pollData.recent_messages) 
+                                    ? pollData.recent_messages 
+                                    : []);
+                            setRecentMessages(safeRecentMessages);
+                            
+                            console.log('[AIComposerModal] Setting recentMessages:', {
+                                isArray: Array.isArray(safeRecentMessages),
+                                count: safeRecentMessages.length,
+                                originalType: typeof pollData.recentMessages,
+                            });
                             
                             // ✅ step 변경 전에 잠시 대기하여 state가 확실히 업데이트되도록 함
                             await new Promise(resolve => setTimeout(resolve, 100));
@@ -206,7 +219,8 @@ export default function AIComposerModal({
                 }
 
                 // 타임아웃
-                throw new Error('AI 보정 시간이 초과되었습니다. 다시 시도해주세요.');
+                console.error('[AIComposerModal] Poll timeout after', maxAttempts, 'attempts');
+                throw new Error(`AI 보정 시간이 초과되었습니다 (${maxAttempts}초). 결과가 나오면 자동으로 표시됩니다.`);
             };
 
             await pollResult();
@@ -418,7 +432,7 @@ export default function AIComposerModal({
                             )}
 
                             {/* ✅ 최근 대화 컨텍스트 (접을 수 있는 섹션) */}
-                            {recentMessages && recentMessages.length > 0 && (
+                            {Array.isArray(recentMessages) && recentMessages.length > 0 && (
                                 <details className="group">
                                     <summary className="cursor-pointer text-sm font-semibold text-gray-800 hover:text-gray-900 flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
                                         <span>💬 최근 대화 보기</span>
