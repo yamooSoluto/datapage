@@ -38,6 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         console.log("[tone-result] Final body keys:", Object.keys(body));
+        console.log("[tone-result] Full body content:", JSON.stringify(body, null, 2));
 
         const {
             tenantId,
@@ -55,6 +56,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tenant_id,
             user_message,
             previous_messages,
+            // ✅ n8n이 보낼 수 있는 추가 필드들
+            customerMessage,
+            recentMessages,
+            customer_message,
+            recent_messages,
         } = body;
 
         // ✅ requestId가 있으면 로그만 남기고 무시 (conversationId만 사용)
@@ -67,15 +73,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const finalCorrectedText = correctedText || corrected_text;
         const finalOriginalText = originalText || original_text;
         const finalTenantId = tenantId || tenant_id;
-        const finalUserMessage = userMessage || user_message || '';
-        const finalPreviousMessages = previousMessages || previous_messages || [];
+        // ✅ 다양한 필드명으로 userMessage 받기
+        const finalUserMessage = userMessage || 
+                                 user_message || 
+                                 customerMessage || 
+                                 customer_message || 
+                                 '';
+        // ✅ 다양한 필드명으로 previousMessages 받기
+        const finalPreviousMessages = previousMessages || 
+                                      previous_messages || 
+                                      recentMessages || 
+                                      recent_messages || 
+                                      [];
 
         console.log("[tone-result] Parsed data:", {
             tenantId: finalTenantId,
             conversationId: finalConversationId,
             correctedTextLength: finalCorrectedText?.length,
             originalTextLength: finalOriginalText?.length,
+            userMessageLength: finalUserMessage?.length || 0,
+            previousMessagesCount: Array.isArray(finalPreviousMessages) ? finalPreviousMessages.length : 0,
             hasMetadata: !!metadata,
+            allBodyKeys: Object.keys(body),
         });
 
         if (!finalConversationId || !finalCorrectedText) {
@@ -96,19 +115,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // ✅ 결과 데이터 (conversationId만 사용)
         global.aiResults = global.aiResults || {};
 
+        // ✅ n8n이 보내는 모든 데이터 활용
         const resultData = {
             conversationId: finalConversationId,
             correctedText: finalCorrectedText,
             originalText: finalOriginalText,
             customerMessage: finalUserMessage, // ✅ 고객 메시지 포함
             recentMessages: finalPreviousMessages, // ✅ 최근 메시지 포함
-            metadata,
+            tenantId: finalTenantId, // ✅ tenantId도 저장
+            metadata: metadata || {}, // ✅ metadata 포함
             timestamp: Date.now(),
+            // ✅ n8n이 보낸 원본 데이터도 보관 (디버깅용)
+            rawData: {
+                tenantId: finalTenantId,
+                conversationId: finalConversationId,
+                originalText: finalOriginalText,
+                correctedText: finalCorrectedText,
+            },
         };
 
         // ✅ conversationId로만 저장 (동시 요청 방지로 충분)
         global.aiResults[finalConversationId] = resultData;
-        console.log("[tone-result] ✅ Stored with conversationId:", finalConversationId);
+        console.log("[tone-result] ✅ Stored with conversationId:", finalConversationId, {
+            correctedTextLength: finalCorrectedText?.length,
+            originalTextLength: finalOriginalText?.length,
+            userMessageLength: finalUserMessage?.length || 0,
+            previousMessagesCount: Array.isArray(finalPreviousMessages) ? finalPreviousMessages.length : 0,
+            hasMetadata: !!metadata,
+        });
 
         // 현재 저장된 모든 키 출력
         console.log("[tone-result] All storage keys:", Object.keys(global.aiResults));

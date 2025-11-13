@@ -1,7 +1,7 @@
 // components/AIComposerModal.jsx
 // AI 보정 모달 - 고객 메시지 + 보정 + 전송 (완결형)
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Sparkles, Send, Wand2, User } from 'lucide-react';
 
 export default function AIComposerModal({
@@ -28,6 +28,17 @@ export default function AIComposerModal({
     const [customerMessage, setCustomerMessage] = useState(''); // ✅ 고객 메시지
     const [recentMessages, setRecentMessages] = useState([]); // ✅ 최근 메시지들
     const [error, setError] = useState('');
+
+    // ✅ correctedText 변경 감지 (디버깅용)
+    useEffect(() => {
+        if (correctedText) {
+            console.log('[AIComposerModal] correctedText state updated:', {
+                length: correctedText.length,
+                preview: correctedText.substring(0, 50),
+                step,
+            });
+        }
+    }, [correctedText, step]);
 
     const [presets] = useState([
         { id: 1, text: '문의 주셔서 감사합니다.', category: '인사' },
@@ -105,7 +116,14 @@ export default function AIComposerModal({
             console.log('[AIComposerModal] Request sent:', requestResult);
 
             // ✅ 2. conversationId로 폴링 시작 (동시 요청 방지로 충분)
-            const conversationId = conversation.chatId;
+            const conversationId = conversation?.chatId || conversation?.id;
+            
+            if (!conversationId) {
+                console.error('[AIComposerModal] No conversationId found:', conversation);
+                throw new Error('대화 ID를 찾을 수 없습니다.');
+            }
+            
+            console.log('[AIComposerModal] Starting poll with conversationId:', conversationId);
 
             const maxAttempts = 30; // 최대 30초 대기
             let attempts = 0;
@@ -156,12 +174,25 @@ export default function AIComposerModal({
                                 throw new Error('보정된 텍스트를 받지 못했습니다.');
                             }
 
+                            console.log('[AIComposerModal] Setting state with extracted text:', {
+                                extractedCorrectedText,
+                                length: extractedCorrectedText.length,
+                                preview: extractedCorrectedText.substring(0, 50),
+                            });
+
+                            // ✅ state 업데이트
                             setCorrectedText(extractedCorrectedText);
                             setOriginalText(finalContent); // ✅ 원본 저장
                             setCustomerMessage(pollData.customerMessage || conversation.lastMessage || '');
                             setRecentMessages(pollData.recentMessages || []); // ✅ 최근 메시지 저장
+                            
+                            // ✅ step 변경 전에 잠시 대기하여 state가 확실히 업데이트되도록 함
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                            
                             setStep('result');
                             setProcessing(false);
+                            
+                            console.log('[AIComposerModal] State updated, step changed to result');
                             return;
                         }
 
@@ -201,6 +232,13 @@ export default function AIComposerModal({
             isEmpty: !correctedText,
             isEmptyAfterTrim: !trimmedText,
             step, // 현재 step 확인
+            conversation: {
+                chatId: conversation?.chatId,
+                id: conversation?.id,
+                tenant: conversation?.tenant,
+                tenantId: conversation?.tenantId,
+            },
+            tenantId,
         });
 
         if (!trimmedText) {
@@ -222,7 +260,9 @@ export default function AIComposerModal({
                 textLength: trimmedText.length,
                 textPreview: trimmedText.substring(0, 50),
             });
-            await onSend(trimmedText); // ✅ trim()된 텍스트 전달
+            
+            // ✅ onSend 호출 (text만 전달, handleAISend에서 tenantId와 chatId 추출)
+            await onSend(trimmedText);
             onClose();
         } catch (err) {
             console.error('[AIComposerModal] Send error:', err);

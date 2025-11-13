@@ -33,25 +33,38 @@ export default function MinimalHeader({
     const [showMobileMenu, setShowMobileMenu] = useState(false);
     const [showTenantDropdown, setShowTenantDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const dropdownStateRef = useRef(false);
+
+    // 드롭다운 상태를 ref에 동기화
+    useEffect(() => {
+        dropdownStateRef.current = showTenantDropdown;
+    }, [showTenantDropdown]);
 
     // 드롭다운 외부 클릭 시 닫기
     useEffect(() => {
+        if (!showTenantDropdown) return;
+
         const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+            // ref를 통해 최신 상태 확인
+            if (!dropdownStateRef.current) return;
+            
+            const target = event.target as Node;
+            if (dropdownRef.current && !dropdownRef.current.contains(target)) {
                 setShowTenantDropdown(false);
             }
         };
 
-        if (showTenantDropdown) {
-            // 웹에서는 click 이벤트 사용, 모바일에서는 touchstart 사용
-            // click 이벤트는 mousedown/mouseup 후에 발생하므로 드롭다운 버튼 클릭을 방해하지 않음
-            document.addEventListener('click', handleClickOutside, true);
-            document.addEventListener('touchstart', handleClickOutside, true);
-        }
+        // 다음 이벤트 루프에서 리스너 등록하여 드롭다운 버튼의 onClick이 먼저 실행되도록 함
+        // click 이벤트는 mousedown/mouseup 후에 발생하므로 드롭다운 버튼 클릭을 방해하지 않음
+        const timeoutId = setTimeout(() => {
+            document.addEventListener('click', handleClickOutside);
+            document.addEventListener('touchstart', handleClickOutside);
+        }, 0);
 
         return () => {
-            document.removeEventListener('click', handleClickOutside, true);
-            document.removeEventListener('touchstart', handleClickOutside, true);
+            clearTimeout(timeoutId);
+            document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
         };
     }, [showTenantDropdown]);
 
@@ -97,7 +110,13 @@ export default function MinimalHeader({
                                             <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
                                         </button>
                                         {showTenantDropdown && (
-                                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999]">
+                                            <div 
+                                                className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999]"
+                                                onClick={(e) => {
+                                                    // 드롭다운 메뉴 내부 클릭은 외부 클릭 핸들러로 전파되지 않도록 함
+                                                    e.stopPropagation();
+                                                }}
+                                            >
                                                     {availableTenants.map((tenant) => (
                                                         <button
                                                             key={tenant.id}
@@ -212,7 +231,13 @@ export default function MinimalHeader({
                                         <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
                                     </button>
                                     {showTenantDropdown && (
-                                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999]">
+                                        <div 
+                                            className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999]"
+                                            onClick={(e) => {
+                                                // 드롭다운 메뉴 내부 클릭은 외부 클릭 핸들러로 전파되지 않도록 함
+                                                e.stopPropagation();
+                                            }}
+                                        >
                                                 {availableTenants.map((tenant) => (
                                                     <button
                                                         key={tenant.id}
