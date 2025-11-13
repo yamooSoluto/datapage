@@ -169,17 +169,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // ✅ 6. Callback URL 구성
         const callbackUrl = process.env.NEXT_PUBLIC_API_URL
-            ? `${process.env.NEXT_PUBLIC_API_URL}/api/ai/tone-correction-callback`
-            : `${req.headers.origin || 'http://localhost:3000'}/api/ai/tone-correction-callback`;
+            ? `${process.env.NEXT_PUBLIC_API_URL}/api/ai/tone-result`
+            : `${req.headers.origin || 'http://localhost:3000'}/api/ai/tone-result`;
 
         // ✅ 7. n8n webhook URL (비동기 버전)
         const n8nUrl = process.env.N8N_TONE_CORRECTION_ASYNC_WEBHOOK ||
             process.env.N8N_TONE_CORRECTION_WEBHOOK ||
-            "https://soluto.app.n8n.cloud/webhook/tone-correction";
+            "https://soluto.app.n8n.cloud/webhook/tone-correction-portal";
 
         // ✅ 8. 페이로드 구성
         const payload = {
-            requestId, // ✅ 중요: requestId 포함
+            requestId, // requestId도 포함 (선택사항)
             tenantId,
             conversationId,
             userMessage,
@@ -191,7 +191,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             previousMessages: previousMessages || [],
             ...aiOptions,
             executionMode: "production",
-            callbackUrl, // ✅ 중요: 콜백 URL 포함
+            callbackUrl, // ✅ n8n이 여기로 결과 전송
             syncMode: false, // 비동기 모드
         };
 
@@ -219,10 +219,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
         });
 
-        // ✅ 10. 즉시 응답 반환
+        // ✅ 10. 즉시 응답 반환 (conversationId를 키로 사용)
         return res.status(202).json({
             ok: true,
-            requestId,
+            requestId, // 참고용
+            conversationId, // ✅ 폴링에 사용할 키
             status: 'pending',
             message: 'AI 보정 요청이 접수되었습니다. 잠시 후 결과를 확인하세요.',
         });

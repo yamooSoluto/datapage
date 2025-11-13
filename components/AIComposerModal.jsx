@@ -112,10 +112,13 @@ export default function AIComposerModal({
                 return;
             }
 
-            const requestId = asyncResult.requestId;
-            if (!requestId) {
-                throw new Error('requestId가 없습니다');
+            // ✅ conversationId를 폴링 키로 사용
+            const conversationId = asyncResult.conversationId || conversation.chatId;
+            if (!conversationId) {
+                throw new Error('conversationId가 없습니다');
             }
+
+            console.log('[AIComposerModal] Polling for conversationId:', conversationId);
 
             // ✅ 2. 폴링으로 결과 확인 (최대 60초, 2초마다)
             let attempts = 0;
@@ -124,26 +127,23 @@ export default function AIComposerModal({
 
             const pollForResult = async () => {
                 attempts++;
-                console.log(`[AIComposerModal] Polling attempt ${attempts}/${maxAttempts}`);
+                console.log(`[AIComposerModal] Polling attempt ${attempts}/${maxAttempts} for conversationId: ${conversationId}`);
 
                 try {
-                    const statusResponse = await fetch(`/api/ai/tone-correction-status?requestId=${requestId}`);
+                    const statusResponse = await fetch(`/api/ai/tone-poll?conversationId=${conversationId}`);
 
                     if (!statusResponse.ok) {
-                        if (statusResponse.status === 404) {
-                            throw new Error('요청을 찾을 수 없습니다. 다시 시도해주세요.');
-                        }
                         throw new Error('상태 확인 실패');
                     }
 
                     const statusData = await statusResponse.json();
-                    console.log('[AIComposerModal] Status:', statusData);
+                    console.log('[AIComposerModal] Poll result:', statusData);
 
                     if (statusData.status === 'completed') {
                         // ✅ 완료!
-                        const extractedText = statusData.result?.correctedText || finalContent;
+                        const extractedText = statusData.correctedText || finalContent;
                         setCorrectedText(extractedText);
-                        setCustomerMessage(statusData.result?.customerMessage || conversation.lastMessage || '');
+                        setCustomerMessage(conversation.lastMessage || '');
                         setStep('result');
                         setProcessing(false);
                         return;
@@ -153,7 +153,7 @@ export default function AIComposerModal({
                         throw new Error(statusData.error || 'AI 보정 중 오류가 발생했습니다');
                     }
 
-                    // pending or processing - 계속 대기
+                    // pending - 계속 대기
                     if (attempts >= maxAttempts) {
                         throw new Error('AI 보정 시간이 초과되었습니다. 다시 시도해주세요.');
                     }
