@@ -133,6 +133,17 @@ export default function ConversationsPage({ tenantId }) {
 
     // ✅ 상세 모달 → 전송 핸들러 (ConversationDetail에서 전달하는 형식에 맞춤)
     const handleSend = async ({ text, attachments, tenantId: detailTenantId, chatId: detailChatId }) => {
+        // ✅ 디버깅: 입력값 확인
+        console.log('[ConversationsPage] handleSend called with:', {
+            detailTenantId,
+            propTenantId: tenantId,
+            selectedConvTenant: selectedConv?.tenant,
+            selectedConvTenantId: selectedConv?.tenantId,
+            selectedConvId: selectedConv?.id,
+            detailChatId,
+            selectedConvChatId: selectedConv?.chatId,
+        });
+
         // ✅ tenantId 우선순위: ConversationDetail에서 전달한 값 > prop > selectedConv에서 추출
         const effectiveTenantId = detailTenantId ||
             tenantId ||
@@ -140,8 +151,7 @@ export default function ConversationsPage({ tenantId }) {
             selectedConv?.tenantId ||
             (typeof selectedConv?.id === 'string' && selectedConv.id.includes('_')
                 ? selectedConv.id.split('_')[0]
-                : null) ||
-            'default';
+                : null);
 
         // ✅ chatId: ConversationDetail에서 전달한 값 > selectedConv
         const effectiveChatId = detailChatId || selectedConv?.chatId;
@@ -149,6 +159,15 @@ export default function ConversationsPage({ tenantId }) {
         if (!effectiveChatId) {
             console.error('[ConversationsPage] No chatId found');
             throw new Error('대화 ID를 찾을 수 없습니다');
+        }
+
+        if (!effectiveTenantId) {
+            console.error('[ConversationsPage] No tenantId found:', {
+                detailTenantId,
+                propTenantId: tenantId,
+                selectedConv,
+            });
+            throw new Error('테넌트 ID를 찾을 수 없습니다');
         }
 
         console.log('[ConversationsPage] Sending message:', {
@@ -199,13 +218,39 @@ export default function ConversationsPage({ tenantId }) {
             return;
         }
 
+        // ✅ tenantId 추출
+        const effectiveTenantId = tenantId ||
+            selectedConv?.tenant ||
+            selectedConv?.tenantId ||
+            (typeof selectedConv?.id === 'string' && selectedConv.id.includes('_')
+                ? selectedConv.id.split('_')[0]
+                : null);
+
+        if (!effectiveTenantId) {
+            console.error('[ConversationsPage] No tenantId found for AI send');
+            throw new Error('테넌트 ID를 찾을 수 없습니다');
+        }
+
+        const effectiveChatId = selectedConv?.chatId || selectedConv?.id;
+
+        if (!effectiveChatId) {
+            console.error('[ConversationsPage] No chatId found for AI send');
+            throw new Error('대화 ID를 찾을 수 없습니다');
+        }
+
         console.log('[ConversationsPage] AI send:', {
-            chatId: selectedConv.chatId,
-            textPreview: text.substring(0, 50)
+            tenantId: effectiveTenantId,
+            chatId: effectiveChatId,
+            textPreview: text?.substring(0, 50)
         });
 
-        // ✅ 객체 방식으로 호출
-        await handleSend({ text, attachments: [] });
+        // ✅ 객체 방식으로 호출 (tenantId와 chatId 포함)
+        await handleSend({
+            text: text || '',
+            attachments: [],
+            tenantId: effectiveTenantId,
+            chatId: effectiveChatId,
+        });
         setShowAIModal(false);
     };
 

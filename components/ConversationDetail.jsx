@@ -191,7 +191,23 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             attachmentsCount: attachments.length,
             tenantId: effectiveTenantId,
             chatId: chatId,
+            effectiveTenantIdSource: {
+                propTenantId: tenantId,
+                conversationTenant: conversation?.tenant,
+                conversationTenantId: conversation?.tenantId,
+                conversationId: conversation?.id,
+            },
         });
+
+        if (!effectiveTenantId || effectiveTenantId === 'default') {
+            console.error('[ConversationDetail] Invalid tenantId:', {
+                effectiveTenantId,
+                propTenantId: tenantId,
+                conversation,
+            });
+            alert('테넌트 ID를 찾을 수 없습니다. 페이지를 새로고침해주세요.');
+            return;
+        }
 
         try {
             // ✅ tenantId와 첨부파일 정보를 포함하여 전달
