@@ -1,8 +1,15 @@
 // components/layout/MinimalHeader.tsx
 // 야무 브랜드 감성 + 미니멀 디자인
 
-import React, { useState } from 'react';
-import { MessageSquare, Database, Settings, LogOut, Menu, X, BookOpen, BarChart3 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MessageSquare, Database, Settings, LogOut, Menu, X, BookOpen, BarChart3, ChevronDown } from 'lucide-react';
+
+interface Tenant {
+    id: string;
+    brandName?: string;
+    name?: string;
+    plan?: string;
+}
 
 interface MinimalHeaderProps {
     currentTab: string;
@@ -10,6 +17,8 @@ interface MinimalHeaderProps {
     brandName?: string;
     plan?: string;
     onLogout: () => void;
+    availableTenants?: Tenant[];
+    onTenantChange?: (tenant: Tenant) => void;
 }
 
 export default function MinimalHeader({
@@ -17,9 +26,30 @@ export default function MinimalHeader({
     onTabChange,
     brandName = "야무",
     plan = "trial",
-    onLogout
+    onLogout,
+    availableTenants = [],
+    onTenantChange
 }: MinimalHeaderProps) {
     const [showMobileMenu, setShowMobileMenu] = useState(false);
+    const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // 드롭다운 외부 클릭 시 닫기
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setShowTenantDropdown(false);
+            }
+        };
+
+        if (showTenantDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showTenantDropdown]);
 
     const tabs = [
         { key: 'conversations', label: '대화', icon: MessageSquare },
@@ -49,8 +79,41 @@ export default function MinimalHeader({
                                 alt="야무"
                                 className="w-7 h-7 object-contain"
                             />
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-gray-900">{brandName}</span>
+                            <div className="flex items-center gap-2 relative">
+                                {availableTenants.length > 1 ? (
+                                    <div className="relative" ref={dropdownRef}>
+                                        <button
+                                            onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+                                            className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-white/60 transition-colors"
+                                        >
+                                            <span className="text-sm font-bold text-gray-900">{brandName}</span>
+                                            <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
+                                        </button>
+                                        {showTenantDropdown && (
+                                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-50">
+                                                {availableTenants.map((tenant) => (
+                                                    <button
+                                                        key={tenant.id}
+                                                        onClick={() => {
+                                                            if (onTenantChange) {
+                                                                onTenantChange(tenant);
+                                                            }
+                                                            setShowTenantDropdown(false);
+                                                        }}
+                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${(tenant.brandName || tenant.name) === brandName
+                                                            ? 'bg-yellow-50 text-gray-900 font-medium'
+                                                            : 'text-gray-700'
+                                                            }`}
+                                                    >
+                                                        {tenant.brandName || tenant.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <span className="text-sm font-bold text-gray-900">{brandName}</span>
+                                )}
                                 <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border backdrop-blur-sm ${planBadge[plan as keyof typeof planBadge] || planBadge.trial}`}>
                                     {plan === 'trial' ? 'Trial' : plan.charAt(0).toUpperCase() + plan.slice(1)}
                                 </span>
@@ -107,13 +170,46 @@ export default function MinimalHeader({
                 <div className="px-4">
                     <div className="flex items-center justify-between h-12">
                         {/* 로고 & 브랜드 */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 relative">
                             <img
                                 src="/logo.png"
                                 alt="야무"
                                 className="w-7 h-7 object-contain"
                             />
-                            <span className="text-sm font-bold text-gray-900">{brandName}</span>
+                            {availableTenants.length > 1 ? (
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+                                        className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-white/60 transition-colors"
+                                    >
+                                        <span className="text-sm font-bold text-gray-900">{brandName}</span>
+                                        <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {showTenantDropdown && (
+                                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-50">
+                                            {availableTenants.map((tenant) => (
+                                                <button
+                                                    key={tenant.id}
+                                                    onClick={() => {
+                                                        if (onTenantChange) {
+                                                            onTenantChange(tenant);
+                                                        }
+                                                        setShowTenantDropdown(false);
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${tenant.id === (availableTenants.find(t => (t.brandName || t.name) === brandName)?.id)
+                                                        ? 'bg-yellow-50 text-gray-900 font-medium'
+                                                        : 'text-gray-700'
+                                                        }`}
+                                                >
+                                                    {tenant.brandName || tenant.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <span className="text-sm font-bold text-gray-900">{brandName}</span>
+                            )}
                         </div>
 
                         {/* 햄버거 메뉴 */}
