@@ -1,43 +1,38 @@
 // components/AIComposerModal.jsx
-// AI 보정 기능 모달 - 프리셋 선택 + 직접 입력 + AI 보정 옵션
+// AI 보정 모달 - 고객 메시지 + 보정 + 전송 (완결형)
 
-import { useState, useEffect } from 'react';
-import { X, Sparkles, MessageSquare, Wand2 } from 'lucide-react';
+import { useState } from 'react';
+import { X, Sparkles, Send, Wand2, User } from 'lucide-react';
 
 export default function AIComposerModal({
     conversation,
     tenantId,
-    planName = 'pro', // ✅ 기본값을 pro로 (테스트용)
+    planName = 'pro',
     onClose,
-    onResult, // 보정 결과를 부모에게 전달하는 콜백
+    onSend, // 전송 콜백
 }) {
     const [step, setStep] = useState('compose'); // 'compose' | 'processing' | 'result'
     const [selectedPresets, setSelectedPresets] = useState([]);
     const [directInput, setDirectInput] = useState('');
-    const [enableAI, setEnableAI] = useState(true); // ✅ 기본값 true
+    const [enableAI, setEnableAI] = useState(true);
 
-    // Business 플랜 전용 옵션
+    // Business 플랜 옵션
     const [voice, setVoice] = useState('agent');
     const [contentType, setContentType] = useState('tone_correction');
     const [toneFlags, setToneFlags] = useState([]);
 
     const [processing, setProcessing] = useState(false);
+    const [sending, setSending] = useState(false);
     const [correctedText, setCorrectedText] = useState('');
+    const [customerMessage, setCustomerMessage] = useState(''); // ✅ 고객 메시지
     const [error, setError] = useState('');
 
-    // 프리셋 메시지 목록 (테넌트별로 로드 가능)
-    const [presets, setPresets] = useState([
+    const [presets] = useState([
         { id: 1, text: '문의 주셔서 감사합니다.', category: '인사' },
         { id: 2, text: '확인 후 안내드리겠습니다.', category: '확인' },
         { id: 3, text: '양해 부탁드립니다.', category: '요청' },
         { id: 4, text: '추가 문의사항이 있으시면 언제든 연락 주세요.', category: '마무리' },
     ]);
-
-    useEffect(() => {
-        // TODO: 테넌트별 프리셋 로드
-        // fetchPresets(tenantId);
-        console.log('[AIComposerModal] Opened with plan:', planName);
-    }, [tenantId, planName]);
 
     const togglePreset = (preset) => {
         setSelectedPresets(prev => {
@@ -53,11 +48,9 @@ export default function AIComposerModal({
     const handleSubmit = async () => {
         setError('');
 
-        // 우선순위: 프리셋 > 직접입력
         let finalContent = '';
 
         if (selectedPresets.length > 0) {
-            // 프리셋을 문장 단위로 합치기
             const sentences = selectedPresets.map(p => p.text.trim()).filter(Boolean);
             finalContent = sentences.join('\n');
         } else if (directInput.trim()) {
@@ -67,43 +60,24 @@ export default function AIComposerModal({
             return;
         }
 
-        console.log('[AIComposerModal] Submit:', {
-            finalContent: finalContent.substring(0, 50),
-            enableAI,
-            planName,
-        });
-
-        // Pro 플랜은 AI 사용 시 프리셋 필수
-        if (planName === 'pro' && enableAI && selectedPresets.length === 0) {
-            setError('Pro 플랜은 AI 보정 시 프리셋을 선택해야 합니다.');
-            return;
-        }
-
-        // AI 보정을 사용하지 않으면 바로 결과 전달
         if (!enableAI) {
-            console.log('[AIComposerModal] No AI, returning original');
-            onResult?.(finalContent);
-            onClose();
+            setCorrectedText(finalContent);
+            setStep('result');
             return;
         }
 
-        // ✅ AI 보정 요청 (폴링 방식)
+        // ✅ AI 보정 요청 (동기 방식)
         setProcessing(true);
         setStep('processing');
 
         try {
-            // 고유 요청 ID 생성
-            const requestId = `${tenantId}_${conversation.chatId}_${Date.now()}`;
-
             const payload = {
                 tenantId,
                 conversationId: conversation.chatId,
                 content: finalContent,
                 enableAI: true,
                 planName,
-                requestId, // ✅ 추가
-                source: 'web_portal', // ✅ n8n 분기용
-                // Business 플랜 옵션
+                source: 'web_portal',
                 ...(planName === 'business' ? {
                     voice,
                     contentType,
@@ -111,71 +85,59 @@ export default function AIComposerModal({
                 } : {}),
             };
 
-            console.log('[AIComposerModal] Requesting AI correction:', payload);
+            console.log('[AIComposerModal] Requesting AI correction (sync)');
 
-            // n8n에 요청 (비동기)
-            fetch('/api/ai/tone-correction', {
+            const response = await fetch('/api/ai/tone-correction-sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-            }).catch(err => {
-                console.error('[AIComposerModal] Request failed:', err);
+                signal: AbortSignal.timeout(30000),
             });
 
-            // ✅ 폴링 시작 (1초마다 최대 30초)
-            let attempts = 0;
-            const maxAttempts = 30;
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'AI 보정 요청 실패');
+            }
 
-            const pollResult = async () => {
-                attempts++;
+            const result = await response.json();
+            console.log('[AIComposerModal] AI result:', result);
 
-                try {
-                    const response = await fetch(`/api/ai/tone-poll?requestId=${requestId}`);
-                    const result = await response.json();
-
-                    if (result.ready) {
-                        // 결과 도착!
-                        console.log('[AIComposerModal] AI result received:', result);
-                        setCorrectedText(result.correctedText || finalContent);
-                        setStep('result');
-                        setProcessing(false);
-                        return;
-                    }
-
-                    // 아직 준비 안됨
-                    if (attempts < maxAttempts) {
-                        setTimeout(pollResult, 1000); // 1초 후 재시도
-                    } else {
-                        throw new Error('AI 보정 시간이 초과되었습니다');
-                    }
-                } catch (err) {
-                    console.error('[AIComposerModal] Poll error:', err);
-                    throw err;
-                }
-            };
-
-            // 폴링 시작
-            setTimeout(pollResult, 2000); // 2초 후 첫 폴링
-
+            setCorrectedText(result.correctedText || finalContent);
+            setCustomerMessage(result.customerMessage || conversation.lastMessage || ''); // ✅ 고객 메시지
+            setStep('result');
         } catch (err) {
             console.error('[AIComposerModal] Error:', err);
             setError(err.message || 'AI 보정 중 오류가 발생했습니다.');
             setStep('compose');
+        } finally {
             setProcessing(false);
         }
     };
 
-    const handleUseResult = () => {
-        onResult?.(correctedText);
-        onClose();
-    };
+    // ✅ 전송 핸들러
+    const handleSend = async () => {
+        if (!correctedText.trim()) {
+            setError('전송할 내용이 없습니다.');
+            return;
+        }
 
-    // ✅ planName 디버깅
-    console.log('[AIComposerModal] Current plan:', planName, 'enableAI:', enableAI);
+        setSending(true);
+        setError('');
+
+        try {
+            await onSend(correctedText);
+            onClose();
+        } catch (err) {
+            console.error('[AIComposerModal] Send error:', err);
+            setError(err.message || '전송 중 오류가 발생했습니다.');
+        } finally {
+            setSending(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-gray-200">
+            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
                 {/* 헤더 */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <div className="flex items-center gap-3">
@@ -191,7 +153,8 @@ export default function AIComposerModal({
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        disabled={processing || sending}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -201,7 +164,6 @@ export default function AIComposerModal({
                 <div className="flex-1 overflow-y-auto px-6 py-4">
                     {step === 'compose' && (
                         <>
-                            {/* 에러 메시지 */}
                             {error && (
                                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-900">
                                     ❌ {error}
@@ -211,7 +173,7 @@ export default function AIComposerModal({
                             {/* 프리셋 선택 */}
                             <div className="mb-6">
                                 <label className="block text-sm font-semibold text-gray-900 mb-3">
-                                    💬 프리셋 메시지 (선택)
+                                    💬 프리셋 메시지
                                 </label>
                                 <div className="grid grid-cols-1 gap-2">
                                     {presets.map(preset => (
@@ -255,87 +217,28 @@ export default function AIComposerModal({
                                     placeholder="답변 내용을 입력하세요..."
                                     className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                                 />
-                                <p className="text-xs text-gray-500 mt-2">
-                                    💡 프리셋과 직접 입력을 함께 사용할 수 있습니다. (프리셋 우선)
-                                </p>
                             </div>
 
-                            {/* ✅ AI 보정 옵션 - 항상 표시 */}
-                            <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200 rounded-xl">
-                                <div className="flex items-center gap-2 mb-3">
+                            {/* AI 보정 옵션 */}
+                            <div className="p-4 bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200 rounded-xl">
+                                <div className="flex items-center gap-2">
                                     <input
                                         type="checkbox"
                                         id="enableAI"
                                         checked={enableAI}
                                         onChange={(e) => setEnableAI(e.target.checked)}
-                                        className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                                        className="w-4 h-4 text-blue-600 rounded"
                                     />
                                     <label htmlFor="enableAI" className="text-sm font-semibold text-gray-900 cursor-pointer">
                                         🎨 AI 톤 보정 사용
                                     </label>
-                                    {planName === 'trial' || planName === 'starter' ? (
-                                        <span className="ml-auto text-xs text-orange-600 font-medium">Pro 이상 필요</span>
-                                    ) : null}
                                 </div>
-
-                                {enableAI && planName === 'business' && (
-                                    <div className="space-y-4 mt-4 pt-4 border-t border-purple-200">
-                                        {/* 화자 선택 */}
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">화자</label>
-                                            <select
-                                                value={voice}
-                                                onChange={(e) => setVoice(e.target.value)}
-                                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
-                                            >
-                                                <option value="agent">상담원</option>
-                                                <option value="ai">AI</option>
-                                            </select>
-                                        </div>
-
-                                        {/* 콘텐츠 타입 */}
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">콘텐츠 타입</label>
-                                            <select
-                                                value={contentType}
-                                                onChange={(e) => setContentType(e.target.value)}
-                                                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm"
-                                            >
-                                                <option value="tone_correction">톤 보정</option>
-                                                <option value="full_rewrite">전체 재작성</option>
-                                            </select>
-                                        </div>
-
-                                        {/* 톤 옵션 */}
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">톤 옵션</label>
-                                            <div className="flex flex-wrap gap-2">
-                                                {['friendly', 'professional', 'concise', 'detailed'].map(tone => (
-                                                    <button
-                                                        key={tone}
-                                                        onClick={() => setToneFlags(prev =>
-                                                            prev.includes(tone)
-                                                                ? prev.filter(t => t !== tone)
-                                                                : [...prev, tone]
-                                                        )}
-                                                        className={`px-3 py-1 text-xs rounded-full transition-colors ${toneFlags.includes(tone)
-                                                            ? 'bg-blue-500 text-white'
-                                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                                            }`}
-                                                    >
-                                                        {tone}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         </>
                     )}
 
                     {step === 'processing' && (
-                        <div className="flex flex-col items-center justify-center py-12">
+                        <div className="flex flex-col items-center justify-center py-16">
                             <div className="relative mb-6">
                                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center animate-pulse">
                                     <Wand2 className="w-10 h-10 text-white" />
@@ -348,26 +251,49 @@ export default function AIComposerModal({
                     )}
 
                     {step === 'result' && (
-                        <div>
-                            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Sparkles className="w-5 h-5 text-green-600" />
-                                    <span className="text-sm font-semibold text-green-900">✅ 보정 완료!</span>
+                        <div className="space-y-4">
+                            {error && (
+                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-900">
+                                    ❌ {error}
                                 </div>
-                                <p className="text-xs text-green-700">
-                                    아래 결과를 확인하고 입력창으로 가져가세요.
+                            )}
+
+                            {/* 성공 메시지 */}
+                            <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                                <div className="flex items-center gap-2">
+                                    <Sparkles className="w-5 h-5 text-green-600" />
+                                    <span className="text-sm font-semibold text-green-900">✅ AI 보정 완료!</span>
+                                </div>
+                                <p className="text-xs text-green-700 mt-1">
+                                    고객 메시지를 확인하고 답변을 수정한 후 전송하세요.
                                 </p>
                             </div>
 
+                            {/* ✅ 고객 메시지 표시 */}
+                            {customerMessage && (
+                                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <User className="w-4 h-4 text-blue-600" />
+                                        <span className="text-xs font-semibold text-blue-900">고객 메시지</span>
+                                    </div>
+                                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{customerMessage}</p>
+                                </div>
+                            )}
+
+                            {/* ✅ 보정된 답변 (편집 가능) */}
                             <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                                <label className="block text-xs font-medium text-gray-700 mb-2">보정된 답변</label>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-purple-500" />
+                                    AI 보정된 답변 (편집 가능)
+                                </label>
                                 <textarea
                                     value={correctedText}
                                     onChange={(e) => setCorrectedText(e.target.value)}
                                     className="w-full h-48 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="보정된 답변을 확인하고 필요시 수정하세요..."
                                 />
                                 <p className="text-xs text-gray-500 mt-2">
-                                    💡 수정이 필요하면 여기서 편집하거나, 입력창으로 가져간 후 수정할 수 있습니다.
+                                    💡 고객 메시지를 참고하여 답변을 수정할 수 있습니다.
                                 </p>
                             </div>
                         </div>
@@ -379,7 +305,8 @@ export default function AIComposerModal({
                     <div className="flex items-center justify-end gap-3">
                         <button
                             onClick={onClose}
-                            className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+                            disabled={processing || sending}
+                            className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium disabled:opacity-50"
                         >
                             취소
                         </button>
@@ -390,27 +317,28 @@ export default function AIComposerModal({
                                 disabled={processing}
                                 className="px-6 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium shadow-lg"
                             >
-                                {enableAI ? (
-                                    <>
-                                        <Sparkles className="w-5 h-5" />
-                                        AI 보정 요청
-                                    </>
-                                ) : (
-                                    <>
-                                        <MessageSquare className="w-5 h-5" />
-                                        입력창으로 가져가기
-                                    </>
-                                )}
+                                <Sparkles className="w-5 h-5" />
+                                {enableAI ? 'AI 보정 요청' : '다음'}
                             </button>
                         )}
 
                         {step === 'result' && (
                             <button
-                                onClick={handleUseResult}
-                                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 font-medium shadow-lg"
+                                onClick={handleSend}
+                                disabled={sending}
+                                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 font-medium shadow-lg disabled:opacity-50"
                             >
-                                <MessageSquare className="w-5 h-5" />
-                                입력창으로 가져가기
+                                {sending ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        전송 중...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Send className="w-5 h-5" />
+                                        전송하기
+                                    </>
+                                )}
                             </button>
                         )}
                     </div>
