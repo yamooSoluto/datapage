@@ -121,6 +121,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         const arr = Array.from(files || []);
         if (arr.length === 0) return;
 
+        // ✅ 파일 크기 검증 (15MB 제한 - base64 인코딩 후 약 20MB)
+        const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
+        const oversizedFiles = arr.filter(file => file.size > MAX_FILE_SIZE);
+
+        if (oversizedFiles.length > 0) {
+            const fileNames = oversizedFiles.map(f => f.name).join(', ');
+            alert(`다음 파일이 너무 큽니다 (최대 15MB):\n${fileNames}\n\n더 작은 파일로 다시 시도해주세요.`);
+            return;
+        }
+
         setUploading(true);
         try {
             // 파일을 base64로 변환하거나 미리보기 URL 생성

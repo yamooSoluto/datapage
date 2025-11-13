@@ -36,7 +36,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const actualChatId = conversationId || chatId;
 
-        // ✅ requestId가 없으면 생성 (폴링용)
+        // ✅ requestId가 없으면 conversationId 기반으로 생성 (항상 일관성 유지)
+        // conversationId를 기반으로 하면 tone-result에서 매칭이 쉬움
         const requestId = incomingRequestId || `${tenantId}_${actualChatId}_${Date.now()}`;
 
         console.log("[tone-correction] Request:", {

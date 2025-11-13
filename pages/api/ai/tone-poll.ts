@@ -1,5 +1,6 @@
 // pages/api/ai/tone-poll.ts
 // AI 보정 결과를 폴링으로 가져오는 엔드포인트
+// ✅ requestId 또는 conversationId로 조회 가능
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -9,13 +10,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== "GET") return res.status(405).end();
 
     try {
-        const { requestId } = req.query;
+        const { requestId, conversationId } = req.query;
 
-        if (!requestId || typeof requestId !== 'string') {
-            return res.status(400).json({ error: "requestId required" });
+        // ✅ requestId 또는 conversationId 중 하나는 필수
+        if (!requestId && !conversationId) {
+            return res.status(400).json({ error: "requestId or conversationId required" });
         }
 
-        console.log("[tone-poll] Polling for requestId:", requestId);
+        const lookupKey = (typeof requestId === 'string' ? requestId : null) ||
+            (typeof conversationId === 'string' ? conversationId : null);
+
+        if (!lookupKey) {
+            return res.status(400).json({ error: "Invalid requestId or conversationId" });
+        }
+
+        console.log("[tone-poll] Polling for:", {
+            requestId: typeof requestId === 'string' ? requestId : null,
+            conversationId: typeof conversationId === 'string' ? conversationId : null,
+            lookupKey,
+        });
 
         // 저장된 결과 확인
         global.aiResults = global.aiResults || {};
@@ -23,10 +36,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // ✅ 디버깅: 현재 저장된 모든 키 출력
         const availableKeys = Object.keys(global.aiResults);
         console.log("[tone-poll] Available keys:", availableKeys);
-        console.log("[tone-poll] Looking for:", requestId);
-        console.log("[tone-poll] Key exists?", requestId in global.aiResults);
+        console.log("[tone-poll] Looking for:", lookupKey);
+        console.log("[tone-poll] Key exists?", lookupKey in global.aiResults);
 
-        const result = global.aiResults[requestId];
+        const result = global.aiResults[lookupKey];
 
         if (!result) {
             // 아직 결과 없음
@@ -37,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 message: "AI correction in progress...",
                 // 디버깅용 (개발 환경에서만)
                 debug: process.env.NODE_ENV === 'development' ? {
-                    requestId,
+                    lookupKey,
                     availableKeys,
                 } : undefined
             });
@@ -45,7 +58,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // 결과 있음 - 반환 후 삭제
         console.log("[tone-poll] ✅ Result found!");
-        delete global.aiResults[requestId];
+
+        // ✅ 찾은 키 삭제 (requestId 또는 conversationId)
+        delete global.aiResults[lookupKey];
+
+        // ✅ 양방향 저장된 경우 다른 키도 삭제
+        if (typeof requestId === 'string' && requestId !== lookupKey && result.conversationId) {
+            delete global.aiResults[requestId];
+        }
+        if (typeof conversationId === 'string' && conversationId !== lookupKey && result.conversationId) {
+            delete global.aiResults[conversationId];
+        }
 
         return res.status(200).json({
             ready: true,

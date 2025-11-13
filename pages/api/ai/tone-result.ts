@@ -36,12 +36,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             originalText,
             metadata,
             requestId,
+            userMessage, // ✅ 고객 메시지
+            previousMessages, // ✅ 최근 메시지들
             // ✅ n8n이 다른 필드명으로 보낼 수 있음
             conversation_id,
             corrected_text,
             original_text,
             request_id,
             tenant_id,
+            user_message,
+            previous_messages,
         } = body;
 
         // ✅ 필드명 매핑
@@ -51,6 +55,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const queryRequestId = typeof req.query?.requestId === 'string' ? req.query.requestId : undefined;
         const finalRequestId = requestId || request_id || queryRequestId;
         const finalTenantId = tenantId || tenant_id;
+        const finalUserMessage = userMessage || user_message || '';
+        const finalPreviousMessages = previousMessages || previous_messages || [];
 
         console.log("[tone-result] Parsed data:", {
             tenantId: finalTenantId,
@@ -88,6 +94,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             conversationId: finalConversationId,
             correctedText: finalCorrectedText,
             originalText: finalOriginalText,
+            customerMessage: finalUserMessage, // ✅ 고객 메시지 포함
+            recentMessages: finalPreviousMessages, // ✅ 최근 메시지 포함
             metadata,
             timestamp: Date.now(),
         };

@@ -24,7 +24,9 @@ export default function AIComposerModal({
     const [processing, setProcessing] = useState(false);
     const [sending, setSending] = useState(false);
     const [correctedText, setCorrectedText] = useState('');
+    const [originalText, setOriginalText] = useState(''); // ✅ 원본 텍스트
     const [customerMessage, setCustomerMessage] = useState(''); // ✅ 고객 메시지
+    const [recentMessages, setRecentMessages] = useState([]); // ✅ 최근 메시지들
     const [error, setError] = useState('');
 
     const [presets] = useState([
@@ -66,7 +68,7 @@ export default function AIComposerModal({
             return;
         }
 
-        // ✅ AI 보정 요청 (동기 방식)
+        // ✅ AI 보정 요청 (비동기 방식 - conversationId로 폴링)
         setProcessing(true);
         setStep('processing');
 
@@ -85,13 +87,13 @@ export default function AIComposerModal({
                 } : {}),
             };
 
-            console.log('[AIComposerModal] Requesting AI correction (sync)');
+            console.log('[AIComposerModal] Requesting AI correction (async)');
 
-            const response = await fetch('/api/ai/tone-correction-sync', {
+            // ✅ 1. n8n에 비동기 요청 전송
+            const response = await fetch('/api/ai/tone-correction', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(30000),
             });
 
             if (!response.ok) {
@@ -99,34 +101,70 @@ export default function AIComposerModal({
                 throw new Error(error.error || 'AI 보정 요청 실패');
             }
 
-            const result = await response.json();
-            console.log('[AIComposerModal] AI result:', result);
-            console.log('[AIComposerModal] Result keys:', Object.keys(result || {}));
+            const requestResult = await response.json();
+            console.log('[AIComposerModal] Request sent:', requestResult);
 
-            // ✅ 다양한 필드명 지원 (tone-correction-sync에서 이미 처리했지만 안전장치)
-            const extractedCorrectedText = result.correctedText ||
-                result.output ||
-                result.text ||
-                result.response ||
-                finalContent;
+            // ✅ 2. requestId로 폴링 시작 (동시 요청 구분을 위해 필수)
+            const requestId = requestResult.requestId;
+            const conversationId = conversation.chatId;
 
-            console.log('[AIComposerModal] Extracted correctedText:', {
-                value: extractedCorrectedText?.substring(0, 50),
-                length: extractedCorrectedText?.length,
-                source: result.correctedText ? 'correctedText' :
-                    result.output ? 'output' :
-                        result.text ? 'text' :
-                            result.response ? 'response' : 'finalContent'
-            });
+            if (!requestId) {
+                throw new Error('requestId를 받지 못했습니다. 서버 로그를 확인해주세요.');
+            }
 
-            setCorrectedText(extractedCorrectedText);
-            setCustomerMessage(result.customerMessage || conversation.lastMessage || ''); // ✅ 고객 메시지
-            setStep('result');
+            const maxAttempts = 30; // 최대 30초 대기
+            let attempts = 0;
+
+            const pollResult = async () => {
+                while (attempts < maxAttempts) {
+                    attempts++;
+
+                    try {
+                        // ✅ requestId를 우선 사용 (동시 요청 구분)
+                        const pollResponse = await fetch(
+                            `/api/ai/tone-poll?requestId=${encodeURIComponent(requestId)}`,
+                            { method: 'GET' }
+                        );
+
+                        if (!pollResponse.ok) {
+                            throw new Error('폴링 실패');
+                        }
+
+                        const pollData = await pollResponse.json();
+                        console.log('[AIComposerModal] Poll attempt', attempts, pollData);
+
+                        if (pollData.ready) {
+                            // ✅ 결과 받음
+                            const extractedCorrectedText = pollData.correctedText || finalContent;
+
+                            setCorrectedText(extractedCorrectedText);
+                            setOriginalText(finalContent); // ✅ 원본 저장
+                            setCustomerMessage(pollData.customerMessage || conversation.lastMessage || '');
+                            setRecentMessages(pollData.recentMessages || []); // ✅ 최근 메시지 저장
+                            setStep('result');
+                            setProcessing(false);
+                            return;
+                        }
+
+                        // 1초 대기 후 재시도
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    } catch (pollErr) {
+                        console.error('[AIComposerModal] Poll error:', pollErr);
+                        // 폴링 에러는 계속 재시도
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    }
+                }
+
+                // 타임아웃
+                throw new Error('AI 보정 시간이 초과되었습니다. 다시 시도해주세요.');
+            };
+
+            await pollResult();
+
         } catch (err) {
             console.error('[AIComposerModal] Error:', err);
             setError(err.message || 'AI 보정 중 오류가 발생했습니다.');
             setStep('compose');
-        } finally {
             setProcessing(false);
         }
     };
@@ -300,10 +338,40 @@ export default function AIComposerModal({
                                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
                                     <div className="flex items-center gap-2 mb-2">
                                         <User className="w-4 h-4 text-blue-600" />
-                                        <span className="text-xs font-semibold text-blue-900">고객 메시지</span>
+                                        <span className="text-xs font-semibold text-blue-900">고객의 마지막 메시지</span>
                                     </div>
                                     <p className="text-sm text-gray-800 whitespace-pre-wrap">{customerMessage}</p>
                                 </div>
+                            )}
+
+                            {/* ✅ 최근 대화 컨텍스트 (접을 수 있는 섹션) */}
+                            {recentMessages && recentMessages.length > 0 && (
+                                <details className="group">
+                                    <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900 flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                        <span>💬 최근 대화 보기</span>
+                                        <span className="text-xs text-gray-500">({recentMessages.length}개)</span>
+                                    </summary>
+                                    <div className="mt-3 space-y-2 pl-2 border-l-2 border-gray-200">
+                                        {recentMessages.slice(-5).map((msg, idx) => (
+                                            <div key={idx} className="flex items-start gap-2">
+                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${msg.sender === 'user' ? 'bg-blue-100' : 'bg-gray-100'
+                                                    }`}>
+                                                    {msg.sender === 'user' ? (
+                                                        <User className="w-3 h-3 text-blue-600" />
+                                                    ) : (
+                                                        <Sparkles className="w-3 h-3 text-gray-600" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className="text-xs text-gray-500 mb-0.5">
+                                                        {msg.sender === 'user' ? '고객' : 'AI'}
+                                                    </p>
+                                                    <p className="text-sm text-gray-700">{msg.text || ''}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </details>
                             )}
 
                             {/* ✅ 보정된 답변 (편집 가능) */}

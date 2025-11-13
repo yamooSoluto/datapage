@@ -638,6 +638,9 @@ export default function TenantPortal() {
               console.log('✅ 슬랙 세션 쿠키 설정 완료');
             }
 
+            // 슬랙은 특정 테넌트로만 접속하므로 localStorage에 저장
+            localStorage.setItem('selectedTenantId', tenant.id);
+
             setCurrentTenant({
               id: tenant.id,
               brandName: tenant.brandName || tenant.name,
@@ -679,6 +682,7 @@ export default function TenantPortal() {
                 if (data.tenants && data.tenants.length > 0) {
                   if (data.tenants.length === 1) {
                     const tenant = data.tenants[0];
+                    localStorage.setItem('selectedTenantId', tenant.id);
                     setCurrentTenant({
                       id: tenant.id,
                       brandName: tenant.brandName || tenant.name,
@@ -693,22 +697,37 @@ export default function TenantPortal() {
                     setAuthChecked(true);
                     console.log('✅ 매직링크 로그인 성공:', tenant.brandName || tenant.name);
                   } else {
-                    // 여러 테넌트가 있을 때: 첫 번째 테넌트를 자동 선택
-                    const tenant = data.tenants[0];
+                    // 여러 테넌트가 있을 때: localStorage에 저장된 선택 테넌트 우선, 없으면 첫 번째
+                    const savedTenantId = localStorage.getItem('selectedTenantId');
+                    let selectedTenant = data.tenants[0];
+
+                    if (savedTenantId) {
+                      const savedTenant = data.tenants.find(t => t.id === savedTenantId);
+                      if (savedTenant) {
+                        selectedTenant = savedTenant;
+                        console.log(`✅ 저장된 테넌트 선택: ${selectedTenant.brandName || selectedTenant.name}`);
+                      } else {
+                        console.log('⚠️ 저장된 테넌트 ID가 목록에 없음, 첫 번째 테넌트 선택');
+                        localStorage.removeItem('selectedTenantId');
+                      }
+                    } else {
+                      console.log(`✅ 첫 번째 테넌트 자동 선택: ${selectedTenant.brandName || selectedTenant.name}`);
+                    }
+
                     setCurrentTenant({
-                      id: tenant.id,
-                      brandName: tenant.brandName || tenant.name,
-                      email: tenant.email,
-                      plan: tenant.plan,
-                      status: tenant.status,
-                      faqCount: tenant.faqCount || 0,
-                      showOnboarding: tenant.showOnboarding || false,
+                      id: selectedTenant.id,
+                      brandName: selectedTenant.brandName || selectedTenant.name,
+                      email: selectedTenant.email,
+                      plan: selectedTenant.plan,
+                      status: selectedTenant.status,
+                      faqCount: selectedTenant.faqCount || 0,
+                      showOnboarding: selectedTenant.showOnboarding || false,
                     });
                     setAvailableTenants(data.tenants);
                     setIsLoggedIn(true);
-                    setShowOnboarding(tenant.showOnboarding || false);
+                    setShowOnboarding(selectedTenant.showOnboarding || false);
                     setAuthChecked(true);
-                    console.log(`✅ 매직링크 로그인 성공 (${data.tenants.length}개 테넌트 중 첫 번째 선택):`, tenant.brandName || tenant.name);
+                    console.log(`✅ 매직링크 로그인 성공 (${data.tenants.length}개 테넌트 중 선택):`, selectedTenant.brandName || selectedTenant.name);
                   }
 
                   setIsLoading(false);
@@ -744,21 +763,36 @@ export default function TenantPortal() {
             setShowOnboarding(tenant.showOnboarding || false);
             console.log('✅ 세션 로그인 성공:', tenant.brandName || tenant.name);
           } else {
-            // 여러 테넌트가 있을 때: 첫 번째 테넌트를 자동 선택
-            const tenant = data.tenants[0];
+            // 여러 테넌트가 있을 때: localStorage에 저장된 선택 테넌트 우선, 없으면 첫 번째
+            const savedTenantId = localStorage.getItem('selectedTenantId');
+            let selectedTenant = data.tenants[0];
+
+            if (savedTenantId) {
+              const savedTenant = data.tenants.find(t => t.id === savedTenantId);
+              if (savedTenant) {
+                selectedTenant = savedTenant;
+                console.log(`✅ 저장된 테넌트 선택: ${selectedTenant.brandName || selectedTenant.name}`);
+              } else {
+                console.log('⚠️ 저장된 테넌트 ID가 목록에 없음, 첫 번째 테넌트 선택');
+                localStorage.removeItem('selectedTenantId');
+              }
+            } else {
+              console.log(`✅ 첫 번째 테넌트 자동 선택: ${selectedTenant.brandName || selectedTenant.name}`);
+            }
+
             setCurrentTenant({
-              id: tenant.id,
-              brandName: tenant.brandName || tenant.name,
-              email: tenant.email,
-              plan: tenant.plan,
-              status: tenant.status,
-              faqCount: tenant.faqCount || 0,
-              showOnboarding: tenant.showOnboarding || false,
+              id: selectedTenant.id,
+              brandName: selectedTenant.brandName || selectedTenant.name,
+              email: selectedTenant.email,
+              plan: selectedTenant.plan,
+              status: selectedTenant.status,
+              faqCount: selectedTenant.faqCount || 0,
+              showOnboarding: selectedTenant.showOnboarding || false,
             });
             setAvailableTenants(data.tenants);
             setIsLoggedIn(true);
-            setShowOnboarding(tenant.showOnboarding || false);
-            console.log(`✅ 세션 로그인 성공 (${data.tenants.length}개 테넌트 중 첫 번째 선택):`, tenant.brandName || tenant.name);
+            setShowOnboarding(selectedTenant.showOnboarding || false);
+            console.log(`✅ 세션 로그인 성공 (${data.tenants.length}개 테넌트 중 선택):`, selectedTenant.brandName || selectedTenant.name);
           }
           setAuthChecked(true);
           setIsLoading(false);
@@ -867,6 +901,7 @@ export default function TenantPortal() {
       if (data.tenants && data.tenants.length > 0) {
         if (data.tenants.length === 1) {
           const tenant = data.tenants[0];
+          localStorage.setItem('selectedTenantId', tenant.id);
           setCurrentTenant({
             id: tenant.id,
             brandName: tenant.brandName || tenant.name,
@@ -882,23 +917,38 @@ export default function TenantPortal() {
           setAuthChecked(true);
           console.log('✅ 세션 로그인 성공:', tenant.brandName || tenant.name);
         } else {
-          // 여러 테넌트가 있을 때: 첫 번째 테넌트를 자동 선택
-          const tenant = data.tenants[0];
+          // 여러 테넌트가 있을 때: localStorage에 저장된 선택 테넌트 우선, 없으면 첫 번째
+          const savedTenantId = localStorage.getItem('selectedTenantId');
+          let selectedTenant = data.tenants[0];
+
+          if (savedTenantId) {
+            const savedTenant = data.tenants.find(t => t.id === savedTenantId);
+            if (savedTenant) {
+              selectedTenant = savedTenant;
+              console.log(`✅ 저장된 테넌트 선택: ${selectedTenant.brandName || selectedTenant.name}`);
+            } else {
+              console.log('⚠️ 저장된 테넌트 ID가 목록에 없음, 첫 번째 테넌트 선택');
+              localStorage.removeItem('selectedTenantId');
+            }
+          } else {
+            console.log(`✅ 첫 번째 테넌트 자동 선택: ${selectedTenant.brandName || selectedTenant.name}`);
+          }
+
           setCurrentTenant({
-            id: tenant.id,
-            brandName: tenant.brandName || tenant.name,
-            email: tenant.email,
-            plan: tenant.plan,
-            status: tenant.status,
-            faqCount: tenant.faqCount || 0,
-            showOnboarding: tenant.showOnboarding || false,
+            id: selectedTenant.id,
+            brandName: selectedTenant.brandName || selectedTenant.name,
+            email: selectedTenant.email,
+            plan: selectedTenant.plan,
+            status: selectedTenant.status,
+            faqCount: selectedTenant.faqCount || 0,
+            showOnboarding: selectedTenant.showOnboarding || false,
           });
           setAvailableTenants(data.tenants);
           setIsLoggedIn(true);
-          setShowOnboarding(tenant.showOnboarding || false);
+          setShowOnboarding(selectedTenant.showOnboarding || false);
           setCanDismissOnboarding(true);
           setAuthChecked(true);
-          console.log(`✅ 세션 로그인 성공 (${data.tenants.length}개 테넌트 중 첫 번째 선택):`, tenant.brandName || tenant.name);
+          console.log(`✅ 세션 로그인 성공 (${data.tenants.length}개 테넌트 중 선택):`, selectedTenant.brandName || selectedTenant.name);
         }
       } else {
         console.warn('⚠️ 테넌트를 찾을 수 없습니다.');
@@ -1004,6 +1054,8 @@ export default function TenantPortal() {
         availableTenants={availableTenants}
         onTenantChange={(tenant) => {
           console.log('🔄 테넌트 변경 시작:', tenant);
+          // 선택한 테넌트 ID를 localStorage에 저장
+          localStorage.setItem('selectedTenantId', tenant.id);
           setCurrentTenant({
             id: tenant.id,
             brandName: tenant.brandName || tenant.name,
@@ -1013,6 +1065,7 @@ export default function TenantPortal() {
             faqCount: tenant.faqCount || 0,
             showOnboarding: tenant.showOnboarding || false,
           });
+          setAvailableTenants(availableTenants);
           console.log('✅ 테넌트 변경 완료:', tenant.brandName || tenant.name);
           // 페이지 새로고침으로 데이터 재로드 (PWA에서 상태 업데이트가 제대로 반영되도록)
           window.location.reload();
@@ -1021,6 +1074,10 @@ export default function TenantPortal() {
           setIsLoggedIn(false);
           setCurrentTenant(null);
           setAuthChecked(false);
+          // localStorage 정리
+          localStorage.removeItem('selectedTenantId');
+          localStorage.removeItem('userEmail');
+          localStorage.removeItem('tenantId');
           // 세션 쿠키 삭제
           fetch('/api/auth/logout', { method: 'POST' }).then(() => {
             window.location.href = '/';
