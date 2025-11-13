@@ -62,6 +62,7 @@ export default function LoginPWA({ onLoginSuccess }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code }),
+        credentials: 'include', // 쿠키를 포함하여 요청
       });
 
       const data = await res.json();
@@ -70,17 +71,21 @@ export default function LoginPWA({ onLoginSuccess }) {
         throw new Error(data.error || '코드가 올바르지 않습니다.');
       }
 
+      console.log('✅ OTP 검증 성공, 세션 쿠키 설정됨');
+
       // ✅ 여기서 서버가 yamoo_session 쿠키를 이미 발급함
       //    → 세션 쿠키를 확인하여 테넌트 조회 및 로그인 세팅
       if (typeof onLoginSuccess === 'function') {
         // 세션 쿠키가 설정되었으므로 잠시 대기 후 세션 확인
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
+        console.log('🔍 세션 확인 시작...');
         await onLoginSuccess();
       } else {
         // 페이지 리로드하여 checkAuth가 세션 쿠키를 확인하도록 함
         window.location.href = '/';
       }
     } catch (err) {
+      console.error('❌ OTP 검증 실패:', err);
       setError(err.message || '코드가 올바르지 않습니다.');
     } finally {
       setIsLoading(false);

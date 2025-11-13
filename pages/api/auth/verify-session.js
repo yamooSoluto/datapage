@@ -47,14 +47,17 @@ export default async function handler(req, res) {
     const cookies = Object.fromEntries(
       cookieHeader.split(';').map(c => {
         const [key, ...values] = c.trim().split('=');
-        return [key, values.join('=')];
+        return [key, decodeURIComponent(values.join('='))]; // 디코딩 추가
       })
     );
     const sessionToken = cookies.yamoo_session;
 
     if (!sessionToken) {
+      console.log('⚠️ [Verify Session] 세션 쿠키 없음. 쿠키 헤더:', cookieHeader);
       return res.status(401).json({ error: '세션이 없습니다.' });
     }
+
+    console.log('🔍 [Verify Session] 세션 토큰 발견, 검증 시작...');
 
     // JWT 검증
     const decoded = jwt.verify(sessionToken, process.env.JWT_SECRET);

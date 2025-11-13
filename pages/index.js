@@ -616,19 +616,30 @@ export default function TenantPortal() {
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get('token');
       if (urlToken) {
+        console.log('🔗 매직링크 토큰 발견, 검증 시작...');
         // 매직링크 토큰 검증 및 세션 쿠키 설정
         const res = await fetch(`/api/auth/magic-link?token=${encodeURIComponent(urlToken)}`, {
           credentials: 'include'
         });
 
+        console.log('📡 매직링크 응답 상태:', res.status, res.statusText);
+
         if (res.ok) {
-          // 세션 쿠키가 설정되었으므로 세션 확인 API 호출
+          const magicData = await res.json().catch(() => ({}));
+          console.log('✅ 매직링크 검증 성공:', magicData);
+
+          // 세션 쿠키가 설정되었으므로 잠시 대기 후 세션 확인 API 호출
+          await new Promise(resolve => setTimeout(resolve, 200));
+
           const cookieRes = await fetch('/api/auth/verify-session', {
             credentials: 'include'
           });
 
+          console.log('📡 세션 확인 응답 상태:', cookieRes.status, cookieRes.statusText);
+
           if (cookieRes.ok) {
             const data = await cookieRes.json();
+            console.log('📦 세션 확인 응답 데이터:', data);
 
             if (data.tenants && data.tenants.length > 0) {
               if (data.tenants.length === 1) {
@@ -644,18 +655,25 @@ export default function TenantPortal() {
                 });
                 setIsLoggedIn(true);
                 setShowOnboarding(tenant.showOnboarding || false);
+                setAuthChecked(true);
                 console.log('✅ 매직링크 로그인 성공:', tenant.brandName || tenant.name);
               } else {
                 setAvailableTenants(data.tenants);
                 setShowTenantSelector(true);
+                setAuthChecked(true);
               }
 
-              setAuthChecked(true);
               setIsLoading(false);
               window.history.replaceState({}, document.title, '/');
               return;
             }
+          } else {
+            const errorData = await cookieRes.json().catch(() => ({}));
+            console.error('❌ 세션 확인 실패:', errorData);
           }
+        } else {
+          const errorData = await res.json().catch(() => ({}));
+          console.error('❌ 매직링크 검증 실패:', errorData);
         }
       }
 
@@ -772,16 +790,22 @@ export default function TenantPortal() {
   async function verifySessionAndLogin() {
     setIsLoading(true);
     try {
+      console.log('🔍 세션 확인 시작...');
       // 세션 쿠키 확인 (OTP 검증 후 쿠키가 설정되어 있음)
       const res = await fetch('/api/auth/verify-session', {
         credentials: 'include'
       });
 
+      console.log('📡 세션 확인 응답 상태:', res.status, res.statusText);
+
       if (!res.ok) {
-        throw new Error('세션 확인 실패');
+        const errorData = await res.json().catch(() => ({}));
+        console.error('❌ 세션 확인 실패:', errorData);
+        throw new Error(errorData.error || '세션 확인 실패');
       }
 
       const data = await res.json();
+      console.log('📦 세션 확인 응답 데이터:', data);
 
       if (data.tenants && data.tenants.length > 0) {
         if (data.tenants.length === 1) {
@@ -798,12 +822,15 @@ export default function TenantPortal() {
           setIsLoggedIn(true);
           setShowOnboarding(tenant.showOnboarding || false);
           setCanDismissOnboarding(true);
+          setAuthChecked(true);
           console.log('✅ 세션 로그인 성공:', tenant.brandName || tenant.name);
         } else {
           setAvailableTenants(data.tenants);
           setShowTenantSelector(true);
+          setAuthChecked(true);
         }
       } else {
+        console.warn('⚠️ 테넌트를 찾을 수 없습니다.');
         throw new Error('테넌트를 찾을 수 없습니다.');
       }
 

@@ -41,7 +41,10 @@ function cookieString(
   value,
   { maxAge = 60 * 60 * 24, secure = process.env.NODE_ENV === 'production' } = {}
 ) {
-  const c = `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
+  // JWT 토큰에는 특수문자가 포함될 수 있으므로 인코딩 필요
+  const encodedValue = encodeURIComponent(value);
+  let c = `${name}=${encodedValue}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+  if (secure) c += '; Secure';
   return c;
 }
 
@@ -110,9 +113,11 @@ export default async function handler(req, res) {
       process.env.JWT_SECRET
     );
 
-    res.setHeader('Set-Cookie', cookieString('yamoo_session', session));
-
+    const cookieHeader = cookieString('yamoo_session', session);
+    res.setHeader('Set-Cookie', cookieHeader);
+    
     console.log(`✅ [Verify OTP] ${emailLower} 로그인 성공`);
+    console.log(`🍪 [Verify OTP] 쿠키 설정: ${cookieHeader.substring(0, 50)}...`);
 
     return res.status(200).json({
       success: true,
