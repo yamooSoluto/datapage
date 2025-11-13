@@ -35,25 +35,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             correctedText,
             originalText,
             metadata,
-            requestId,
             userMessage, // ✅ 고객 메시지
             previousMessages, // ✅ 최근 메시지들
             // ✅ n8n이 다른 필드명으로 보낼 수 있음
             conversation_id,
             corrected_text,
             original_text,
-            request_id,
             tenant_id,
             user_message,
             previous_messages,
         } = body;
 
-        // ✅ 필드명 매핑
+        // ✅ 필드명 매핑 (conversationId만 사용)
         const finalConversationId = conversationId || conversation_id;
         const finalCorrectedText = correctedText || corrected_text;
         const finalOriginalText = originalText || original_text;
-        const queryRequestId = typeof req.query?.requestId === 'string' ? req.query.requestId : undefined;
-        const finalRequestId = requestId || request_id || queryRequestId;
         const finalTenantId = tenantId || tenant_id;
         const finalUserMessage = userMessage || user_message || '';
         const finalPreviousMessages = previousMessages || previous_messages || [];
@@ -61,7 +57,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log("[tone-result] Parsed data:", {
             tenantId: finalTenantId,
             conversationId: finalConversationId,
-            requestId: finalRequestId,
             correctedTextLength: finalCorrectedText?.length,
             originalTextLength: finalOriginalText?.length,
             hasMetadata: !!metadata,
@@ -82,12 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             });
         }
 
-        // ✅ requestId 경고
-        if (!finalRequestId) {
-            console.warn("[tone-result] ⚠️ No requestId! Using conversationId as fallback");
-        }
-
-        // ✅ 결과 데이터
+        // ✅ 결과 데이터 (conversationId만 사용)
         global.aiResults = global.aiResults || {};
 
         const resultData = {
@@ -100,14 +90,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             timestamp: Date.now(),
         };
 
-        // ✅ 양방향 저장 (핵심!)
-        // 1. requestId로 저장 (우선순위)
-        if (finalRequestId) {
-            global.aiResults[finalRequestId] = resultData;
-            console.log("[tone-result] ✅ Stored with requestId:", finalRequestId);
-        }
-
-        // 2. conversationId로도 저장 (fallback)
+        // ✅ conversationId로만 저장 (동시 요청 방지로 충분)
         global.aiResults[finalConversationId] = resultData;
         console.log("[tone-result] ✅ Stored with conversationId:", finalConversationId);
 
@@ -116,14 +99,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // 5분 후 자동 삭제
         setTimeout(() => {
-            if (finalRequestId) delete global.aiResults[finalRequestId];
             delete global.aiResults[finalConversationId];
         }, 5 * 60 * 1000);
 
         return res.status(200).json({
             ok: true,
             message: "Result stored successfully",
-            storedKeys: finalRequestId ? [finalRequestId, finalConversationId] : [finalConversationId]
+            conversationId: finalConversationId,
         });
 
     } catch (e: any) {

@@ -23,6 +23,10 @@ export const config = {
     }
 };
 
+// ✅ 진행 중인 요청 추적 (같은 conversationId로 동시 요청 방지)
+const pendingRequests: Map<string, { timestamp: number }> = new Map();
+const REQUEST_TIMEOUT = 30000; // 30초
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== "POST") return res.status(405).end();
 
@@ -50,6 +54,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!tenantId || !conversationId || !content) {
             return res.status(400).json({ error: "tenantId, conversationId, content required" });
         }
+
+        // ✅ 동일 conversationId로 진행 중인 요청 확인
+        const requestKey = `${tenantId}_${conversationId}`;
+        const pendingRequest = pendingRequests.get(requestKey);
+
+        if (pendingRequest) {
+            const elapsed = Date.now() - pendingRequest.timestamp;
+            if (elapsed < REQUEST_TIMEOUT) {
+                console.warn("[tone-correction-sync] ⚠️ Request already in progress:", requestKey);
+                return res.status(429).json({
+                    error: "이미 AI 보정 요청이 진행 중입니다. 잠시 후 다시 시도해주세요.",
+                    retryAfter: Math.ceil((REQUEST_TIMEOUT - elapsed) / 1000),
+                });
+            } else {
+                // 타임아웃된 요청 정리
+                pendingRequests.delete(requestKey);
+            }
+        }
+
+        // ✅ 진행 중인 요청 등록 (conversationId만 사용)
+        pendingRequests.set(requestKey, { timestamp: Date.now() });
+
+        // ✅ 타임아웃 후 자동 정리
+        setTimeout(() => {
+            pendingRequests.delete(requestKey);
+        }, REQUEST_TIMEOUT);
 
         if (!enableAI) {
             return res.status(200).json({
@@ -145,7 +175,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             process.env.N8N_TONE_CORRECTION_WEBHOOK ||
             "https://soluto.app.n8n.cloud/webhook/tone-correction-sync";
 
-        // ✅ 5. 페이로드 구성
+        // ✅ 5. 페이로드 구성 (conversationId만 사용, requestId 제거)
         const payload = {
             tenantId,
             conversationId,
@@ -160,6 +190,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             executionMode: "production",
             // ✅ 동기 모드 표시
             syncMode: true,
+            // ✅ 콜백 URL (conversationId만 사용)
+            callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr'}/api/ai/tone-result`,
         };
 
         console.log("[tone-correction-sync] Calling n8n (sync mode)");
@@ -192,6 +224,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.log("[tone-correction-sync] n8n response:", JSON.stringify(result, null, 2));
             console.log("[tone-correction-sync] Response keys:", Object.keys(result || {}));
 
+            // ✅ n8n이 "Workflow was started" 같은 메시지만 반환하는 경우 (비동기 처리)
+            if (result.message && result.message.includes("Workflow was started")) {
+                console.log("[tone-correction-sync] ⚠️ n8n returned async response, waiting for callback...");
+
+                // ✅ 진행 중인 요청 등록 해제 (콜백에서 처리)
+                // pendingRequests는 타임아웃으로 정리됨
+
+                // ✅ conversationId로 폴링하도록 안내
+                return res.status(202).json({
+                    ok: true,
+                    message: "AI 보정 요청이 시작되었습니다. 결과를 기다리는 중...",
+                    conversationId,
+                    pollUrl: `/api/ai/tone-poll?conversationId=${encodeURIComponent(conversationId)}`,
+                    // 클라이언트가 폴링하도록 안내
+                    async: true,
+                });
+            }
+
             // ✅ n8n이 다양한 필드명으로 보낼 수 있음: correctedText, output, text 등
             let correctedText = result.correctedText ||
                 result.output ||
@@ -219,6 +269,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                             result.response ? 'response' : 'fallback'
             });
 
+            // ✅ 진행 중인 요청 제거
+            pendingRequests.delete(requestKey);
+
             return res.status(200).json({
                 ok: true,
                 correctedText: correctedText,
@@ -229,6 +282,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         } catch (err: any) {
             clearTimeout(timeoutId);
+
+            // ✅ 에러 발생 시 진행 중인 요청 제거
+            pendingRequests.delete(requestKey);
 
             if (err.name === 'AbortError') {
                 console.error("[tone-correction-sync] Timeout after 25s");
@@ -242,6 +298,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     } catch (e: any) {
         console.error("[tone-correction-sync] Error:", e);
+
+        // ✅ 에러 발생 시 진행 중인 요청 제거
+        const requestKey = `${req.body?.tenantId}_${req.body?.conversationId}`;
+        if (requestKey) {
+            pendingRequests.delete(requestKey);
+        }
+
         return res.status(500).json({
             error: e?.message || "AI 보정 중 오류가 발생했습니다.",
         });

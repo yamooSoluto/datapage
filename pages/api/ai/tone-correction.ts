@@ -14,6 +14,10 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+// ✅ 진행 중인 요청 추적 (같은 conversationId로 동시 요청 방지)
+const pendingRequests: Map<string, { timestamp: number }> = new Map();
+const REQUEST_TIMEOUT = 30000; // 30초
+
 export const config = { api: { bodyParser: true } };
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -30,15 +34,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             voice,
             contentType,
             toneFlags,
-            requestId: incomingRequestId, // ✅ 폴링용 ID
             source = 'web_portal',
         } = req.body || {};
 
         const actualChatId = conversationId || chatId;
 
-        // ✅ requestId가 없으면 conversationId 기반으로 생성 (항상 일관성 유지)
-        // conversationId를 기반으로 하면 tone-result에서 매칭이 쉬움
-        const requestId = incomingRequestId || `${tenantId}_${actualChatId}_${Date.now()}`;
+        // 필수 파라미터 검증
+        if (!tenantId || !actualChatId || !content) {
+            return res.status(400).json({ error: "tenantId, chatId, content required" });
+        }
+
+        // ✅ 동일 conversationId로 진행 중인 요청 확인
+        const requestKey = `${tenantId}_${actualChatId}`;
+        const pendingRequest = pendingRequests.get(requestKey);
+
+        if (pendingRequest) {
+            const elapsed = Date.now() - pendingRequest.timestamp;
+            if (elapsed < REQUEST_TIMEOUT) {
+                console.warn("[tone-correction] ⚠️ Request already in progress:", requestKey);
+                return res.status(429).json({
+                    error: "이미 AI 보정 요청이 진행 중입니다. 잠시 후 다시 시도해주세요.",
+                    retryAfter: Math.ceil((REQUEST_TIMEOUT - elapsed) / 1000),
+                });
+            } else {
+                // 타임아웃된 요청 정리
+                pendingRequests.delete(requestKey);
+            }
+        }
+
+        // ✅ 진행 중인 요청 등록 (conversationId만 사용)
+        pendingRequests.set(requestKey, { timestamp: Date.now() });
+
+        // ✅ 타임아웃 후 자동 정리
+        setTimeout(() => {
+            pendingRequests.delete(requestKey);
+        }, REQUEST_TIMEOUT);
 
         console.log("[tone-correction] Request:", {
             tenantId,
@@ -46,14 +76,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             contentLength: content?.length,
             enableAI,
             planName,
-            requestId,
             source,
         });
-
-        // 필수 파라미터 검증
-        if (!tenantId || !actualChatId || !content) {
-            return res.status(400).json({ error: "tenantId, chatId, content required" });
-        }
 
         // AI 보정이 비활성화면 원본 그대로 반환
         if (!enableAI) {
@@ -164,7 +188,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const n8nUrl = process.env.N8N_TONE_CORRECTION_WEBHOOK ||
             "https://soluto.app.n8n.cloud/webhook/tone-correction";
 
-        // ✅ 5. 페이로드 구성 (슬랙과 동일한 스키마)
+        // ✅ 5. 페이로드 구성 (conversationId만 사용, requestId 제거)
         const payload: any = {
             tenantId,
             conversationId: actualChatId,
@@ -173,12 +197,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             mode: "mediated",
             source, // 'web_portal'
             planName: planName || "trial",
-            requestId, // ✅ 폴링용 (항상 포함)
             csTone: csTone || null, // ✅ 테넌트 CS 톤 (null로 명시)
             previousMessages: previousMessages || [], // ✅ 최근 5개 메시지 (빈 배열로 명시)
             ...aiOptions,
-            // ✅ 웹포탈 콜백 URL
-            callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr'}/api/ai/tone-result?requestId=${encodeURIComponent(requestId)}`,
+            // ✅ 웹포탈 콜백 URL (conversationId만 사용)
+            callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr'}/api/ai/tone-result`,
             executionMode: "production",
         };
 
@@ -193,7 +216,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             url: n8nUrl,
             tenantId,
             conversationId: actualChatId,
-            requestId, // ✅ 항상 존재함
             hasUserMessage: !!userMessage,
             previousMessagesCount: previousMessages.length,
             hasCsTone: !!csTone,
@@ -201,9 +223,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // ✅ 페이로드 전체 로그 (디버깅용)
         console.log("[tone-correction] Full payload:", JSON.stringify(payload, null, 2));
-
-        // ✅ requestId 확인 로그
-        console.log("[tone-correction] requestId in payload:", payload.requestId);
 
         // ✅ 6. n8n webhook 호출 (비동기)
         const response = await fetch(n8nUrl, {
@@ -218,27 +237,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const errorText = await response.text().catch(() => "");
             console.error("[tone-correction] n8n error:", response.status, errorText);
 
+            // ✅ 에러 발생 시 진행 중인 요청 제거
+            pendingRequests.delete(requestKey);
+
             // n8n 오류여도 200 반환 (비동기이므로)
             return res.status(200).json({
                 ok: true,
                 message: "AI correction request sent",
-                requestId,
+                conversationId: actualChatId,
                 warning: `n8n returned ${response.status}`
             });
         }
 
         console.log("[tone-correction] n8n request sent successfully");
 
+        // ✅ 비동기 요청이므로 진행 중인 요청은 타임아웃으로 자동 정리됨
+        // tone-result에서 콜백이 오면 결과가 저장되므로 여기서는 정리하지 않음
+
         return res.status(200).json({
             ok: true,
             message: "AI correction request sent",
-            requestId,
+            conversationId: actualChatId,
             // 폴링 시작 안내
-            pollUrl: `/api/ai/tone-poll?requestId=${requestId}`,
+            pollUrl: `/api/ai/tone-poll?conversationId=${encodeURIComponent(actualChatId)}`,
         });
 
     } catch (e: any) {
         console.error("[tone-correction] Error:", e);
+
+        // ✅ 에러 발생 시 진행 중인 요청 제거
+        const requestKey = `${req.body?.tenantId}_${req.body?.conversationId || req.body?.chatId}`;
+        if (requestKey) {
+            pendingRequests.delete(requestKey);
+        }
+
         return res.status(500).json({
             error: e?.message || "unknown error",
             stack: process.env.NODE_ENV === 'development' ? e?.stack : undefined

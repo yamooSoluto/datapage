@@ -99,12 +99,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                         const file = bucket.file(fileName);
 
                         // 파일 업로드
+                        // Note: public: true 옵션 제거 - uniform bucket-level access가 활성화된 경우 ACL 설정 불가
                         await file.save(buffer, {
                             metadata: {
                                 contentType: att.type || 'application/octet-stream',
                                 cacheControl: 'public, max-age=31536000',
                             },
-                            public: true, // 공개 접근 허용
                         });
 
                         // 공개 URL 생성

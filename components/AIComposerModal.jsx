@@ -104,13 +104,8 @@ export default function AIComposerModal({
             const requestResult = await response.json();
             console.log('[AIComposerModal] Request sent:', requestResult);
 
-            // ✅ 2. requestId로 폴링 시작 (동시 요청 구분을 위해 필수)
-            const requestId = requestResult.requestId;
+            // ✅ 2. conversationId로 폴링 시작 (동시 요청 방지로 충분)
             const conversationId = conversation.chatId;
-
-            if (!requestId) {
-                throw new Error('requestId를 받지 못했습니다. 서버 로그를 확인해주세요.');
-            }
 
             const maxAttempts = 30; // 최대 30초 대기
             let attempts = 0;
@@ -120,9 +115,9 @@ export default function AIComposerModal({
                     attempts++;
 
                     try {
-                        // ✅ requestId를 우선 사용 (동시 요청 구분)
+                        // ✅ conversationId로 폴링
                         const pollResponse = await fetch(
-                            `/api/ai/tone-poll?requestId=${encodeURIComponent(requestId)}`,
+                            `/api/ai/tone-poll?conversationId=${encodeURIComponent(conversationId)}`,
                             { method: 'GET' }
                         );
 
