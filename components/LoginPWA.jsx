@@ -71,11 +71,13 @@ export default function LoginPWA({ onLoginSuccess }) {
       }
 
       // ✅ 여기서 서버가 yamoo_session 쿠키를 이미 발급함
-      //    → 상위에서 checkAuth() 다시 돌려서 내부로 진입
+      //    → 세션 쿠키를 확인하여 테넌트 조회 및 로그인 세팅
       if (typeof onLoginSuccess === 'function') {
+        // 세션 쿠키가 설정되었으므로 잠시 대기 후 세션 확인
+        await new Promise(resolve => setTimeout(resolve, 100));
         await onLoginSuccess();
       } else {
-        // 혹시 prop 안 넘겨졌을 경우 대비
+        // 페이지 리로드하여 checkAuth가 세션 쿠키를 확인하도록 함
         window.location.href = '/';
       }
     } catch (err) {

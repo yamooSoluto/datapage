@@ -612,35 +612,54 @@ export default function TenantPortal() {
         return;
       }
 
-      // 1) URL에 토큰이 있는지 확인
+      // 1) URL에 토큰이 있는지 확인 (매직링크)
       const urlParams = new URLSearchParams(window.location.search);
       const urlToken = urlParams.get('token');
       if (urlToken) {
-        const res = await fetch(`/api/auth/verify-token?token=${encodeURIComponent(urlToken)}`);
+        // 매직링크 토큰 검증 및 세션 쿠키 설정
+        const res = await fetch(`/api/auth/magic-link?token=${encodeURIComponent(urlToken)}`, {
+          credentials: 'include'
+        });
+
         if (res.ok) {
-          const data = await res.json();
+          // 세션 쿠키가 설정되었으므로 세션 확인 API 호출
+          const cookieRes = await fetch('/api/auth/verify-session', {
+            credentials: 'include'
+          });
 
-          if (data.tenants && data.tenants.length > 0) {
-            if (data.tenants.length === 1) {
-              const tenant = data.tenants[0];
-              setCurrentTenant(tenant);
-              setIsLoggedIn(true);
-              setShowOnboarding(tenant.showOnboarding || false);
-              console.log('✅ 토큰 로그인 성공:', tenant.name);
-            } else {
-              setAvailableTenants(data.tenants);
-              setShowTenantSelector(true);
+          if (cookieRes.ok) {
+            const data = await cookieRes.json();
+
+            if (data.tenants && data.tenants.length > 0) {
+              if (data.tenants.length === 1) {
+                const tenant = data.tenants[0];
+                setCurrentTenant({
+                  id: tenant.id,
+                  brandName: tenant.brandName || tenant.name,
+                  email: tenant.email,
+                  plan: tenant.plan,
+                  status: tenant.status,
+                  faqCount: tenant.faqCount || 0,
+                  showOnboarding: tenant.showOnboarding || false,
+                });
+                setIsLoggedIn(true);
+                setShowOnboarding(tenant.showOnboarding || false);
+                console.log('✅ 매직링크 로그인 성공:', tenant.brandName || tenant.name);
+              } else {
+                setAvailableTenants(data.tenants);
+                setShowTenantSelector(true);
+              }
+
+              setAuthChecked(true);
+              setIsLoading(false);
+              window.history.replaceState({}, document.title, '/');
+              return;
             }
-
-            setAuthChecked(true);
-            setIsLoading(false);
-            window.history.replaceState({}, document.title, '/');
-            return;
           }
         }
       }
 
-      // 2) 세션 쿠키 확인
+      // 2) 세션 쿠키 확인 (OTP 또는 이미 설정된 세션)
       const cookieRes = await fetch('/api/auth/verify-session', {
         credentials: 'include'
       });
@@ -650,10 +669,18 @@ export default function TenantPortal() {
         if (data.tenants && data.tenants.length > 0) {
           if (data.tenants.length === 1) {
             const tenant = data.tenants[0];
-            setCurrentTenant(tenant);
+            setCurrentTenant({
+              id: tenant.id,
+              brandName: tenant.brandName || tenant.name,
+              email: tenant.email,
+              plan: tenant.plan,
+              status: tenant.status,
+              faqCount: tenant.faqCount || 0,
+              showOnboarding: tenant.showOnboarding || false,
+            });
             setIsLoggedIn(true);
             setShowOnboarding(tenant.showOnboarding || false);
-            console.log('✅ 세션 로그인 성공:', tenant.name);
+            console.log('✅ 세션 로그인 성공:', tenant.brandName || tenant.name);
           } else {
             setAvailableTenants(data.tenants);
             setShowTenantSelector(true);
@@ -741,26 +768,52 @@ export default function TenantPortal() {
     }
   }
 
-  // 이메일로 테넌트 조회
-  async function fetchTenantByEmail(email) {
+  // 세션 쿠키 확인 및 테넌트 조회
+  async function verifySessionAndLogin() {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/tenants/by-email?email=${encodeURIComponent(email)}`);
-      if (!res.ok) throw new Error('테넌트 조회 실패');
+      // 세션 쿠키 확인 (OTP 검증 후 쿠키가 설정되어 있음)
+      const res = await fetch('/api/auth/verify-session', {
+        credentials: 'include'
+      });
+
+      if (!res.ok) {
+        throw new Error('세션 확인 실패');
+      }
 
       const data = await res.json();
-      setCurrentTenant(data);
-      setIsLoggedIn(true);
 
-      const shouldShowOnboarding = !data.onboardingCompleted;
-      setShowOnboarding(shouldShowOnboarding);
-      setCanDismissOnboarding(true);
+      if (data.tenants && data.tenants.length > 0) {
+        if (data.tenants.length === 1) {
+          const tenant = data.tenants[0];
+          setCurrentTenant({
+            id: tenant.id,
+            brandName: tenant.brandName || tenant.name,
+            email: tenant.email,
+            plan: tenant.plan,
+            status: tenant.status,
+            faqCount: tenant.faqCount || 0,
+            showOnboarding: tenant.showOnboarding || false,
+          });
+          setIsLoggedIn(true);
+          setShowOnboarding(tenant.showOnboarding || false);
+          setCanDismissOnboarding(true);
+          console.log('✅ 세션 로그인 성공:', tenant.brandName || tenant.name);
+        } else {
+          setAvailableTenants(data.tenants);
+          setShowTenantSelector(true);
+        }
+      } else {
+        throw new Error('테넌트를 찾을 수 없습니다.');
+      }
 
-      console.log('✅ 자동 로그인 성공(세션)');
       setIsLoading(false);
     } catch (err) {
-      console.error('❌ 조회 에러:', err);
+      console.error('❌ 세션 확인 에러:', err);
       setIsLoading(false);
+      // 세션이 없으면 다시 로그인 화면으로
+      setIsLoggedIn(false);
+      setAuthChecked(true);
     }
   }
 
@@ -804,9 +857,10 @@ export default function TenantPortal() {
 
   // 로그인 필요 - LoginPWA 컴포넌트 표시
   if (!isLoggedIn && authChecked) {
-    // OTP 성공 시 상위에서 checkAuth() 다시 실행해서 곧바로 내부 진입
-    return <LoginPWA onLoginSuccess={checkAuth} />;
+    // ✅ OTP 성공 시 세션 쿠키를 확인하여 로그인 상태 세팅
+    return <LoginPWA onLoginSuccess={verifySessionAndLogin} />;
   }
+
 
   // 메인 UI
   return (
