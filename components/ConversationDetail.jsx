@@ -539,7 +539,29 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     tenantId={effectiveTenantId}
                     planName={planName}
                     onClose={() => setShowAIComposer(false)}
-                    onSend={onSend}
+                    onSend={async (text) => {
+                        const trimmed = (text || '').trim();
+
+                        // 혹시라도 빈 문자열이면 여기서 한 번 더 방어
+                        if (!trimmed) {
+                            throw new Error('전송할 내용이 없습니다.');
+                        }
+
+                        // 🔗 ConversationsPage.handleSend가 기대하는 형태로 변환해서 전달
+                        await onSend?.({
+                            text: trimmed,
+                            attachments: [],              // AI 보정으로 보낼 때는 첨부 없음
+                            tenantId: effectiveTenantId,  // 위에서 계산한 tenant
+                            chatId,                       // 위에서 계산한 chatId
+                        });
+
+                        // 보내고 나서 상세 다시 가져오기 (바로 리스트에 반영되게)
+                        try {
+                            await fetchDetail();
+                        } catch (e) {
+                            console.error('[ConversationDetail] Failed to refresh after AI send:', e);
+                        }
+                    }}
                 />
             )}
 
@@ -631,96 +653,99 @@ function MessageBubble({ message, onImageClick }) {
             <div className={`max-w-[80%] ${senderCfg.bubbleAlign}`}>
                 {!isUser && <div className="text-xs text-gray-500 mb-1 px-1">{senderCfg.name}</div>}
 
-                {/* ✅ 텍스트가 없고 이미지만 있을 때는 말풍선 스타일 다르게 적용 */}
-                {(!message.text || !message.text.trim()) && message.pics && message.pics.length > 0 ? (
-                    // 이미지만 있을 때: 말풍선 없이 이미지만 표시
-                    <div className="space-y-2">
-                        {message.pics.length === 1 ? (
-                            <div
-                                className="relative group cursor-pointer overflow-hidden rounded-lg"
-                                onClick={() => onImageClick?.(message.pics[0].url || message.pics[0])}
-                            >
-                                <img
-                                    src={message.pics[0].url || message.pics[0]}
-                                    alt="첨부 이미지"
-                                    className="w-full h-auto max-h-80 object-contain rounded-lg"
-                                    onError={(e) => {
-                                        e.target.parentElement.innerHTML =
-                                            '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
-                                    }}
-                                />
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-2">
-                                {message.pics.map((pic, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="relative group cursor-pointer overflow-hidden rounded-lg aspect-square"
-                                        onClick={() => onImageClick?.(pic.url || pic)}
-                                    >
-                                        <img
-                                            src={pic.url || pic}
-                                            alt={`첨부 ${idx + 1}`}
-                                            className="w-full h-full object-cover"
-                                            onError={(e) => {
-                                                e.target.parentElement.innerHTML =
-                                                    '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
-                                            }}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    // 텍스트가 있거나 텍스트와 이미지가 함께 있을 때: 기존 말풍선 스타일
-                    <div className={`rounded-2xl px-4 py-2.5 ${senderCfg.bubbleBg}`}>
-                        {message.text && (
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
-                        )}
+                {/* ✅ 텍스트와 이미지가 모두 없으면 렌더링하지 않음 */}
+                {(!message.text || !message.text.trim()) && (!message.pics || message.pics.length === 0) ? null :
 
-                        {message.pics && message.pics.length > 0 && (
-                            <div className={`${message.text ? "mt-2" : ""} space-y-2`}>
-                                {message.pics.length === 1 ? (
-                                    <div
-                                        className="relative group cursor-pointer overflow-hidden rounded-lg"
-                                        onClick={() => onImageClick?.(message.pics[0].url || message.pics[0])}
-                                    >
-                                        <img
-                                            src={message.pics[0].url || message.pics[0]}
-                                            alt="첨부 이미지"
-                                            className="w-full h-auto max-h-80 object-contain rounded-lg"
-                                            onError={(e) => {
-                                                e.target.parentElement.innerHTML =
-                                                    '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
-                                            }}
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {message.pics.map((pic, idx) => (
-                                            <div
-                                                key={idx}
-                                                className="relative group cursor-pointer overflow-hidden rounded-lg aspect-square"
-                                                onClick={() => onImageClick?.(pic.url || pic)}
-                                            >
-                                                <img
-                                                    src={pic.url || pic}
-                                                    alt={`첨부 ${idx + 1}`}
-                                                    className="w-full h-full object-cover"
-                                                    onError={(e) => {
-                                                        e.target.parentElement.innerHTML =
-                                                            '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
-                                                    }}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
+                    /* ✅ 텍스트가 없고 이미지만 있을 때는 말풍선 스타일 다르게 적용 */
+                    (!message.text || !message.text.trim()) && message.pics && message.pics.length > 0 ? (
+                        // 이미지만 있을 때: 말풍선 없이 이미지만 표시
+                        <div className="space-y-2">
+                            {message.pics.length === 1 ? (
+                                <div
+                                    className="relative group cursor-pointer overflow-hidden rounded-lg"
+                                    onClick={() => onImageClick?.(message.pics[0].url || message.pics[0])}
+                                >
+                                    <img
+                                        src={message.pics[0].url || message.pics[0]}
+                                        alt="첨부 이미지"
+                                        className="w-full h-auto max-h-80 object-contain rounded-lg"
+                                        onError={(e) => {
+                                            e.target.parentElement.innerHTML =
+                                                '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
+                                        }}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {message.pics.map((pic, idx) => (
+                                        <div
+                                            key={idx}
+                                            className="relative group cursor-pointer overflow-hidden rounded-lg aspect-square"
+                                            onClick={() => onImageClick?.(pic.url || pic)}
+                                        >
+                                            <img
+                                                src={pic.url || pic}
+                                                alt={`첨부 ${idx + 1}`}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    e.target.parentElement.innerHTML =
+                                                        '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
+                                                }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        // 텍스트가 있거나 텍스트와 이미지가 함께 있을 때: 기존 말풍선 스타일
+                        <div className={`rounded-2xl px-4 py-2.5 ${senderCfg.bubbleBg}`}>
+                            {message.text && (
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
+                            )}
+
+                            {message.pics && message.pics.length > 0 && (
+                                <div className={`${message.text ? "mt-2" : ""} space-y-2`}>
+                                    {message.pics.length === 1 ? (
+                                        <div
+                                            className="relative group cursor-pointer overflow-hidden rounded-lg"
+                                            onClick={() => onImageClick?.(message.pics[0].url || message.pics[0])}
+                                        >
+                                            <img
+                                                src={message.pics[0].url || message.pics[0]}
+                                                alt="첨부 이미지"
+                                                className="w-full h-auto max-h-80 object-contain rounded-lg"
+                                                onError={(e) => {
+                                                    e.target.parentElement.innerHTML =
+                                                        '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
+                                                }}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {message.pics.map((pic, idx) => (
+                                                <div
+                                                    key={idx}
+                                                    className="relative group cursor-pointer overflow-hidden rounded-lg aspect-square"
+                                                    onClick={() => onImageClick?.(pic.url || pic)}
+                                                >
+                                                    <img
+                                                        src={pic.url || pic}
+                                                        alt={`첨부 ${idx + 1}`}
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => {
+                                                            e.target.parentElement.innerHTML =
+                                                                '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
+                                                        }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                 {/* ⬇️ 시간 정렬도 스왑: user=좌, ai/agent=우 */}
                 <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? "text-left" : "text-right"}`}>
