@@ -131,27 +131,42 @@ export default function ConversationsPage({ tenantId }) {
         currentPage * itemsPerPage
     );
 
-    const handleSend = async ({ text, attachments = [] }) => {
-        if (!selectedConv) {
-            console.error('[ConversationsPage] No conversation selected');
-            return;
+    // ✅ 상세 모달 → 전송 핸들러 (ConversationDetail에서 전달하는 형식에 맞춤)
+    const handleSend = async ({ text, attachments, tenantId: detailTenantId, chatId: detailChatId }) => {
+        // ✅ tenantId 우선순위: ConversationDetail에서 전달한 값 > prop > selectedConv에서 추출
+        const effectiveTenantId = detailTenantId ||
+            tenantId ||
+            selectedConv?.tenant ||
+            selectedConv?.tenantId ||
+            (typeof selectedConv?.id === 'string' && selectedConv.id.includes('_')
+                ? selectedConv.id.split('_')[0]
+                : null) ||
+            'default';
+
+        // ✅ chatId: ConversationDetail에서 전달한 값 > selectedConv
+        const effectiveChatId = detailChatId || selectedConv?.chatId;
+
+        if (!effectiveChatId) {
+            console.error('[ConversationsPage] No chatId found');
+            throw new Error('대화 ID를 찾을 수 없습니다');
         }
 
-        try {
-            console.log('[ConversationsPage] Sending message:', {
-                chatId: selectedConv.chatId,
-                textLength: text?.length,
-                attachmentsCount: attachments.length
-            });
+        console.log('[ConversationsPage] Sending message:', {
+            tenantId: effectiveTenantId,
+            chatId: effectiveChatId,
+            textLength: text?.length,
+            attachmentsCount: attachments?.length || 0
+        });
 
+        try {
             const response = await fetch('/api/conversations/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    tenant: tenantId,
-                    chatId: selectedConv.chatId,
-                    text,
-                    pics: attachments.map(a => a.url),
+                    tenantId: effectiveTenantId, // ✅ tenantId로 변경
+                    chatId: effectiveChatId, // ✅ 전달받은 chatId 사용
+                    content: text || '', // ✅ content로 변경
+                    attachments: Array.isArray(attachments) ? attachments : [], // ✅ attachments로 변경
                 }),
             });
 

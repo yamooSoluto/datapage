@@ -7,11 +7,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== "POST") return res.status(405).end();
 
     try {
+        // ✅ 디버깅: 전체 요청 본문 로그
+        console.log("[send.ts] Raw request body:", JSON.stringify(req.body, null, 2));
+        console.log("[send.ts] Request body type:", typeof req.body);
+        console.log("[send.ts] Request body keys:", req.body ? Object.keys(req.body) : []);
+
         const { tenantId, chatId, content, attachments } = req.body || {};
 
-        console.log("[send.ts] Request body:", {
+        console.log("[send.ts] Parsed values:", {
             tenantId,
             chatId,
+            chatIdType: typeof chatId,
             hasContent: !!content,
             contentLength: content?.length,
             attachmentsCount: attachments?.length || 0,
