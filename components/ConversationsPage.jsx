@@ -131,27 +131,43 @@ export default function ConversationsPage({ tenantId }) {
         currentPage * itemsPerPage
     );
 
-    const handleSend = async (conversationId, text, attachments = []) => {
+    const handleSend = async ({ text, attachments = [] }) => {
+        if (!selectedConv) {
+            console.error('[ConversationsPage] No conversation selected');
+            return;
+        }
+
         try {
+            console.log('[ConversationsPage] Sending message:', {
+                chatId: selectedConv.chatId,
+                textLength: text?.length,
+                attachmentsCount: attachments.length
+            });
+
             const response = await fetch('/api/conversations/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tenant: tenantId,
-                    chatId: conversationId,
+                    chatId: selectedConv.chatId,
                     text,
                     pics: attachments.map(a => a.url),
                 }),
             });
 
             if (!response.ok) {
-                throw new Error('Failed to send message');
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.error || 'Failed to send message');
             }
 
+            console.log('[ConversationsPage] Message sent successfully');
+
+            // 대화 목록 새로고침
             await fetchConversations();
 
-            if (selectedConv?.chatId === conversationId) {
-                const detailRes = await fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${conversationId}`);
+            // 선택된 대화 상세 새로고침
+            if (selectedConv?.chatId) {
+                const detailRes = await fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${selectedConv.chatId}`);
                 const detailData = await detailRes.json();
                 setSelectedConv(detailData.conversation);
             }
@@ -161,9 +177,20 @@ export default function ConversationsPage({ tenantId }) {
         }
     };
 
+    // ✅ AI 모달에서 전송 처리
     const handleAISend = async (text) => {
-        if (!selectedConv) return;
-        await handleSend(selectedConv.chatId, text);
+        if (!selectedConv) {
+            console.error('[ConversationsPage] No conversation selected for AI send');
+            return;
+        }
+
+        console.log('[ConversationsPage] AI send:', {
+            chatId: selectedConv.chatId,
+            textPreview: text.substring(0, 50)
+        });
+
+        // ✅ 객체 방식으로 호출
+        await handleSend({ text, attachments: [] });
         setShowAIModal(false);
     };
 
@@ -330,32 +357,30 @@ export default function ConversationsPage({ tenantId }) {
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">시작일</label>
-                                    <input
-                                        type="date"
-                                        value={filters.dateFrom}
-                                        onChange={(e) => {
-                                            setFilters({ ...filters, dateFrom: e.target.value });
-                                            setCurrentPage(1);
-                                        }}
-                                        className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 text-sm"
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1.5">시작일</label>
+                                <input
+                                    type="date"
+                                    value={filters.dateFrom}
+                                    onChange={(e) => {
+                                        setFilters({ ...filters, dateFrom: e.target.value });
+                                        setCurrentPage(1);
+                                    }}
+                                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 text-sm"
+                                />
+                            </div>
 
-                                <div>
-                                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">종료일</label>
-                                    <input
-                                        type="date"
-                                        value={filters.dateTo}
-                                        onChange={(e) => {
-                                            setFilters({ ...filters, dateTo: e.target.value });
-                                            setCurrentPage(1);
-                                        }}
-                                        className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 text-sm"
-                                    />
-                                </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1.5">종료일</label>
+                                <input
+                                    type="date"
+                                    value={filters.dateTo}
+                                    onChange={(e) => {
+                                        setFilters({ ...filters, dateTo: e.target.value });
+                                        setCurrentPage(1);
+                                    }}
+                                    className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 text-sm"
+                                />
                             </div>
 
                             <button
