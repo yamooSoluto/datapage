@@ -133,17 +133,6 @@ export default function ConversationsPage({ tenantId }) {
 
     // ✅ 상세 모달 → 전송 핸들러 (ConversationDetail에서 전달하는 형식에 맞춤)
     const handleSend = async ({ text, attachments, tenantId: detailTenantId, chatId: detailChatId }) => {
-        // ✅ 디버깅: 입력값 확인
-        console.log('[ConversationsPage] handleSend called with:', {
-            detailTenantId,
-            propTenantId: tenantId,
-            selectedConvTenant: selectedConv?.tenant,
-            selectedConvTenantId: selectedConv?.tenantId,
-            selectedConvId: selectedConv?.id,
-            detailChatId,
-            selectedConvChatId: selectedConv?.chatId,
-        });
-
         // ✅ tenantId 우선순위: ConversationDetail에서 전달한 값 > prop > selectedConv에서 추출
         const effectiveTenantId = detailTenantId ||
             tenantId ||
@@ -174,18 +163,6 @@ export default function ConversationsPage({ tenantId }) {
         const finalText = text || '';
         const finalTextTrimmed = finalText.trim();
 
-        console.log('[ConversationsPage] Sending message:', {
-            tenantId: effectiveTenantId,
-            chatId: effectiveChatId,
-            text,
-            textType: typeof text,
-            textLength: text?.length,
-            finalText,
-            finalTextTrimmed,
-            finalTextTrimmedLength: finalTextTrimmed.length,
-            attachmentsCount: attachments?.length || 0
-        });
-
         // ✅ text가 비어있으면 에러
         if (!finalTextTrimmed && (!attachments || attachments.length === 0)) {
             console.error('[ConversationsPage] No content or attachments to send');
@@ -196,15 +173,9 @@ export default function ConversationsPage({ tenantId }) {
             const payload = {
                 tenantId: effectiveTenantId,
                 chatId: effectiveChatId,
-                content: finalTextTrimmed, // ✅ trim된 텍스트 사용
+                content: finalTextTrimmed,
                 attachments: Array.isArray(attachments) ? attachments : [],
             };
-
-            console.log('[ConversationsPage] Sending payload:', {
-                ...payload,
-                contentLength: payload.content.length,
-                attachmentsCount: payload.attachments.length,
-            });
 
             const response = await fetch('/api/conversations/send', {
                 method: 'POST',
@@ -216,8 +187,6 @@ export default function ConversationsPage({ tenantId }) {
                 const error = await response.json().catch(() => ({}));
                 throw new Error(error.error || 'Failed to send message');
             }
-
-            console.log('[ConversationsPage] Message sent successfully');
 
             // 대화 목록 새로고침
             await fetchConversations();
@@ -236,27 +205,12 @@ export default function ConversationsPage({ tenantId }) {
 
     // ✅ AI 모달에서 전송 처리
     const handleAISend = async (text) => {
-        console.log('[ConversationsPage] handleAISend called with:', {
-            text,
-            textType: typeof text,
-            textLength: text?.length,
-            textPreview: text?.substring(0, 100),
-            selectedConv: !!selectedConv,
-        });
-
         if (!selectedConv) {
-            console.error('[ConversationsPage] No conversation selected for AI send');
             throw new Error('대화가 선택되지 않았습니다.');
         }
 
-        // ✅ text가 비어있으면 에러 (먼저 체크)
+        // ✅ text가 비어있으면 에러
         if (!text || typeof text !== 'string' || !text.trim()) {
-            console.error('[ConversationsPage] No text to send from AI modal:', {
-                text,
-                textType: typeof text,
-                isEmpty: !text,
-                isEmptyAfterTrim: text && !text.trim(),
-            });
             throw new Error('전송할 내용이 없습니다.');
         }
 
@@ -269,24 +223,14 @@ export default function ConversationsPage({ tenantId }) {
                 : null);
 
         if (!effectiveTenantId) {
-            console.error('[ConversationsPage] No tenantId found for AI send');
             throw new Error('테넌트 ID를 찾을 수 없습니다');
         }
 
         const effectiveChatId = selectedConv?.chatId || selectedConv?.id;
 
         if (!effectiveChatId) {
-            console.error('[ConversationsPage] No chatId found for AI send');
             throw new Error('대화 ID를 찾을 수 없습니다');
         }
-
-        console.log('[ConversationsPage] AI send:', {
-            tenantId: effectiveTenantId,
-            chatId: effectiveChatId,
-            text: text.trim(),
-            textLength: text.trim().length,
-            textPreview: text.trim().substring(0, 50)
-        });
 
         // ✅ 객체 방식으로 호출 (tenantId와 chatId 포함)
         await handleSend({

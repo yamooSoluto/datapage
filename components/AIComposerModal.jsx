@@ -1,7 +1,7 @@
 // components/AIComposerModal.jsx
 // AI 보정 모달 - 고객 메시지 + 보정 + 전송 (완결형)
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Sparkles, Send, Wand2, User } from 'lucide-react';
 
 export default function AIComposerModal({
@@ -29,16 +29,6 @@ export default function AIComposerModal({
     const [recentMessages, setRecentMessages] = useState([]); // ✅ 최근 메시지들
     const [error, setError] = useState('');
 
-    // ✅ correctedText 변경 감지 (디버깅용)
-    useEffect(() => {
-        if (correctedText) {
-            console.log('[AIComposerModal] correctedText state updated:', {
-                length: correctedText.length,
-                preview: correctedText.substring(0, 50),
-                step,
-            });
-        }
-    }, [correctedText, step]);
 
     const [presets] = useState([
         { id: 1, text: '문의 주셔서 감사합니다.', category: '인사' },
@@ -98,8 +88,6 @@ export default function AIComposerModal({
                 } : {}),
             };
 
-            console.log('[AIComposerModal] Requesting AI correction (async)');
-
             // ✅ 1. n8n에 비동기 요청 전송
             const response = await fetch('/api/ai/tone-correction', {
                 method: 'POST',
@@ -112,18 +100,14 @@ export default function AIComposerModal({
                 throw new Error(error.error || 'AI 보정 요청 실패');
             }
 
-            const requestResult = await response.json();
-            console.log('[AIComposerModal] Request sent:', requestResult);
+            await response.json();
 
-            // ✅ 2. conversationId로 폴링 시작 (동시 요청 방지로 충분)
+            // ✅ 2. conversationId로 폴링 시작
             const conversationId = conversation?.chatId || conversation?.id;
             
             if (!conversationId) {
-                console.error('[AIComposerModal] No conversationId found:', conversation);
                 throw new Error('대화 ID를 찾을 수 없습니다.');
             }
-            
-            console.log('[AIComposerModal] Starting poll with conversationId:', conversationId);
 
             const maxAttempts = 60; // ✅ 최대 60초 대기 (n8n 처리 시간 고려)
             let attempts = 0;
@@ -144,13 +128,6 @@ export default function AIComposerModal({
                         }
 
                         const pollData = await pollResponse.json();
-                        console.log('[AIComposerModal] Poll attempt', attempts, {
-                            ready: pollData.ready,
-                            hasCorrectedText: !!pollData.correctedText,
-                            correctedTextLength: pollData.correctedText?.length,
-                            correctedTextPreview: pollData.correctedText?.substring(0, 50),
-                            pollDataKeys: Object.keys(pollData || {}),
-                        });
 
                         if (pollData.ready) {
                             // ✅ 결과 받음 - 다양한 필드명 지원
@@ -160,29 +137,13 @@ export default function AIComposerModal({
                                 pollData.response ||
                                 finalContent; // fallback
 
-                            console.log('[AIComposerModal] Extracted correctedText:', {
-                                extractedCorrectedText,
-                                length: extractedCorrectedText?.length,
-                                source: pollData.correctedText ? 'correctedText' :
-                                    pollData.text ? 'text' :
-                                        pollData.output ? 'output' :
-                                            pollData.response ? 'response' : 'finalContent',
-                            });
-
                             if (!extractedCorrectedText || !extractedCorrectedText.trim()) {
-                                console.error('[AIComposerModal] No correctedText extracted from poll result');
                                 throw new Error('보정된 텍스트를 받지 못했습니다.');
                             }
 
-                            console.log('[AIComposerModal] Setting state with extracted text:', {
-                                extractedCorrectedText,
-                                length: extractedCorrectedText.length,
-                                preview: extractedCorrectedText.substring(0, 50),
-                            });
-
                             // ✅ state 업데이트
                             setCorrectedText(extractedCorrectedText);
-                            setOriginalText(finalContent); // ✅ 원본 저장
+                            setOriginalText(finalContent);
                             setCustomerMessage(pollData.customerMessage || conversation.lastMessage || '');
                             
                             // ✅ recentMessages가 배열인지 확인 후 저장
@@ -193,33 +154,23 @@ export default function AIComposerModal({
                                     : []);
                             setRecentMessages(safeRecentMessages);
                             
-                            console.log('[AIComposerModal] Setting recentMessages:', {
-                                isArray: Array.isArray(safeRecentMessages),
-                                count: safeRecentMessages.length,
-                                originalType: typeof pollData.recentMessages,
-                            });
-                            
                             // ✅ step 변경 전에 잠시 대기하여 state가 확실히 업데이트되도록 함
                             await new Promise(resolve => setTimeout(resolve, 100));
                             
                             setStep('result');
                             setProcessing(false);
-                            
-                            console.log('[AIComposerModal] State updated, step changed to result');
                             return;
                         }
 
                         // 1초 대기 후 재시도
                         await new Promise(resolve => setTimeout(resolve, 1000));
                     } catch (pollErr) {
-                        console.error('[AIComposerModal] Poll error:', pollErr);
                         // 폴링 에러는 계속 재시도
                         await new Promise(resolve => setTimeout(resolve, 1000));
                     }
                 }
 
                 // 타임아웃
-                console.error('[AIComposerModal] Poll timeout after', maxAttempts, 'attempts');
                 throw new Error(`AI 보정 시간이 초과되었습니다 (${maxAttempts}초). 결과가 나오면 자동으로 표시됩니다.`);
             };
 
@@ -237,30 +188,7 @@ export default function AIComposerModal({
     const handleSend = async () => {
         const trimmedText = correctedText?.trim() || '';
 
-        console.log('[AIComposerModal] handleSend called:', {
-            correctedText,
-            correctedTextType: typeof correctedText,
-            correctedTextLength: correctedText?.length,
-            trimmedText,
-            trimmedTextLength: trimmedText.length,
-            isEmpty: !correctedText,
-            isEmptyAfterTrim: !trimmedText,
-            step, // 현재 step 확인
-            conversation: {
-                chatId: conversation?.chatId,
-                id: conversation?.id,
-                tenant: conversation?.tenant,
-                tenantId: conversation?.tenantId,
-            },
-            tenantId,
-        });
-
         if (!trimmedText) {
-            console.error('[AIComposerModal] No correctedText to send:', {
-                correctedText,
-                trimmedText,
-                step,
-            });
             setError('전송할 내용이 없습니다.');
             return;
         }
@@ -269,17 +197,9 @@ export default function AIComposerModal({
         setError('');
 
         try {
-            console.log('[AIComposerModal] Calling onSend with:', {
-                text: trimmedText,
-                textLength: trimmedText.length,
-                textPreview: trimmedText.substring(0, 50),
-            });
-            
-            // ✅ onSend 호출 (text만 전달, handleAISend에서 tenantId와 chatId 추출)
             await onSend(trimmedText);
             onClose();
         } catch (err) {
-            console.error('[AIComposerModal] Send error:', err);
             setError(err.message || '전송 중 오류가 발생했습니다.');
         } finally {
             setSending(false);

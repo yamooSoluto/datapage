@@ -595,6 +595,7 @@ function StatBlock({ label, value, Icon, valueClass = '' }) {
 }
 
 // 메시지 버블 (user / ai / agent)
+// 메시지 버블 (user / ai / agent)
 function MessageBubble({ message, onImageClick }) {
     const isUser =
         message.sender === "user";
@@ -641,6 +642,20 @@ function MessageBubble({ message, onImageClick }) {
             ? new Date(ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
             : "";
 
+    // ✅ 이미지 소스 정리 (string or {url})
+    const imageSources = (message.pics || [])
+        .map((pic) => (typeof pic === "string" ? pic : pic.url))
+        .filter(Boolean);
+
+    const hasImages = imageSources.length > 0;
+    const hasText = !!message.text?.trim();
+
+    // 텍스트도 없고 이미지도 없으면 렌더 안 함
+    if (!hasText && !hasImages) return null;
+
+    const imagesToShow = imageSources.slice(0, 4);
+    const extraCount = imageSources.length > 4 ? imageSources.length - 4 : 0;
+
     return (
         <div className={`flex items-end gap-2 ${senderCfg.align}`}>
             {/* 아이콘은 기존 로직 유지: user는 아이콘 숨김 */}
@@ -653,99 +668,113 @@ function MessageBubble({ message, onImageClick }) {
             <div className={`max-w-[80%] ${senderCfg.bubbleAlign}`}>
                 {!isUser && <div className="text-xs text-gray-500 mb-1 px-1">{senderCfg.name}</div>}
 
-                {/* ✅ 텍스트와 이미지가 모두 없으면 렌더링하지 않음 */}
-                {(!message.text || !message.text.trim()) && (!message.pics || message.pics.length === 0) ? null :
+                {/* ▶ 텍스트 + 이미지가 같이 있을 때: 말풍선 안에 둘 다 */}
+                {hasText && (
+                    <div className={`rounded-2xl px-4 py-2.5 ${senderCfg.bubbleBg}`}>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                            {message.text}
+                        </p>
 
-                    /* ✅ 텍스트가 없고 이미지만 있을 때는 말풍선 스타일 다르게 적용 */
-                    (!message.text || !message.text.trim()) && message.pics && message.pics.length > 0 ? (
-                        // 이미지만 있을 때: 말풍선 없이 이미지만 표시
-                        <div className="space-y-2">
-                            {message.pics.length === 1 ? (
-                                <div
-                                    className="relative group cursor-pointer overflow-hidden rounded-lg"
-                                    onClick={() => onImageClick?.(message.pics[0].url || message.pics[0])}
-                                >
-                                    <img
-                                        src={message.pics[0].url || message.pics[0]}
-                                        alt="첨부 이미지"
-                                        className="w-full h-auto max-h-80 object-contain rounded-lg"
-                                        onError={(e) => {
-                                            e.target.parentElement.innerHTML =
-                                                '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
-                                        }}
-                                    />
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-2 gap-2">
-                                    {message.pics.map((pic, idx) => (
-                                        <div
-                                            key={idx}
-                                            className="relative group cursor-pointer overflow-hidden rounded-lg aspect-square"
-                                            onClick={() => onImageClick?.(pic.url || pic)}
-                                        >
-                                            <img
-                                                src={pic.url || pic}
-                                                alt={`첨부 ${idx + 1}`}
-                                                className="w-full h-full object-cover"
-                                                onError={(e) => {
-                                                    e.target.parentElement.innerHTML =
-                                                        '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
-                                                }}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        // 텍스트가 있거나 텍스트와 이미지가 함께 있을 때: 기존 말풍선 스타일
-                        <div className={`rounded-2xl px-4 py-2.5 ${senderCfg.bubbleBg}`}>
-                            {message.text && (
-                                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
-                            )}
-
-                            {message.pics && message.pics.length > 0 && (
-                                <div className={`${message.text ? "mt-2" : ""} space-y-2`}>
-                                    {message.pics.length === 1 ? (
-                                        <div
-                                            className="relative group cursor-pointer overflow-hidden rounded-lg"
-                                            onClick={() => onImageClick?.(message.pics[0].url || message.pics[0])}
-                                        >
-                                            <img
-                                                src={message.pics[0].url || message.pics[0]}
-                                                alt="첨부 이미지"
-                                                className="w-full h-auto max-h-80 object-contain rounded-lg"
-                                                onError={(e) => {
-                                                    e.target.parentElement.innerHTML =
-                                                        '<div class="w-full h-32 bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-sm">이미지를 불러올 수 없습니다</div>';
-                                                }}
-                                            />
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {message.pics.map((pic, idx) => (
-                                                <div
+                        {hasImages && (
+                            <div className="mt-2">
+                                {imageSources.length === 1 ? (
+                                    // 단일 이미지: 가로로 넉넉하게 표시
+                                    <button
+                                        type="button"
+                                        className="relative overflow-hidden rounded-xl max-w-xs cursor-pointer"
+                                        onClick={() => onImageClick?.(imageSources[0])}
+                                    >
+                                        <img
+                                            src={imageSources[0]}
+                                            alt="첨부 이미지"
+                                            className="w-full max-h-80 object-cover"
+                                            loading="lazy"
+                                        />
+                                    </button>
+                                ) : (
+                                    // 여러 이미지: 2x2 그리드 + 정사각 + object-cover
+                                    <div className="grid grid-cols-2 gap-1 mt-1">
+                                        {imagesToShow.map((src, idx) => {
+                                            const showOverlay =
+                                                extraCount > 0 && idx === imagesToShow.length - 1;
+                                            return (
+                                                <button
                                                     key={idx}
-                                                    className="relative group cursor-pointer overflow-hidden rounded-lg aspect-square"
-                                                    onClick={() => onImageClick?.(pic.url || pic)}
+                                                    type="button"
+                                                    className="relative overflow-hidden rounded-lg aspect-square cursor-pointer"
+                                                    onClick={() => onImageClick?.(src)}
                                                 >
                                                     <img
-                                                        src={pic.url || pic}
+                                                        src={src}
                                                         alt={`첨부 ${idx + 1}`}
                                                         className="w-full h-full object-cover"
-                                                        onError={(e) => {
-                                                            e.target.parentElement.innerHTML =
-                                                                '<div class="w-full h-full bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-xs">오류</div>';
-                                                        }}
+                                                        loading="lazy"
                                                     />
+                                                    {showOverlay && (
+                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                            <span className="text-white text-sm font-semibold">
+                                                                +{extraCount}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ▶ 텍스트 없이 이미지만 있을 때: 말풍선 없이 이미지 블록만 */}
+                {!hasText && hasImages && (
+                    <div className="space-y-2">
+                        {imageSources.length === 1 ? (
+                            <button
+                                type="button"
+                                className="relative overflow-hidden rounded-xl max-w-xs cursor-pointer"
+                                onClick={() => onImageClick?.(imageSources[0])}
+                            >
+                                <img
+                                    src={imageSources[0]}
+                                    alt="첨부 이미지"
+                                    className="w-full max-h-80 object-cover"
+                                    loading="lazy"
+                                />
+                            </button>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-1">
+                                {imagesToShow.map((src, idx) => {
+                                    const showOverlay =
+                                        extraCount > 0 && idx === imagesToShow.length - 1;
+                                    return (
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            className="relative overflow-hidden rounded-lg aspect-square cursor-pointer"
+                                            onClick={() => onImageClick?.(src)}
+                                        >
+                                            <img
+                                                src={src}
+                                                alt={`첨부 ${idx + 1}`}
+                                                className="w-full h-full object-cover"
+                                                loading="lazy"
+                                            />
+                                            {showOverlay && (
+                                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                    <span className="text-white text-sm font-semibold">
+                                                        +{extraCount}
+                                                    </span>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* ⬇️ 시간 정렬도 스왑: user=좌, ai/agent=우 */}
                 <div className={`text-xs text-gray-400 mt-1 px-1 ${isUser ? "text-left" : "text-right"}`}>

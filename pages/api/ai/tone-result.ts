@@ -9,36 +9,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== "POST") return res.status(405).end();
 
     try {
-        // ✅ 디버깅: 전체 요청 정보 로그
-        console.log("[tone-result] Raw request:", {
-            method: req.method,
-            bodyType: typeof req.body,
-            bodyKeys: req.body ? Object.keys(req.body) : [],
-        });
-
         // ✅ n8n이 보내는 다양한 형식 처리
         let body = req.body || {};
 
-        console.log("[tone-result] Initial body structure:", {
-            hasBody: !!body.body,
-            hasData: !!body.data,
-            bodyKeys: Object.keys(body),
-        });
-
         // n8n이 body를 중첩해서 보낼 수 있음 (예: { body: { ... } })
         if (body.body && typeof body.body === 'object') {
-            console.log("[tone-result] Unwrapping body.body");
             body = body.body;
         }
 
         // n8n이 data 필드로 보낼 수 있음
         if (body.data && typeof body.data === 'object') {
-            console.log("[tone-result] Unwrapping body.data");
             body = body.data;
         }
-
-        console.log("[tone-result] Final body keys:", Object.keys(body));
-        console.log("[tone-result] Full body content:", JSON.stringify(body, null, 2));
 
         const {
             tenantId,
@@ -63,39 +45,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             recent_messages,
         } = body;
 
-        // ✅ requestId가 있으면 로그만 남기고 무시 (conversationId만 사용)
-        if (requestId && requestId !== '') {
-            console.log("[tone-result] ⚠️ requestId received but ignored:", requestId);
-        }
-
         // ✅ 필드명 매핑 (conversationId만 사용)
         const finalConversationId = conversationId || conversation_id;
         const finalCorrectedText = correctedText || corrected_text;
         const finalOriginalText = originalText || original_text;
         const finalTenantId = tenantId || tenant_id;
         // ✅ 다양한 필드명으로 userMessage 받기
-        const finalUserMessage = userMessage || 
-                                 user_message || 
-                                 customerMessage || 
-                                 customer_message || 
-                                 '';
+        const finalUserMessage = userMessage ||
+            user_message ||
+            customerMessage ||
+            customer_message ||
+            '';
         // ✅ 다양한 필드명으로 previousMessages 받기
-        const finalPreviousMessages = previousMessages || 
-                                      previous_messages || 
-                                      recentMessages || 
-                                      recent_messages || 
-                                      [];
-
-        console.log("[tone-result] Parsed data:", {
-            tenantId: finalTenantId,
-            conversationId: finalConversationId,
-            correctedTextLength: finalCorrectedText?.length,
-            originalTextLength: finalOriginalText?.length,
-            userMessageLength: finalUserMessage?.length || 0,
-            previousMessagesCount: Array.isArray(finalPreviousMessages) ? finalPreviousMessages.length : 0,
-            hasMetadata: !!metadata,
-            allBodyKeys: Object.keys(body),
-        });
+        const finalPreviousMessages = previousMessages ||
+            previous_messages ||
+            recentMessages ||
+            recent_messages ||
+            [];
 
         if (!finalConversationId || !finalCorrectedText) {
             console.error("[tone-result] Missing required fields:", {
@@ -134,18 +100,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             },
         };
 
-        // ✅ conversationId로만 저장 (동시 요청 방지로 충분)
+        // ✅ conversationId로만 저장
         global.aiResults[finalConversationId] = resultData;
-        console.log("[tone-result] ✅ Stored with conversationId:", finalConversationId, {
-            correctedTextLength: finalCorrectedText?.length,
-            originalTextLength: finalOriginalText?.length,
-            userMessageLength: finalUserMessage?.length || 0,
-            previousMessagesCount: Array.isArray(finalPreviousMessages) ? finalPreviousMessages.length : 0,
-            hasMetadata: !!metadata,
-        });
-
-        // 현재 저장된 모든 키 출력
-        console.log("[tone-result] All storage keys:", Object.keys(global.aiResults));
 
         // 5분 후 자동 삭제
         setTimeout(() => {
