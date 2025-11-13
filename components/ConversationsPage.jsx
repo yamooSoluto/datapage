@@ -170,23 +170,46 @@ export default function ConversationsPage({ tenantId }) {
             throw new Error('테넌트 ID를 찾을 수 없습니다');
         }
 
+        // ✅ text 검증
+        const finalText = text || '';
+        const finalTextTrimmed = finalText.trim();
+
         console.log('[ConversationsPage] Sending message:', {
             tenantId: effectiveTenantId,
             chatId: effectiveChatId,
+            text,
+            textType: typeof text,
             textLength: text?.length,
+            finalText,
+            finalTextTrimmed,
+            finalTextTrimmedLength: finalTextTrimmed.length,
             attachmentsCount: attachments?.length || 0
         });
 
+        // ✅ text가 비어있으면 에러
+        if (!finalTextTrimmed && (!attachments || attachments.length === 0)) {
+            console.error('[ConversationsPage] No content or attachments to send');
+            throw new Error('전송할 내용이 없습니다.');
+        }
+
         try {
+            const payload = {
+                tenantId: effectiveTenantId,
+                chatId: effectiveChatId,
+                content: finalTextTrimmed, // ✅ trim된 텍스트 사용
+                attachments: Array.isArray(attachments) ? attachments : [],
+            };
+
+            console.log('[ConversationsPage] Sending payload:', {
+                ...payload,
+                contentLength: payload.content.length,
+                attachmentsCount: payload.attachments.length,
+            });
+
             const response = await fetch('/api/conversations/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    tenantId: effectiveTenantId, // ✅ tenantId로 변경
-                    chatId: effectiveChatId, // ✅ 전달받은 chatId 사용
-                    content: text || '', // ✅ content로 변경
-                    attachments: Array.isArray(attachments) ? attachments : [], // ✅ attachments로 변경
-                }),
+                body: JSON.stringify(payload),
             });
 
             if (!response.ok) {
@@ -213,9 +236,28 @@ export default function ConversationsPage({ tenantId }) {
 
     // ✅ AI 모달에서 전송 처리
     const handleAISend = async (text) => {
+        console.log('[ConversationsPage] handleAISend called with:', {
+            text,
+            textType: typeof text,
+            textLength: text?.length,
+            textPreview: text?.substring(0, 100),
+            selectedConv: !!selectedConv,
+        });
+
         if (!selectedConv) {
             console.error('[ConversationsPage] No conversation selected for AI send');
-            return;
+            throw new Error('대화가 선택되지 않았습니다.');
+        }
+
+        // ✅ text가 비어있으면 에러 (먼저 체크)
+        if (!text || typeof text !== 'string' || !text.trim()) {
+            console.error('[ConversationsPage] No text to send from AI modal:', {
+                text,
+                textType: typeof text,
+                isEmpty: !text,
+                isEmptyAfterTrim: text && !text.trim(),
+            });
+            throw new Error('전송할 내용이 없습니다.');
         }
 
         // ✅ tenantId 추출
@@ -241,17 +283,10 @@ export default function ConversationsPage({ tenantId }) {
         console.log('[ConversationsPage] AI send:', {
             tenantId: effectiveTenantId,
             chatId: effectiveChatId,
-            text,
-            textType: typeof text,
-            textLength: text?.length,
-            textPreview: text?.substring(0, 50)
+            text: text.trim(),
+            textLength: text.trim().length,
+            textPreview: text.trim().substring(0, 50)
         });
-
-        // ✅ text가 비어있으면 에러
-        if (!text || !text.trim()) {
-            console.error('[ConversationsPage] No text to send from AI modal');
-            throw new Error('전송할 내용이 없습니다.');
-        }
 
         // ✅ 객체 방식으로 호출 (tenantId와 chatId 포함)
         await handleSend({

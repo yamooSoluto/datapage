@@ -37,6 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             metadata,
             userMessage, // ✅ 고객 메시지
             previousMessages, // ✅ 최근 메시지들
+            requestId, // ✅ n8n이 보낼 수 있지만 무시 (conversationId만 사용)
             // ✅ n8n이 다른 필드명으로 보낼 수 있음
             conversation_id,
             corrected_text,
@@ -45,6 +46,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             user_message,
             previous_messages,
         } = body;
+
+        // ✅ requestId가 있으면 로그만 남기고 무시 (conversationId만 사용)
+        if (requestId && requestId !== '') {
+            console.log("[tone-result] ⚠️ requestId received but ignored:", requestId);
+        }
 
         // ✅ 필드명 매핑 (conversationId만 사용)
         const finalConversationId = conversationId || conversation_id;
