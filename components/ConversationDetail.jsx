@@ -207,6 +207,37 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         const savedDraft = draft;
         const savedAttachments = [...attachments];
 
+        // ✅ 옵티미스틱 UI: 로컬에 먼저 메시지 추가
+        const tempId = `local-${Date.now()}`;
+        const optimisticMessage = {
+            sender: 'agent',
+            text: text || '',
+            pics: savedAttachments.map(att => att.preview || att.url || '').filter(Boolean),
+            timestamp: new Date().toISOString(),
+            msgId: tempId,
+            _status: 'pending',
+        };
+
+        // 로컬 상태에 즉시 추가
+        if (detail?.messages) {
+            setDetail({
+                ...detail,
+                messages: [...detail.messages, optimisticMessage],
+            });
+        }
+
+        // ✅ 입력창은 즉시 비우기 (체감 속도 개선)
+        setDraft('');
+        setAttachments([]);
+        try {
+            localStorage.removeItem(draftKey);
+        } catch (e) {
+            console.error('[ConversationDetail] Failed to clear draft:', e);
+        }
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+        }
+
         try {
             // ✅ tenantId와 첨부파일 정보를 포함하여 전달
             await onSend?.({
@@ -221,28 +252,35 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 chatId: chatId,
             });
 
-            // ✅ 전송 성공 후에만 입력창 비우기
-            setDraft('');
-            setAttachments([]);
-
-            // ✅ 로컬 스토리지에서도 삭제
-            try {
-                localStorage.removeItem(draftKey);
-            } catch (e) {
-                console.error('[ConversationDetail] Failed to clear draft:', e);
+            // ✅ 전송 성공: pending 플래그 제거 (또는 sent로 변경)
+            if (detail?.messages) {
+                setDetail({
+                    ...detail,
+                    messages: detail.messages.map(m =>
+                        m.msgId === tempId ? { ...m, _status: 'sent' } : m
+                    ),
+                });
             }
 
-            if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-            }
-            await fetchDetail(); // 전송 후 최신 메시지 불러오기
+            // ✅ 전송 후 상세는 비동기로 새로고침 (await 제거)
+            fetchDetail().catch(err => {
+                console.error('[ConversationDetail] Failed to refresh detail:', err);
+            });
         } catch (error) {
             console.error('[ConversationDetail] Send failed:', error);
-            // ✅ 에러 시 입력 내용 복원
+
+            // ✅ 실패 시: 옵티미스틱 메시지 제거 및 입력 내용 복원
+            if (detail?.messages) {
+                setDetail({
+                    ...detail,
+                    messages: detail.messages.filter(m => m.msgId !== tempId),
+                });
+            }
             setDraft(savedDraft);
             setAttachments(savedAttachments);
             alert('메시지 전송에 실패했습니다. 다시 시도해주세요.');
         } finally {
+            // ✅ 버튼/입력창은 즉시 활성화 (전송 API 응답과 무관)
             setSending(false);
         }
     };
@@ -359,9 +397,22 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     </div>
                                 )}
 
-                                {detail.messages.map((msg, idx) => (
-                                    <MessageBubble key={idx} message={msg} onImageClick={(url) => setImagePreview(url)} />
-                                ))}
+                                {detail.messages.map((msg, idx) => {
+                                    // ✅ 옵티미스틱 메시지 표시 (pending 상태)
+                                    const isPending = msg._status === 'pending';
+                                    const isError = msg._status === 'error';
+                                    return (
+                                        <div key={msg.msgId || idx} className="relative">
+                                            <MessageBubble message={msg} onImageClick={(url) => setImagePreview(url)} />
+                                            {isPending && (
+                                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse" title="전송 중..." />
+                                            )}
+                                            {isError && (
+                                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" title="전송 실패" />
+                                            )}
+                                        </div>
+                                    );
+                                })}
                                 <div ref={messagesEndRef} />
                             </div>
                         ) : (
@@ -555,12 +606,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             chatId,                       // 위에서 계산한 chatId
                         });
 
-                        // 보내고 나서 상세 다시 가져오기 (바로 리스트에 반영되게)
-                        try {
-                            await fetchDetail();
-                        } catch (e) {
+                        // ✅ 상세는 비동기로 새로고침 (await 제거)
+                        fetchDetail().catch(e => {
                             console.error('[ConversationDetail] Failed to refresh after AI send:', e);
-                        }
+                        });
                     }}
                 />
             )}

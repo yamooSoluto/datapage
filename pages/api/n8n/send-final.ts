@@ -274,8 +274,9 @@ export async function sendFinal(body: SendFinalBody) {
         (created?.external_id && `cw_ext:${created.external_id}`) ||
         `vercel:${conversationId}:${Date.now()}`;
 
-    // ── Firestore 기록(리스트/상세용) ──
+    // ── Firestore 기록(리스트/상세용) - 비동기 처리 ──
     if (tenantId) {
+        // ✅ Chatwoot 전송 성공 후 즉시 응답을 위해 Firestore 기록은 비동기로 처리
         const docRef = db.collection("FAQ_realtime_cw").doc(`${tenantId}_${conversationId}`);
 
         // ✅ 첨부파일을 pics 배열로 변환
@@ -283,15 +284,15 @@ export async function sendFinal(body: SendFinalBody) {
             ? attachments.map(att => att.url || att)
             : [];
 
-        console.log("[send-final] Saving message with pics:", {
+        console.log("[send-final] Queueing Firestore update (async):", {
             attachmentsCount: attachments?.length || 0,
             picsCount: pics.length,
-            pics: pics,
             hasContent: !!content,
             contentLength: content?.length || 0,
         });
 
-        await docRef.set(
+        // ✅ Firestore 기록은 await 없이 비동기로 처리 (에러는 로그만)
+        docRef.set(
             {
                 chat_id: String(conversationId),
                 tenant_id: String(tenantId),
@@ -307,9 +308,12 @@ export async function sendFinal(body: SendFinalBody) {
                 }),
             },
             { merge: true }
-        );
+        ).catch(err => {
+            console.error("[send-final] Firestore update failed (non-blocking):", err);
+        });
     }
 
+    // ✅ Chatwoot 전송 성공 후 즉시 응답 반환
     return {
         success: true as const,
         messageId,

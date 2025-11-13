@@ -74,37 +74,36 @@ function classifyCardTypeFromRoute(route) {
     return { isTask: false, taskType: null, cardType: route };
 }
 
-// ✅ 전체 히스토리 기준으로 한 번이라도 업무 라우트가 있으면 true
-async function hasWorkRouteEver(tenantId, chatId) {
-    // 빠른 OR 유사체크: 3개 boolean 필드 각각 limit(1)
-    const base = db.collection('FAQ_realtime_cw')
-        .where('tenant_id', '==', tenantId)
-        .where('chat_id', '==', chatId)
-        .orderBy('lastMessageAt', 'desc')
-        .limit(1);
-
-    const [q1, q2, q3] = await Promise.all([
-        base.where('route_update', '==', true).get(),
-        base.where('route_create', '==', true).get(),
-        base.where('route_upgrade_task', '==', true).get(),
-    ]);
-    if (!q1.empty || !q2.empty || !q3.empty) return true;
-
-    // 보수적 폴백: 최근 N개를 메모리 검사(slack_route 문자열)
-    const recent = await db.collection('FAQ_realtime_cw')
-        .where('tenant_id', '==', tenantId)
-        .where('chat_id', '==', chatId)
-        .orderBy('lastMessageAt', 'desc')
-        .limit(20)
-        .get();
-
-    // shadow_* 는 절대 업무 아님
-    const re = /\b(create|update|upgrade)\b/i;
-    return recent.docs.some(d => {
-        const s = String(d.data()?.slack_route || '').toLowerCase();
-        if (s.includes('shadow')) return false;
-        return re.test(s);
-    });
+// stats_conversations 기반 업무 여부 판별 헬퍼
+function getTaskFlagsFromStats(stats) {
+    // stats 없으면 전부 false/null
+    if (!stats) {
+        return {
+            everWork: false,
+            lastSlackRoute: null,
+        };
+    }
+    const routeUpdate = stats.route_update || 0;
+    const routeUpgrade = stats.route_upgrade_task || 0;
+    const routeCreate = stats.route_create || 0;
+    const lastSlackRoute = stats.last_slack_route || null;
+    let everWork = false;
+    // 1) 명시적인 업무 route 카운트가 있으면 무조건 true
+    if (routeUpdate > 0 || routeUpgrade > 0 || routeCreate > 0) {
+        everWork = true;
+    } else if (lastSlackRoute) {
+        // 2) 카운트는 없지만 문자열 기반으로 한 번 더 체크
+        const s = String(lastSlackRoute || "").toLowerCase();
+        const re = /\b(create|update|upgrade)\b/i;
+        // shadow_* 는 업무로 보지 않음
+        if (!s.includes("shadow") && re.test(s)) {
+            everWork = true;
+        }
+    }
+    return {
+        everWork,
+        lastSlackRoute,
+    };
 }
 
 // ──────────────────────────────────────────────
@@ -157,16 +156,28 @@ export default async function handler(req, res) {
             .slice(0, pageSize);
 
         // 슬랙 스레드 배치 조회
-        const slackRefs = uniqueDocs.map(({ doc }) => db.collection("slack_threads").doc(doc.id));
-        const slackDocs = slackRefs.length ? await db.getAll(...slackRefs) : [];
-        const slackMap = new Map(slackDocs.map((sd, idx) => [uniqueDocs[idx].doc.id, sd.exists ? sd.data() : null]));
-
-        // ✅ 히스토리 기준 업무여부 병렬 계산
-        const chatIds = uniqueDocs.map(({ data }) => data.chat_id);
-        const workEverPairs = await Promise.all(
-            chatIds.map(async (cid) => [cid, await hasWorkRouteEver(tenant, cid)])
+        const slackRefs = uniqueDocs.map(({ doc }) =>
+            db.collection("slack_threads").doc(doc.id)
         );
-        const workEverMap = new Map(workEverPairs);
+        const slackDocs = slackRefs.length ? await db.getAll(...slackRefs) : [];
+        const slackMap = new Map(
+            slackDocs.map((sd, idx) => [
+                uniqueDocs[idx].doc.id,
+                sd.exists ? sd.data() : null,
+            ])
+        );
+
+        // ✅ stats_conversations 에서 업무 여부 / last_slack_route 가져오기
+        const statsRefs = uniqueDocs.map(({ data }) =>
+            db.collection("stats_conversations").doc(`${tenant}_${data.chat_id}`)
+        );
+        const statsDocs = statsRefs.length ? await db.getAll(...statsRefs) : [];
+        const statsMap = new Map(
+            statsDocs.map((sd, idx) => {
+                const chatId = uniqueDocs[idx].data.chat_id;
+                return [chatId, sd.exists ? sd.data() : null];
+            })
+        );
 
         // 응답 변환
         const conversations = uniqueDocs.map(({ doc, data: v }) => {
@@ -195,7 +206,13 @@ export default async function handler(req, res) {
             });
 
             const slack = slackMap.get(doc.id);
-            const slackRoute = v.slack_route || null;
+            // stats_conversations 에 저장된 집계
+            const stats = statsMap.get(v.chat_id) || null;
+            const { everWork, lastSlackRoute } = getTaskFlagsFromStats(stats);
+
+            // conv 문서 자체에 남겨둔 slack_route 와 stats 의 last_slack_route 를 함께 고려
+            const slackRoute =
+                v.slack_route || lastSlackRoute || null;
             const cardTypeFromSlack = slack?.card_type || null;
 
             const cardInfo = cardTypeFromSlack
@@ -203,9 +220,8 @@ export default async function handler(req, res) {
                 : (slackRoute ? classifyCardTypeFromRoute(slackRoute) : null);
 
             // 최종 업무여부
-            const everWork = !!workEverMap.get(v.chat_id);
             const finalIsTask = everWork || (cardInfo?.isTask || false);
-            const finalTaskType = everWork ? 'work' : (cardInfo?.taskType || null);
+            const finalTaskType = everWork ? "work" : (cardInfo?.taskType || null);
 
             const extractMiddleChar = (name) => {
                 if (!name || name.length < 3) return name?.charAt(0) || '?';

@@ -27,6 +27,38 @@ const DEFAULT_LIMIT = { days: 30, maxDocs: null };
 const safeIso = (t) => (t?.toDate?.()?.toISOString?.() ? t.toDate().toISOString() : null);
 const millis = (v) => (typeof v?.toMillis === 'function' ? v.toMillis() : (Number(v) || new Date(v).getTime() || 0));
 
+// stats_conversations 기반 업무 여부 판별 헬퍼
+function getTaskFlagsFromStats(stats) {
+    // stats 없으면 전부 false/null
+    if (!stats) {
+        return {
+            everWork: false,
+            lastSlackRoute: null,
+        };
+    }
+    const routeUpdate = stats.route_update || 0;
+    const routeUpgrade = stats.route_upgrade_task || 0;
+    const routeCreate = stats.route_create || 0;
+    const lastSlackRoute = stats.last_slack_route || null;
+    let everWork = false;
+    // 1) 명시적인 업무 route 카운트가 있으면 무조건 true
+    if (routeUpdate > 0 || routeUpgrade > 0 || routeCreate > 0) {
+        everWork = true;
+    } else if (lastSlackRoute) {
+        // 2) 카운트는 없지만 문자열 기반으로 한 번 더 체크
+        const s = String(lastSlackRoute || "").toLowerCase();
+        const re = /\b(create|update|upgrade)\b/i;
+        // shadow_* 는 업무로 보지 않음
+        if (!s.includes("shadow") && re.test(s)) {
+            everWork = true;
+        }
+    }
+    return {
+        everWork,
+        lastSlackRoute,
+    };
+}
+
 export default async function handler(req, res) {
     try {
         // ✅ CDN 캐싱
@@ -103,16 +135,6 @@ export default async function handler(req, res) {
             }
         });
 
-        // ✅ 히스토리 전체에서 한 번이라도 업무 라우트가 있었는지( shadow_* 제외 )
-        const re = /\b(create|update|upgrade)\b/i;
-        const isTaskEver = allDocs.some(dd => {
-            const x = dd.data() || {};
-            if (x.route_update || x.route_create || x.route_upgrade_task) return true;
-            const s = String(x.slack_route || '').toLowerCase();
-            if (s.includes('shadow')) return false;
-            return re.test(s);
-        });
-
         // channel 보정
         let channel = d.channel || "unknown";
         if (channel === "unknown" && d.cw_inbox_id) {
@@ -134,8 +156,13 @@ export default async function handler(req, res) {
         const slackData = slackDoc.exists ? slackDoc.data() : null;
         const stats = statsDoc.exists ? statsDoc.data() : null;
 
+        // ✅ stats_conversations 기반 isTaskEver / lastSlackRoute
+        const { everWork: isTaskEver, lastSlackRoute } = getTaskFlagsFromStats(stats);
+
         // summary 우선
-        const summary = typeof d.summary === 'string' && d.summary.trim() ? d.summary.trim() : "";
+        const summary = typeof d.summary === "string" && d.summary.trim()
+            ? d.summary.trim()
+            : "";
 
         return res.json({
             conversation: {
@@ -153,6 +180,7 @@ export default async function handler(req, res) {
                 category: d.category || null,
                 categories: d.category ? d.category.split('|').map(c => c.trim()) : [],
                 isTaskEver, // ← 히스토리 기반 업무 여부
+                lastSlackRoute: lastSlackRoute || null,
             },
             messages,
             slack: slackData ? {
@@ -161,6 +189,7 @@ export default async function handler(req, res) {
                 cardType: slackData.card_type,
                 isTask: !!slackData.is_task || isTaskEver,
                 slackUrl: `https://slack.com/app_redirect?channel=${slackData.channel_id}&message_ts=${slackData.thread_ts}`,
+                lastSlackRoute: lastSlackRoute || null,
             } : null,
             stats: stats ? {
                 userChats: stats.user_chats || 0,

@@ -188,14 +188,21 @@ export default function ConversationsPage({ tenantId }) {
                 throw new Error(error.error || 'Failed to send message');
             }
 
-            // 대화 목록 새로고침
-            await fetchConversations();
+            // ✅ 전송 성공 후 리스트/상세는 비동기로 새로고침 (await 제거)
+            fetchConversations().catch(err => {
+                console.error('[ConversationsPage] Failed to refresh conversations:', err);
+            });
 
-            // 선택된 대화 상세 새로고침
+            // 선택된 대화 상세도 비동기로 새로고침
             if (selectedConv?.chatId) {
-                const detailRes = await fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${selectedConv.chatId}`);
-                const detailData = await detailRes.json();
-                setSelectedConv(detailData.conversation);
+                fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${selectedConv.chatId}`)
+                    .then(res => res.json())
+                    .then(detailData => {
+                        setSelectedConv(detailData.conversation);
+                    })
+                    .catch(err => {
+                        console.error('[ConversationsPage] Failed to refresh detail:', err);
+                    });
             }
         } catch (error) {
             console.error('[ConversationsPage] Send error:', error);
