@@ -19,6 +19,7 @@
     "googleapis": "^162.0.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.545.0",
+    "nanoid": "^5.1.6",
     "next": "15.5.4",
     "next-pwa": "^5.6.0",
     "nookies": "^2.5.2",

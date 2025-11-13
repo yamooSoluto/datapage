@@ -531,7 +531,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     tenantId={effectiveTenantId}
                     planName={planName}
                     onClose={() => setShowAIComposer(false)}
-                    onSend={onSend}
+                    onSend={async (correctedText) => {
+                        // AIComposerModal에서 문자열을 받으면 객체로 변환해서 상위 onSend에 전달
+                        await onSend?.({
+                            text: correctedText.trim(),
+                            attachments: [],
+                            tenantId: effectiveTenantId,
+                            chatId: chatId,
+                        });
+                    }}
                 />
             )}
 
