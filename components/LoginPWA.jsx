@@ -28,12 +28,12 @@ export default function LoginPWA({ onLoginSuccess }) {
       const res = await fetch('/api/auth/send-magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, mode: 'otp' }),
+        body: JSON.stringify({ email, mode: 'otp' }), // mode=otp로 구분
       });
 
       const data = await res.json();
 
-      if (!res.ok) {
+      if (!res.ok || data.success === false) {
         throw new Error(data.error || 'OTP 발송에 실패했습니다.');
       }
 
@@ -70,12 +70,12 @@ export default function LoginPWA({ onLoginSuccess }) {
         throw new Error(data.error || '코드가 올바르지 않습니다.');
       }
 
-      // ✅ 여기서 이미 서버가 yamoo_session 쿠키를 발급한 상태
-      //    → 상위에서 checkAuth() 다시 돌려서 바로 내부 진입
+      // ✅ 여기서 서버가 yamoo_session 쿠키를 이미 발급함
+      //    → 상위에서 checkAuth() 다시 돌려서 내부로 진입
       if (typeof onLoginSuccess === 'function') {
         await onLoginSuccess();
       } else {
-        // 혹시 상위에서 콜백을 안 넘겼을 경우 대비
+        // 혹시 prop 안 넘겨졌을 경우 대비
         window.location.href = '/';
       }
     } catch (err) {
@@ -88,7 +88,7 @@ export default function LoginPWA({ onLoginSuccess }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-yellow-50 to-amber-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-        {/* 로고 */}
+        {/* 로고 / 타이틀 */}
         <div className="text-center mb-8">
           <img
             src="/logo.png"
@@ -97,7 +97,9 @@ export default function LoginPWA({ onLoginSuccess }) {
           />
           <h1 className="text-3xl font-bold text-gray-900 mb-2">나만의 맞춤 AI비서</h1>
           <p className="text-gray-600">
-            {step === 'email' ? '이메일로 로그인하세요' : '이메일로 전송된 코드를 입력하세요'}
+            {step === 'email'
+              ? '이메일로 로그인하세요'
+              : '이메일로 전송된 코드를 입력하세요'}
           </p>
         </div>
 
@@ -173,7 +175,7 @@ export default function LoginPWA({ onLoginSuccess }) {
                 />
               </div>
               <p className="mt-2 text-xs text-gray-500 text-center">
-                {email}로 전송된 코드를 입력하세요
+                {email} 로 전송된 코드를 입력하세요
               </p>
             </div>
 

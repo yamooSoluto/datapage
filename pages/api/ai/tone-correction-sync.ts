@@ -193,15 +193,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.log("[tone-correction-sync] Response keys:", Object.keys(result || {}));
 
             // ✅ n8n이 다양한 필드명으로 보낼 수 있음: correctedText, output, text 등
-            const correctedText = result.correctedText ||
+            let correctedText = result.correctedText ||
                 result.output ||
                 result.text ||
                 result.response ||
                 content; // fallback
 
+            // ✅ JSON.stringify로 이중 인코딩된 경우 처리
+            if (typeof correctedText === 'string' && correctedText.startsWith('"') && correctedText.endsWith('"')) {
+                try {
+                    correctedText = JSON.parse(correctedText);
+                } catch (e) {
+                    // 파싱 실패하면 그대로 사용
+                    console.warn("[tone-correction-sync] Failed to parse double-encoded string:", e);
+                }
+            }
+
             console.log("[tone-correction-sync] Extracted correctedText:", {
                 correctedText: correctedText?.substring(0, 50),
                 length: correctedText?.length,
+                type: typeof correctedText,
                 source: result.correctedText ? 'correctedText' :
                     result.output ? 'output' :
                         result.text ? 'text' :

@@ -804,7 +804,7 @@ export default function TenantPortal() {
 
   // 로그인 필요 - LoginPWA 컴포넌트 표시
   if (!isLoggedIn && authChecked) {
-    // ✅ OTP 성공 시 상위에서 checkAuth 다시 실행하도록 콜백 전달
+    // OTP 성공 시 상위에서 checkAuth() 다시 실행해서 곧바로 내부 진입
     return <LoginPWA onLoginSuccess={checkAuth} />;
   }
 

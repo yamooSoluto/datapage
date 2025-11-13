@@ -101,8 +101,25 @@ export default function AIComposerModal({
 
             const result = await response.json();
             console.log('[AIComposerModal] AI result:', result);
+            console.log('[AIComposerModal] Result keys:', Object.keys(result || {}));
 
-            setCorrectedText(result.correctedText || finalContent);
+            // ✅ 다양한 필드명 지원 (tone-correction-sync에서 이미 처리했지만 안전장치)
+            const extractedCorrectedText = result.correctedText ||
+                result.output ||
+                result.text ||
+                result.response ||
+                finalContent;
+
+            console.log('[AIComposerModal] Extracted correctedText:', {
+                value: extractedCorrectedText?.substring(0, 50),
+                length: extractedCorrectedText?.length,
+                source: result.correctedText ? 'correctedText' :
+                    result.output ? 'output' :
+                        result.text ? 'text' :
+                            result.response ? 'response' : 'finalContent'
+            });
+
+            setCorrectedText(extractedCorrectedText);
             setCustomerMessage(result.customerMessage || conversation.lastMessage || ''); // ✅ 고객 메시지
             setStep('result');
         } catch (err) {
