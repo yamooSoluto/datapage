@@ -66,7 +66,7 @@ export default function AIComposerModal({
             return;
         }
 
-        // ✅ AI 보정 요청 (동기 방식)
+        // ✅ AI 보정 요청 (비동기 방식)
         setProcessing(true);
         setStep('processing');
 
@@ -85,13 +85,14 @@ export default function AIComposerModal({
                 } : {}),
             };
 
-            console.log('[AIComposerModal] Requesting AI correction (sync)');
+            console.log('[AIComposerModal] Requesting AI correction (async)');
 
-            const response = await fetch('/api/ai/tone-correction-sync', {
+            // ✅ 1. 비동기 요청 전송 (즉시 requestId 받음)
+            const response = await fetch('/api/ai/tone-correction-async', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(30000),
+                signal: AbortSignal.timeout(10000), // 초기 요청은 10초만
             });
 
             if (!response.ok) {
@@ -99,34 +100,82 @@ export default function AIComposerModal({
                 throw new Error(error.error || 'AI 보정 요청 실패');
             }
 
-            const result = await response.json();
-            console.log('[AIComposerModal] AI result:', result);
-            console.log('[AIComposerModal] Result keys:', Object.keys(result || {}));
+            const asyncResult = await response.json();
+            console.log('[AIComposerModal] Async request accepted:', asyncResult);
 
-            // ✅ 다양한 필드명 지원 (tone-correction-sync에서 이미 처리했지만 안전장치)
-            const extractedCorrectedText = result.correctedText ||
-                result.output ||
-                result.text ||
-                result.response ||
-                finalContent;
+            if (asyncResult.sync) {
+                // AI 미사용 시 즉시 결과 반환
+                setCorrectedText(asyncResult.correctedText || finalContent);
+                setCustomerMessage(conversation.lastMessage || '');
+                setStep('result');
+                setProcessing(false);
+                return;
+            }
 
-            console.log('[AIComposerModal] Extracted correctedText:', {
-                value: extractedCorrectedText?.substring(0, 50),
-                length: extractedCorrectedText?.length,
-                source: result.correctedText ? 'correctedText' :
-                    result.output ? 'output' :
-                        result.text ? 'text' :
-                            result.response ? 'response' : 'finalContent'
-            });
+            const requestId = asyncResult.requestId;
+            if (!requestId) {
+                throw new Error('requestId가 없습니다');
+            }
 
-            setCorrectedText(extractedCorrectedText);
-            setCustomerMessage(result.customerMessage || conversation.lastMessage || ''); // ✅ 고객 메시지
-            setStep('result');
+            // ✅ 2. 폴링으로 결과 확인 (최대 60초, 2초마다)
+            let attempts = 0;
+            const maxAttempts = 30; // 30 * 2초 = 60초
+            const pollInterval = 2000; // 2초
+
+            const pollForResult = async () => {
+                attempts++;
+                console.log(`[AIComposerModal] Polling attempt ${attempts}/${maxAttempts}`);
+
+                try {
+                    const statusResponse = await fetch(`/api/ai/tone-correction-status?requestId=${requestId}`);
+
+                    if (!statusResponse.ok) {
+                        if (statusResponse.status === 404) {
+                            throw new Error('요청을 찾을 수 없습니다. 다시 시도해주세요.');
+                        }
+                        throw new Error('상태 확인 실패');
+                    }
+
+                    const statusData = await statusResponse.json();
+                    console.log('[AIComposerModal] Status:', statusData);
+
+                    if (statusData.status === 'completed') {
+                        // ✅ 완료!
+                        const extractedText = statusData.result?.correctedText || finalContent;
+                        setCorrectedText(extractedText);
+                        setCustomerMessage(statusData.result?.customerMessage || conversation.lastMessage || '');
+                        setStep('result');
+                        setProcessing(false);
+                        return;
+                    }
+
+                    if (statusData.status === 'error') {
+                        throw new Error(statusData.error || 'AI 보정 중 오류가 발생했습니다');
+                    }
+
+                    // pending or processing - 계속 대기
+                    if (attempts >= maxAttempts) {
+                        throw new Error('AI 보정 시간이 초과되었습니다. 다시 시도해주세요.');
+                    }
+
+                    // 다음 폴링 예약
+                    setTimeout(pollForResult, pollInterval);
+
+                } catch (pollError) {
+                    console.error('[AIComposerModal] Polling error:', pollError);
+                    setError(pollError.message || '결과 확인 중 오류가 발생했습니다');
+                    setStep('compose');
+                    setProcessing(false);
+                }
+            };
+
+            // 첫 폴링 시작
+            setTimeout(pollForResult, pollInterval);
+
         } catch (err) {
             console.error('[AIComposerModal] Error:', err);
             setError(err.message || 'AI 보정 중 오류가 발생했습니다.');
             setStep('compose');
-        } finally {
             setProcessing(false);
         }
     };
