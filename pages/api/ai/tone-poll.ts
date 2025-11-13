@@ -46,7 +46,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         // 결과 있음 - 반환 후 삭제
-        console.log("[tone-poll] ✅ Result found!");
+        console.log("[tone-poll] ✅ Result found!", {
+            hasCorrectedText: !!result.correctedText,
+            correctedTextLength: result.correctedText?.length,
+            resultKeys: Object.keys(result || {}),
+        });
         delete global.aiResults[conversationId];
 
         return res.status(200).json({

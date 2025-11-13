@@ -19,15 +19,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // ✅ n8n이 보내는 다양한 형식 처리
         let body = req.body || {};
 
+        console.log("[tone-result] Initial body structure:", {
+            hasBody: !!body.body,
+            hasData: !!body.data,
+            bodyKeys: Object.keys(body),
+        });
+
         // n8n이 body를 중첩해서 보낼 수 있음 (예: { body: { ... } })
         if (body.body && typeof body.body === 'object') {
+            console.log("[tone-result] Unwrapping body.body");
             body = body.body;
         }
 
         // n8n이 data 필드로 보낼 수 있음
         if (body.data && typeof body.data === 'object') {
+            console.log("[tone-result] Unwrapping body.data");
             body = body.data;
         }
+
+        console.log("[tone-result] Final body keys:", Object.keys(body));
 
         const {
             tenantId,

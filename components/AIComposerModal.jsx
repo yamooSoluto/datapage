@@ -126,11 +126,35 @@ export default function AIComposerModal({
                         }
 
                         const pollData = await pollResponse.json();
-                        console.log('[AIComposerModal] Poll attempt', attempts, pollData);
+                        console.log('[AIComposerModal] Poll attempt', attempts, {
+                            ready: pollData.ready,
+                            hasCorrectedText: !!pollData.correctedText,
+                            correctedTextLength: pollData.correctedText?.length,
+                            correctedTextPreview: pollData.correctedText?.substring(0, 50),
+                            pollDataKeys: Object.keys(pollData || {}),
+                        });
 
                         if (pollData.ready) {
-                            // ✅ 결과 받음
-                            const extractedCorrectedText = pollData.correctedText || finalContent;
+                            // ✅ 결과 받음 - 다양한 필드명 지원
+                            const extractedCorrectedText = pollData.correctedText ||
+                                pollData.text ||
+                                pollData.output ||
+                                pollData.response ||
+                                finalContent; // fallback
+
+                            console.log('[AIComposerModal] Extracted correctedText:', {
+                                extractedCorrectedText,
+                                length: extractedCorrectedText?.length,
+                                source: pollData.correctedText ? 'correctedText' :
+                                    pollData.text ? 'text' :
+                                        pollData.output ? 'output' :
+                                            pollData.response ? 'response' : 'finalContent',
+                            });
+
+                            if (!extractedCorrectedText || !extractedCorrectedText.trim()) {
+                                console.error('[AIComposerModal] No correctedText extracted from poll result');
+                                throw new Error('보정된 텍스트를 받지 못했습니다.');
+                            }
 
                             setCorrectedText(extractedCorrectedText);
                             setOriginalText(finalContent); // ✅ 원본 저장
@@ -166,15 +190,25 @@ export default function AIComposerModal({
 
     // ✅ 전송 핸들러
     const handleSend = async () => {
+        const trimmedText = correctedText?.trim() || '';
+
         console.log('[AIComposerModal] handleSend called:', {
             correctedText,
+            correctedTextType: typeof correctedText,
             correctedTextLength: correctedText?.length,
-            correctedTextTrimmed: correctedText?.trim(),
-            correctedTextTrimmedLength: correctedText?.trim()?.length,
+            trimmedText,
+            trimmedTextLength: trimmedText.length,
+            isEmpty: !correctedText,
+            isEmptyAfterTrim: !trimmedText,
+            step, // 현재 step 확인
         });
 
-        if (!correctedText || !correctedText.trim()) {
-            console.error('[AIComposerModal] No correctedText to send');
+        if (!trimmedText) {
+            console.error('[AIComposerModal] No correctedText to send:', {
+                correctedText,
+                trimmedText,
+                step,
+            });
             setError('전송할 내용이 없습니다.');
             return;
         }
@@ -183,8 +217,12 @@ export default function AIComposerModal({
         setError('');
 
         try {
-            console.log('[AIComposerModal] Calling onSend with:', correctedText);
-            await onSend(correctedText.trim()); // ✅ trim()해서 전달
+            console.log('[AIComposerModal] Calling onSend with:', {
+                text: trimmedText,
+                textLength: trimmedText.length,
+                textPreview: trimmedText.substring(0, 50),
+            });
+            await onSend(trimmedText); // ✅ trim()된 텍스트 전달
             onClose();
         } catch (err) {
             console.error('[AIComposerModal] Send error:', err);

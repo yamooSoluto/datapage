@@ -277,6 +277,12 @@ export async function sendFinal(body: SendFinalBody) {
     // ── Firestore 기록(리스트/상세용) ──
     if (tenantId) {
         const docRef = db.collection("FAQ_realtime_cw").doc(`${tenantId}_${conversationId}`);
+
+        // ✅ 첨부파일을 pics 배열로 변환
+        const pics = Array.isArray(attachments) && attachments.length > 0
+            ? attachments.map(att => att.url || att)
+            : [];
+
         await docRef.set(
             {
                 chat_id: String(conversationId),
@@ -286,6 +292,7 @@ export async function sendFinal(body: SendFinalBody) {
                 messages: admin.firestore.FieldValue.arrayUnion({
                     sender: via === "agent" ? "agent" : instruction_mode ? "admin" : "ai",
                     text: String(content || ""),
+                    pics: pics, // ✅ 첨부파일 URL 배열 추가
                     timestamp: nowTs(),
                     private: !!privateNote,
                     msgId: messageId,

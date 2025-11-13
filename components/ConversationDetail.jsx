@@ -632,7 +632,7 @@ function MessageBubble({ message, onImageClick }) {
                 {!isUser && <div className="text-xs text-gray-500 mb-1 px-1">{senderCfg.name}</div>}
 
                 {/* ✅ 텍스트가 없고 이미지만 있을 때는 말풍선 스타일 다르게 적용 */}
-                {!message.text && message.pics && message.pics.length > 0 ? (
+                {(!message.text || !message.text.trim()) && message.pics && message.pics.length > 0 ? (
                     // 이미지만 있을 때: 말풍선 없이 이미지만 표시
                     <div className="space-y-2">
                         {message.pics.length === 1 ? (
