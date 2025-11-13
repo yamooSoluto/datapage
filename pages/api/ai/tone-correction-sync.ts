@@ -187,14 +187,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
 
             const result = await response.json();
-            console.log("[tone-correction-sync] Success:", {
-                hasCorrectedText: !!result.correctedText,
-                textLength: result.correctedText?.length,
+
+            // ✅ 디버깅: n8n 응답 전체 로그
+            console.log("[tone-correction-sync] n8n response:", JSON.stringify(result, null, 2));
+            console.log("[tone-correction-sync] Response keys:", Object.keys(result || {}));
+
+            // ✅ n8n이 다양한 필드명으로 보낼 수 있음: correctedText, output, text 등
+            const correctedText = result.correctedText ||
+                result.output ||
+                result.text ||
+                result.response ||
+                content; // fallback
+
+            console.log("[tone-correction-sync] Extracted correctedText:", {
+                correctedText: correctedText?.substring(0, 50),
+                length: correctedText?.length,
+                source: result.correctedText ? 'correctedText' :
+                    result.output ? 'output' :
+                        result.text ? 'text' :
+                            result.response ? 'response' : 'fallback'
             });
 
             return res.status(200).json({
                 ok: true,
-                correctedText: result.correctedText || content,
+                correctedText: correctedText,
                 originalText: content,
                 customerMessage: userMessage || '', // ✅ 고객 메시지 반환
                 metadata: result.metadata || null,

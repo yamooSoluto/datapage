@@ -241,12 +241,21 @@ export default function ConversationsPage({ tenantId }) {
         console.log('[ConversationsPage] AI send:', {
             tenantId: effectiveTenantId,
             chatId: effectiveChatId,
+            text,
+            textType: typeof text,
+            textLength: text?.length,
             textPreview: text?.substring(0, 50)
         });
 
+        // ✅ text가 비어있으면 에러
+        if (!text || !text.trim()) {
+            console.error('[ConversationsPage] No text to send from AI modal');
+            throw new Error('전송할 내용이 없습니다.');
+        }
+
         // ✅ 객체 방식으로 호출 (tenantId와 chatId 포함)
         await handleSend({
-            text: text || '',
+            text: text.trim(), // ✅ trim()해서 전달
             attachments: [],
             tenantId: effectiveTenantId,
             chatId: effectiveChatId,

@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 
-export default function LoginPWA() {
+export default function LoginPWA({ onLoginSuccess }) {
   const [step, setStep] = useState('email'); // 'email' | 'code'
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -37,6 +37,7 @@ export default function LoginPWA() {
         throw new Error(data.error || 'OTP 발송에 실패했습니다.');
       }
 
+      // 다음 단계로 진행
       setStep('code');
     } catch (err) {
       setError(err.message || 'OTP 발송에 실패했습니다.');
@@ -65,12 +66,18 @@ export default function LoginPWA() {
 
       const data = await res.json();
 
-      if (!res.ok) {
+      if (!res.ok || !data.success) {
         throw new Error(data.error || '코드가 올바르지 않습니다.');
       }
 
-      // 로그인 성공 - 페이지 새로고침하여 인증 상태 확인
-      window.location.reload();
+      // ✅ 여기서 이미 서버가 yamoo_session 쿠키를 발급한 상태
+      //    → 상위에서 checkAuth() 다시 돌려서 바로 내부 진입
+      if (typeof onLoginSuccess === 'function') {
+        await onLoginSuccess();
+      } else {
+        // 혹시 상위에서 콜백을 안 넘겼을 경우 대비
+        window.location.href = '/';
+      }
     } catch (err) {
       setError(err.message || '코드가 올바르지 않습니다.');
     } finally {
@@ -207,4 +214,3 @@ export default function LoginPWA() {
     </div>
   );
 }
-

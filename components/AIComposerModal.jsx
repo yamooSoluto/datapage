@@ -116,7 +116,15 @@ export default function AIComposerModal({
 
     // ✅ 전송 핸들러
     const handleSend = async () => {
-        if (!correctedText.trim()) {
+        console.log('[AIComposerModal] handleSend called:', {
+            correctedText,
+            correctedTextLength: correctedText?.length,
+            correctedTextTrimmed: correctedText?.trim(),
+            correctedTextTrimmedLength: correctedText?.trim()?.length,
+        });
+
+        if (!correctedText || !correctedText.trim()) {
+            console.error('[AIComposerModal] No correctedText to send');
             setError('전송할 내용이 없습니다.');
             return;
         }
@@ -125,7 +133,8 @@ export default function AIComposerModal({
         setError('');
 
         try {
-            await onSend(correctedText);
+            console.log('[AIComposerModal] Calling onSend with:', correctedText);
+            await onSend(correctedText.trim()); // ✅ trim()해서 전달
             onClose();
         } catch (err) {
             console.error('[AIComposerModal] Send error:', err);
