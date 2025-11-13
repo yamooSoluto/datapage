@@ -1003,6 +1003,7 @@ export default function TenantPortal() {
         plan={currentTenant?.plan}
         availableTenants={availableTenants}
         onTenantChange={(tenant) => {
+          console.log('🔄 테넌트 변경 시작:', tenant);
           setCurrentTenant({
             id: tenant.id,
             brandName: tenant.brandName || tenant.name,
@@ -1012,7 +1013,9 @@ export default function TenantPortal() {
             faqCount: tenant.faqCount || 0,
             showOnboarding: tenant.showOnboarding || false,
           });
-          console.log('✅ 테넌트 변경:', tenant.brandName || tenant.name);
+          console.log('✅ 테넌트 변경 완료:', tenant.brandName || tenant.name);
+          // 페이지 새로고침으로 데이터 재로드 (PWA에서 상태 업데이트가 제대로 반영되도록)
+          window.location.reload();
         }}
         onLogout={() => {
           setIsLoggedIn(false);

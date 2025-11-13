@@ -36,18 +36,21 @@ export default function MinimalHeader({
 
     // 드롭다운 외부 클릭 시 닫기
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
+        const handleClickOutside = (event: MouseEvent | TouchEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setShowTenantDropdown(false);
             }
         };
 
         if (showTenantDropdown) {
+            // PWA 환경에서도 작동하도록 touchstart 이벤트도 추가
             document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('touchstart', handleClickOutside);
         }
 
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
         };
     }, [showTenantDropdown]);
 
@@ -83,7 +86,10 @@ export default function MinimalHeader({
                                 {availableTenants.length > 1 ? (
                                     <div className="relative" ref={dropdownRef}>
                                         <button
-                                            onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowTenantDropdown(!showTenantDropdown);
+                                            }}
                                             className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-white/60 transition-colors"
                                         >
                                             <span className="text-sm font-bold text-gray-900">{brandName}</span>
@@ -94,13 +100,29 @@ export default function MinimalHeader({
                                                 {availableTenants.map((tenant) => (
                                                     <button
                                                         key={tenant.id}
-                                                        onClick={() => {
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            e.preventDefault();
+                                                            console.log('🔍 테넌트 선택:', tenant.brandName || tenant.name);
                                                             if (onTenantChange) {
+                                                                console.log('✅ onTenantChange 호출');
+                                                                onTenantChange(tenant);
+                                                            } else {
+                                                                console.warn('⚠️ onTenantChange가 없습니다');
+                                                            }
+                                                            setShowTenantDropdown(false);
+                                                        }}
+                                                        onTouchEnd={(e) => {
+                                                            e.stopPropagation();
+                                                            e.preventDefault();
+                                                            console.log('🔍 테넌트 선택 (터치):', tenant.brandName || tenant.name);
+                                                            if (onTenantChange) {
+                                                                console.log('✅ onTenantChange 호출 (터치)');
                                                                 onTenantChange(tenant);
                                                             }
                                                             setShowTenantDropdown(false);
                                                         }}
-                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${(tenant.brandName || tenant.name) === brandName
+                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 active:bg-gray-100 transition-colors ${(tenant.brandName || tenant.name) === brandName
                                                             ? 'bg-yellow-50 text-gray-900 font-medium'
                                                             : 'text-gray-700'
                                                             }`}
