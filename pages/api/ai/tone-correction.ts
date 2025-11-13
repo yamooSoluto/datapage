@@ -177,7 +177,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             previousMessages: previousMessages || [], // ✅ 최근 5개 메시지 (빈 배열로 명시)
             ...aiOptions,
             // ✅ 웹포탈 콜백 URL
-            callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr'}/api/ai/tone-result`,
+            callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr'}/api/ai/tone-result?requestId=${encodeURIComponent(requestId)}`,
             executionMode: "production",
         };
 

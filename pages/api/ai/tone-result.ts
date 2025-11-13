@@ -48,7 +48,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const finalConversationId = conversationId || conversation_id;
         const finalCorrectedText = correctedText || corrected_text;
         const finalOriginalText = originalText || original_text;
-        const finalRequestId = requestId || request_id;
+        const queryRequestId = typeof req.query?.requestId === 'string' ? req.query.requestId : undefined;
+        const finalRequestId = requestId || request_id || queryRequestId;
         const finalTenantId = tenantId || tenant_id;
 
         console.log("[tone-result] Parsed data:", {

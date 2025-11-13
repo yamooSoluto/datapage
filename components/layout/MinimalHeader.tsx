@@ -96,41 +96,55 @@ export default function MinimalHeader({
                                             <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
                                         </button>
                                         {showTenantDropdown && (
-                                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-50">
-                                                {availableTenants.map((tenant) => (
-                                                    <button
-                                                        key={tenant.id}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            e.preventDefault();
-                                                            console.log('🔍 테넌트 선택:', tenant.brandName || tenant.name);
-                                                            if (onTenantChange) {
-                                                                console.log('✅ onTenantChange 호출');
-                                                                onTenantChange(tenant);
-                                                            } else {
-                                                                console.warn('⚠️ onTenantChange가 없습니다');
-                                                            }
-                                                            setShowTenantDropdown(false);
-                                                        }}
-                                                        onTouchEnd={(e) => {
-                                                            e.stopPropagation();
-                                                            e.preventDefault();
-                                                            console.log('🔍 테넌트 선택 (터치):', tenant.brandName || tenant.name);
-                                                            if (onTenantChange) {
-                                                                console.log('✅ onTenantChange 호출 (터치)');
-                                                                onTenantChange(tenant);
-                                                            }
-                                                            setShowTenantDropdown(false);
-                                                        }}
-                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 active:bg-gray-100 transition-colors ${(tenant.brandName || tenant.name) === brandName
-                                                            ? 'bg-yellow-50 text-gray-900 font-medium'
-                                                            : 'text-gray-700'
-                                                            }`}
-                                                    >
-                                                        {tenant.brandName || tenant.name}
-                                                    </button>
-                                                ))}
-                                            </div>
+                                            <>
+                                                {/* 배경 오버레이 - PWA에서 클릭 이벤트 차단 */}
+                                                <div
+                                                    className="fixed inset-0 z-[9998]"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setShowTenantDropdown(false);
+                                                    }}
+                                                    onTouchEnd={(e) => {
+                                                        e.stopPropagation();
+                                                        setShowTenantDropdown(false);
+                                                    }}
+                                                />
+                                                <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999] pointer-events-auto">
+                                                    {availableTenants.map((tenant) => (
+                                                        <button
+                                                            key={tenant.id}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                e.preventDefault();
+                                                                console.log('🔍 테넌트 선택:', tenant.brandName || tenant.name);
+                                                                if (onTenantChange) {
+                                                                    console.log('✅ onTenantChange 호출');
+                                                                    onTenantChange(tenant);
+                                                                } else {
+                                                                    console.warn('⚠️ onTenantChange가 없습니다');
+                                                                }
+                                                                setShowTenantDropdown(false);
+                                                            }}
+                                                            onTouchEnd={(e) => {
+                                                                e.stopPropagation();
+                                                                e.preventDefault();
+                                                                console.log('🔍 테넌트 선택 (터치):', tenant.brandName || tenant.name);
+                                                                if (onTenantChange) {
+                                                                    console.log('✅ onTenantChange 호출 (터치)');
+                                                                    onTenantChange(tenant);
+                                                                }
+                                                                setShowTenantDropdown(false);
+                                                            }}
+                                                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 active:bg-gray-100 transition-colors ${(tenant.brandName || tenant.name) === brandName
+                                                                ? 'bg-yellow-50 text-gray-900 font-medium'
+                                                                : 'text-gray-700'
+                                                                }`}
+                                                        >
+                                                            {tenant.brandName || tenant.name}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                 ) : (
@@ -199,34 +213,67 @@ export default function MinimalHeader({
                                 className="w-7 h-7 object-contain"
                             />
                             {availableTenants.length > 1 ? (
-                                <div className="relative">
+                                <div className="relative" ref={dropdownRef}>
                                     <button
-                                        onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowTenantDropdown(!showTenantDropdown);
+                                        }}
                                         className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-white/60 transition-colors"
                                     >
                                         <span className="text-sm font-bold text-gray-900">{brandName}</span>
                                         <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
                                     </button>
                                     {showTenantDropdown && (
-                                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-50">
-                                            {availableTenants.map((tenant) => (
-                                                <button
-                                                    key={tenant.id}
-                                                    onClick={() => {
-                                                        if (onTenantChange) {
-                                                            onTenantChange(tenant);
-                                                        }
-                                                        setShowTenantDropdown(false);
-                                                    }}
-                                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors ${tenant.id === (availableTenants.find(t => (t.brandName || t.name) === brandName)?.id)
-                                                        ? 'bg-yellow-50 text-gray-900 font-medium'
-                                                        : 'text-gray-700'
-                                                        }`}
-                                                >
-                                                    {tenant.brandName || tenant.name}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        <>
+                                            {/* 배경 오버레이 - PWA에서 클릭 이벤트 차단 */}
+                                            <div
+                                                className="fixed inset-0 z-[9998]"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowTenantDropdown(false);
+                                                }}
+                                                onTouchEnd={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowTenantDropdown(false);
+                                                }}
+                                            />
+                                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999] pointer-events-auto">
+                                                {availableTenants.map((tenant) => (
+                                                    <button
+                                                        key={tenant.id}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            e.preventDefault();
+                                                            console.log('🔍 테넌트 선택 (모바일):', tenant.brandName || tenant.name);
+                                                            if (onTenantChange) {
+                                                                console.log('✅ onTenantChange 호출 (모바일)');
+                                                                onTenantChange(tenant);
+                                                            } else {
+                                                                console.warn('⚠️ onTenantChange가 없습니다 (모바일)');
+                                                            }
+                                                            setShowTenantDropdown(false);
+                                                        }}
+                                                        onTouchEnd={(e) => {
+                                                            e.stopPropagation();
+                                                            e.preventDefault();
+                                                            console.log('🔍 테넌트 선택 (모바일 터치):', tenant.brandName || tenant.name);
+                                                            if (onTenantChange) {
+                                                                console.log('✅ onTenantChange 호출 (모바일 터치)');
+                                                                onTenantChange(tenant);
+                                                            }
+                                                            setShowTenantDropdown(false);
+                                                        }}
+                                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 active:bg-gray-100 transition-colors ${(tenant.brandName || tenant.name) === brandName
+                                                            ? 'bg-yellow-50 text-gray-900 font-medium'
+                                                            : 'text-gray-700'
+                                                            }`}
+                                                    >
+                                                        {tenant.brandName || tenant.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
                                     )}
                                 </div>
                             ) : (
