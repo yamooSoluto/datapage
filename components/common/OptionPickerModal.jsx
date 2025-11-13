@@ -326,7 +326,7 @@ export default function OptionPickerModal({
                                         <button
                                             key={opt}
                                             onClick={() => toggle(opt)}
-                                            className={`h-9 px-3 rounded-full border ${active ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+                                            className={`h-9 px-3 rounded-full border ${active ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-900 border-gray-300 hover:bg-gray-50"}`}
                                         >
                                             {opt}
                                         </button>
@@ -342,7 +342,7 @@ export default function OptionPickerModal({
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <h3 className="font-medium">직접 입력</h3>
-                            <button onClick={resetCustomMode} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={resetCustomMode} className="text-gray-600 hover:text-gray-800">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
@@ -377,14 +377,14 @@ export default function OptionPickerModal({
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <h3 className="font-medium">시간 선택</h3>
-                            <button onClick={resetCustomMode} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={resetCustomMode} className="text-gray-600 hover:text-gray-800">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
 
                         {/* 직접 입력 */}
                         <div>
-                            <div className="text-xs font-semibold text-gray-700 mb-2">직접 입력</div>
+                            <div className="text-xs font-semibold text-gray-900 mb-2">직접 입력</div>
                             <div className="flex gap-2">
                                 <input
                                     type="time"
@@ -392,7 +392,7 @@ export default function OptionPickerModal({
                                     onChange={(e) => setStartInput(e.target.value)}
                                     className="flex-1 px-2 h-8 text-xs bg-gray-50 rounded-lg border border-gray-200"
                                 />
-                                <span className="self-center text-xs text-gray-400">~</span>
+                                <span className="self-center text-xs text-gray-600">~</span>
                                 <input
                                     type="time"
                                     placeholder="(선택)"
@@ -407,7 +407,7 @@ export default function OptionPickerModal({
                                     추가
                                 </button>
                             </div>
-                            <p className="mt-1 text-[10px] text-gray-500">• 종료 시간을 비워두면 단일 시간으로 추가됩니다.</p>
+                            <p className="mt-1 text-[10px] text-gray-700">• 종료 시간을 비워두면 단일 시간으로 추가됩니다.</p>
                         </div>
 
                         {/* 빠른 패턴 */}
@@ -432,7 +432,7 @@ export default function OptionPickerModal({
                                 <div className="text-xs font-semibold text-gray-700">
                                     시작/종료 시간 선택
                                 </div>
-                                <div className="text-[10px] text-gray-500">{draftStart ? `시작: ${draftStart}` : '시작을 선택하세요'}</div>
+                                <div className="text-[10px] text-gray-700">{draftStart ? `시작: ${draftStart}` : '시작을 선택하세요'}</div>
                             </div>
                             <div className="grid grid-cols-6 gap-1 max-h-[160px] overflow-auto pr-1">
                                 {allSlots.map((slot) => {
@@ -444,7 +444,7 @@ export default function OptionPickerModal({
                                             onClick={() => onQuickSlotClick(slot)}
                                             className={`px-2 h-7 text-[10px] rounded-md border ${isStart ? 'bg-blue-600 text-white border-blue-600'
                                                 : isSingleSelected ? 'bg-blue-100 text-blue-900 border-blue-200'
-                                                    : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-700'
+                                                    : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-900'
                                                 }`}
                                         >
                                             {slot}
@@ -493,7 +493,7 @@ export default function OptionPickerModal({
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <h3 className="font-medium">날짜 선택</h3>
-                            <button onClick={resetCustomMode} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={resetCustomMode} className="text-gray-600 hover:text-gray-800">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>

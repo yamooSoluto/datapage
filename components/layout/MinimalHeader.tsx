@@ -43,14 +43,15 @@ export default function MinimalHeader({
         };
 
         if (showTenantDropdown) {
-            // PWA 환경에서도 작동하도록 touchstart 이벤트도 추가
-            document.addEventListener('mousedown', handleClickOutside);
-            document.addEventListener('touchstart', handleClickOutside);
+            // 웹에서는 click 이벤트 사용, 모바일에서는 touchstart 사용
+            // click 이벤트는 mousedown/mouseup 후에 발생하므로 드롭다운 버튼 클릭을 방해하지 않음
+            document.addEventListener('click', handleClickOutside, true);
+            document.addEventListener('touchstart', handleClickOutside, true);
         }
 
         return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('touchstart', handleClickOutside);
+            document.removeEventListener('click', handleClickOutside, true);
+            document.removeEventListener('touchstart', handleClickOutside, true);
         };
     }, [showTenantDropdown]);
 
@@ -72,7 +73,7 @@ export default function MinimalHeader({
     return (
         <>
             {/* 데스크톱 헤더 - 솜사탕 그라데이션 배경 */}
-            <header className="hidden md:block sticky top-0 z-50 bg-gradient-to-r from-pink-50/70 via-yellow-50/70 to-sky-50/70 backdrop-blur-xl border-b border-white/50">
+            <header className="hidden md:block sticky top-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50">
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="flex items-center justify-between h-12">
                         {/* 로고 & 브랜드 */}
@@ -96,20 +97,7 @@ export default function MinimalHeader({
                                             <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
                                         </button>
                                         {showTenantDropdown && (
-                                            <>
-                                                {/* 배경 오버레이 - PWA에서 클릭 이벤트 차단 */}
-                                                <div
-                                                    className="fixed inset-0 z-[9998]"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setShowTenantDropdown(false);
-                                                    }}
-                                                    onTouchEnd={(e) => {
-                                                        e.stopPropagation();
-                                                        setShowTenantDropdown(false);
-                                                    }}
-                                                />
-                                                <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999] pointer-events-auto">
+                                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999]">
                                                     {availableTenants.map((tenant) => (
                                                         <button
                                                             key={tenant.id}
@@ -143,8 +131,7 @@ export default function MinimalHeader({
                                                             {tenant.brandName || tenant.name}
                                                         </button>
                                                     ))}
-                                                </div>
-                                            </>
+                                            </div>
                                         )}
                                     </div>
                                 ) : (
@@ -202,7 +189,7 @@ export default function MinimalHeader({
             </header>
 
             {/* 모바일 헤더 */}
-            <header className="md:hidden sticky top-0 z-50 bg-gradient-to-r from-pink-50/70 via-yellow-50/70 to-sky-50/70 backdrop-blur-xl border-b border-white/50">
+            <header className="md:hidden sticky top-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50">
                 <div className="px-4">
                     <div className="flex items-center justify-between h-12">
                         {/* 로고 & 브랜드 */}
@@ -225,20 +212,7 @@ export default function MinimalHeader({
                                         <ChevronDown className={`w-3.5 h-3.5 text-gray-500 transition-transform ${showTenantDropdown ? 'rotate-180' : ''}`} />
                                     </button>
                                     {showTenantDropdown && (
-                                        <>
-                                            {/* 배경 오버레이 - PWA에서 클릭 이벤트 차단 */}
-                                            <div
-                                                className="fixed inset-0 z-[9998]"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setShowTenantDropdown(false);
-                                                }}
-                                                onTouchEnd={(e) => {
-                                                    e.stopPropagation();
-                                                    setShowTenantDropdown(false);
-                                                }}
-                                            />
-                                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999] pointer-events-auto">
+                                        <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[200px] z-[9999]">
                                                 {availableTenants.map((tenant) => (
                                                     <button
                                                         key={tenant.id}
@@ -271,9 +245,8 @@ export default function MinimalHeader({
                                                     >
                                                         {tenant.brandName || tenant.name}
                                                     </button>
-                                                ))}
-                                            </div>
-                                        </>
+                                                    ))}
+                                        </div>
                                     )}
                                 </div>
                             ) : (
@@ -345,7 +318,7 @@ export default function MinimalHeader({
             </header>
 
             {/* 모바일 하단 탭 - 솜사탕 그라데이션 */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-50/80 via-yellow-50/80 to-sky-50/80 backdrop-blur-xl border-t border-white/50 safe-area-pb">
+            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-100/90 via-yellow-100/90 to-sky-100/90 backdrop-blur-xl border-t border-white/50 safe-area-pb">
                 <div className="flex items-center justify-around px-2 py-1.5">
                     {tabs.map(tab => {
                         const Icon = tab.icon;

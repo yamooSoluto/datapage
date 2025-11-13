@@ -83,7 +83,7 @@ function MultiSelectWithAdd({ label, options, value, onChange, placeholder }) {
                         >
                             {v}
                             <button
-                                className="ml-1 text-gray-400 hover:text-gray-600 transition-colors"
+                                className="ml-1 text-gray-600 hover:text-gray-800 transition-colors"
                                 onClick={() => onChange(value.filter((x) => x !== v))}
                             >
                                 <X className="w-3 h-3" />
@@ -201,9 +201,9 @@ export default function OnboardingModal({
                             />
                         ))}
                     </div>
-                    <div className="text-sm font-semibold text-gray-500">{step} / 2</div>
+                    <div className="text-sm font-semibold text-gray-700">{step} / 2</div>
                     <button className="p-2 rounded-xl hover:bg-gray-100" onClick={onClose} aria-label="close">
-                        <X className="w-5 h-5 text-gray-500" />
+                        <X className="w-5 h-5 text-gray-700" />
                     </button>
                 </div>
 
@@ -212,10 +212,10 @@ export default function OnboardingModal({
                     {step === 1 && (
                         <div className="space-y-6">
                             <h2 className="text-2xl font-bold text-gray-800">👋 처음 오셨군요!</h2>
-                            <p className="text-gray-600 text-sm">
+                            <p className="text-gray-800 text-sm">
                                 아래 정보는 언제든 <strong>마이페이지</strong>에서 수정할 수 있어요.
                             </p>
-                            <ul className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-2 text-sm text-gray-700">
+                            <ul className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 space-y-2 text-sm text-gray-900">
                                 <li>• <strong>공간/시설/좌석</strong>은 FAQ 모듈과 안내 기준 관리에 사용돼요.</li>
                                 <li>• 추가 채널(네이버·카카오) 연동 설명은 마이페이지에서 자세히 볼 수 있어요.</li>
                                 <li>• 기본 정보는 다음 단계에서 확인하고 수정할 수 있어요.</li>
@@ -277,7 +277,7 @@ export default function OnboardingModal({
                                                 </option>
                                             ))}
                                         </select>
-                                        <p className="mt-1 text-xs text-gray-500">
+                                        <p className="mt-1 text-xs text-gray-700">
                                             업종에 따라 아래 추천 항목이 달라집니다
                                         </p>
                                     </div>
@@ -301,7 +301,7 @@ export default function OnboardingModal({
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-bold text-gray-900">🏢 매장 구성 요소</h3>
-                                    <span className="text-xs text-gray-500">선택 사항입니다</span>
+                                    <span className="text-xs text-gray-700">선택 사항입니다</span>
                                 </div>
 
                                 {/* 멀티셀렉(프리셋 + 직접추가) */}
@@ -336,7 +336,7 @@ export default function OnboardingModal({
                     {step === 2 ? (
                         <button
                             onClick={() => setStep(1)}
-                            className="px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-white/60 flex items-center gap-2 transition-colors"
+                            className="px-3 py-2 rounded-lg text-sm text-gray-800 hover:bg-white/60 flex items-center gap-2 transition-colors"
                         >
                             <ChevronLeft className="w-4 h-4" />
                             이전
@@ -350,7 +350,7 @@ export default function OnboardingModal({
                             onClick={finish}
                             disabled={submitting || !email || !brandName}
                             className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all ${submitting || !email || !brandName
-                                ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                ? "bg-gray-200 text-gray-600 cursor-not-allowed"
                                 : "bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-900 shadow-sm hover:shadow-md hover:-translate-y-0.5"
                                 }`}
                         >

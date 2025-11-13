@@ -31,12 +31,12 @@ export default function AIResultModal({
                         </div>
                         <div>
                             <h2 className="text-lg font-semibold text-gray-900">AI 답변 보정 완료</h2>
-                            <p className="text-xs text-gray-500">고객 메시지를 확인하고 답변을 수정하세요</p>
+                            <p className="text-xs text-gray-700">고객 메시지를 확인하고 답변을 수정하세요</p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg transition-colors"
+                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-white/50 rounded-lg transition-colors"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -65,9 +65,9 @@ export default function AIResultModal({
                     {/* 최근 대화 컨텍스트 (접을 수 있는 섹션) */}
                     {recentMessages && recentMessages.length > 0 && (
                         <details className="group">
-                            <summary className="cursor-pointer text-sm font-semibold text-gray-700 hover:text-gray-900 flex items-center gap-2">
+                            <summary className="cursor-pointer text-sm font-semibold text-gray-800 hover:text-gray-900 flex items-center gap-2">
                                 <span>💬 최근 대화 보기</span>
-                                <span className="text-xs text-gray-500">({recentMessages.length}개)</span>
+                                <span className="text-xs text-gray-700">({recentMessages.length}개)</span>
                             </summary>
                             <div className="mt-3 space-y-2 pl-2 border-l-2 border-gray-200">
                                 {recentMessages.slice(-5).map((msg, idx) => (
@@ -81,10 +81,10 @@ export default function AIResultModal({
                                             )}
                                         </div>
                                         <div className="flex-1">
-                                            <p className="text-xs text-gray-500 mb-0.5">
+                                            <p className="text-xs text-gray-700 mb-0.5">
                                                 {msg.sender === 'user' ? '고객' : 'AI'}
                                             </p>
-                                            <p className="text-sm text-gray-700">{msg.text}</p>
+                                            <p className="text-sm text-gray-900">{msg.text}</p>
                                         </div>
                                     </div>
                                 ))}
@@ -96,7 +96,7 @@ export default function AIResultModal({
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {/* 원본 */}
                         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                            <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                            <p className="text-xs font-semibold text-gray-900 mb-2 flex items-center gap-2">
                                 <span>📝</span>
                                 <span>작성한 원본</span>
                             </p>
@@ -149,13 +149,13 @@ export default function AIResultModal({
                 {/* 하단 버튼 */}
                 <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
                     <div className="flex items-center justify-between">
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-700">
                             <span className="font-medium">{editedText.length}</span>자
                         </div>
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={onClose}
-                                className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium"
+                                className="px-4 py-2 text-gray-800 hover:bg-gray-200 rounded-lg transition-colors font-medium"
                             >
                                 취소
                             </button>
