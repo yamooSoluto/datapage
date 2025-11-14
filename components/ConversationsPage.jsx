@@ -43,30 +43,6 @@ export default function ConversationsPage({ tenantId }) {
         fetchConversations();
     }, [tenantId]);
 
-    // ✅ 웹에서 전체 스크롤 방지 (각 섹션만 스크롤 가능하도록)
-    useEffect(() => {
-        // body 스크롤 방지
-        const originalBodyOverflow = document.body.style.overflow;
-        const originalHtmlOverflow = document.documentElement.style.overflow;
-
-        document.body.style.overflow = 'hidden';
-        document.documentElement.style.overflow = 'hidden';
-
-        return () => {
-            // 컴포넌트 언마운트 시 확실히 복원
-            document.body.style.overflow = originalBodyOverflow || '';
-            document.documentElement.style.overflow = originalHtmlOverflow || '';
-
-            // 추가 안전장치: 명시적으로 auto로 설정
-            if (!document.body.style.overflow) {
-                document.body.style.overflow = 'auto';
-            }
-            if (!document.documentElement.style.overflow) {
-                document.documentElement.style.overflow = 'auto';
-            }
-        };
-    }, []);
-
     const fetchConversations = async (options = {}) => {
         const { skipLoading = false } = options;
 
@@ -263,7 +239,7 @@ export default function ConversationsPage({ tenantId }) {
             ) : (
                 <>
                     {/* 좌측: 대화 리스트 */}
-                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white h-full max-h-full overflow-hidden">
+                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white h-full overflow-hidden">
                         {/* 좌측 헤더 */}
                         <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-gray-200">
                             <div className="flex items-center justify-between mb-3">
@@ -344,6 +320,7 @@ export default function ConversationsPage({ tenantId }) {
                                                 setFilters({ ...filters, channel: e.target.value });
                                                 setCurrentPage(1);
                                             }}
+                                            style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
                                             className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-xs"
                                         >
                                             <option value="all">전체 채널</option>
@@ -361,6 +338,7 @@ export default function ConversationsPage({ tenantId }) {
                                                 setFilters({ ...filters, category: e.target.value });
                                                 setCurrentPage(1);
                                             }}
+                                            style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
                                             className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-xs"
                                         >
                                             <option value="all">전체 카테고리</option>
@@ -381,6 +359,7 @@ export default function ConversationsPage({ tenantId }) {
                                                 setFilters({ ...filters, dateFrom: e.target.value });
                                                 setCurrentPage(1);
                                             }}
+                                            style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
                                             className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-xs"
                                         />
                                     </div>
@@ -394,6 +373,7 @@ export default function ConversationsPage({ tenantId }) {
                                                 setFilters({ ...filters, dateTo: e.target.value });
                                                 setCurrentPage(1);
                                             }}
+                                            style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
                                             className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-xs"
                                         />
                                     </div>
@@ -409,7 +389,7 @@ export default function ConversationsPage({ tenantId }) {
                         </div>
 
                         {/* 리스트 영역 */}
-                        <div className="flex-1 overflow-y-auto px-3 py-3 pb-safe">
+                        <div className="flex-1 overflow-y-auto px-3 py-3">
                             {paginatedConversations.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-500 py-12">
                                     <User className="w-12 h-12 mb-4 opacity-50" />
@@ -457,7 +437,7 @@ export default function ConversationsPage({ tenantId }) {
                     </div>
 
                     {/* 우측: 대화 상세 (웹 전용) */}
-                    <div className="hidden lg:flex flex-1 bg-gray-50 overflow-hidden h-full">
+                    <div className="hidden lg:flex flex-1 bg-gray-50 overflow-hidden">
                         {selectedConv ? (
                             <ConversationDetail
                                 conversation={selectedConv}
@@ -468,7 +448,7 @@ export default function ConversationsPage({ tenantId }) {
                                 isEmbedded={true}
                             />
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 h-full">
+                            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                                 <MessageSquare className="w-16 h-16 mb-4 opacity-30" />
                                 <p className="text-lg font-medium">대화를 선택해주세요</p>
                                 <p className="text-sm mt-2">좌측 리스트에서 대화를 클릭하면 내용을 확인할 수 있습니다</p>
@@ -503,7 +483,7 @@ export default function ConversationsPage({ tenantId }) {
                 />
             )}
 
-            {/* 스크롤바 숨김 스타일 및 하단 탭 여백 */}
+            {/* 스크롤바 숨김 스타일 */}
             <style jsx>{`
                 .scrollbar-hide::-webkit-scrollbar {
                     display: none;
@@ -511,12 +491,6 @@ export default function ConversationsPage({ tenantId }) {
                 .scrollbar-hide {
                     -ms-overflow-style: none;
                     scrollbar-width: none;
-                }
-                /* 모바일 하단 탭 높이만큼 여백 추가 */
-                @media (max-width: 768px) {
-                    .pb-safe {
-                        padding-bottom: calc(60px + env(safe-area-inset-bottom));
-                    }
                 }
             `}</style>
         </div>

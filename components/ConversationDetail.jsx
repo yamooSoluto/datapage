@@ -78,31 +78,37 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
     }, [detail?.messages]);
 
-    // ✅ 키보드 열릴 때 스크롤 조정 및 전체 스크롤 방지
+    // ✅ 모바일 키보드 대응: textarea focus 시 스크롤 조정
     useEffect(() => {
-        const handleFocus = (e) => {
-            // 전체 페이지 스크롤 방지
-            e.preventDefault?.();
+        if (!textareaRef.current) return;
 
-            // 키보드가 열리면 메시지 영역을 조금 위로 스크롤
+        const textarea = textareaRef.current;
+        const handleFocus = () => {
+            // 모바일에서 키보드가 나타날 때 입력창이 가려지지 않도록 스크롤
             setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }, 300);
+                if (textarea) {
+                    textarea.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'center',
+                        inline: 'nearest'
+                    });
+                }
+            }, 300); // 키보드 애니메이션 대기
         };
 
         const handleBlur = () => {
-            // 포커스 해제 시에도 스크롤 방지 유지
-            document.body.style.overflow = 'hidden';
-            document.documentElement.style.overflow = 'hidden';
+            // 키보드가 사라질 때 스크롤 위치 조정 (필요시)
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 100);
         };
 
-        const textarea = textareaRef.current;
-        textarea?.addEventListener('focus', handleFocus);
-        textarea?.addEventListener('blur', handleBlur);
+        textarea.addEventListener('focus', handleFocus);
+        textarea.addEventListener('blur', handleBlur);
 
         return () => {
-            textarea?.removeEventListener('focus', handleFocus);
-            textarea?.removeEventListener('blur', handleBlur);
+            textarea.removeEventListener('focus', handleFocus);
+            textarea.removeEventListener('blur', handleBlur);
         };
     }, []);
 
@@ -736,7 +742,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
                     onClick={(e) => e.target === e.currentTarget && onClose()}
                 >
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[70vh] flex flex-col border border-gray-200">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
                         {/* 헤더 */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
                             <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
@@ -961,9 +967,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
                                     disabled={uploading}             // ❌ sending으로 disable 안 함
                                     enterKeyHint="send"
-                                    style={{
-                                        fontSize: '16px' // iOS 자동 확대 방지
-                                    }}
+                                    style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
                                     className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
                                     rows={1}
                                 />

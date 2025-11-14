@@ -65,21 +65,6 @@ export default function SettingsPage({ tenantId, initialSettings, onSave }: Sett
     const [isSaving, setIsSaving] = React.useState(false);
     const saveTimer = React.useRef<NodeJS.Timeout | null>(null);
 
-    // ✅ 페이지 마운트 시 스크롤 복원 (다른 페이지에서 overflow: hidden이 설정된 경우 대비)
-    React.useEffect(() => {
-        // 스크롤 복원
-        document.body.style.overflow = '';
-        document.documentElement.style.overflow = '';
-
-        // 명시적으로 auto로 설정
-        if (!document.body.style.overflow) {
-            document.body.style.overflow = 'auto';
-        }
-        if (!document.documentElement.style.overflow) {
-            document.documentElement.style.overflow = 'auto';
-        }
-    }, []);
-
     const handleSave = async (updatedSettings: TenantSettings) => {
         if (saveTimer.current) {
             clearTimeout(saveTimer.current);

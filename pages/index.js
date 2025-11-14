@@ -39,25 +39,6 @@ const PLAN_BADGE_CLASS = {
 
 const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#3b82f6'];
 
-// ✅ 설정 탭 래퍼: 스크롤 복원 보장
-function SettingsTabWrapper({ children }) {
-  useEffect(() => {
-    // 스크롤 복원
-    document.body.style.overflow = '';
-    document.documentElement.style.overflow = '';
-    
-    // 명시적으로 auto로 설정
-    if (!document.body.style.overflow) {
-      document.body.style.overflow = 'auto';
-    }
-    if (!document.documentElement.style.overflow) {
-      document.documentElement.style.overflow = 'auto';
-    }
-  }, []);
-  
-  return <>{children}</>;
-}
-
 // ════════════════════════════════════════════════════════════
 // 메인 컴포넌트
 // ════════════════════════════════════════════════════════════
@@ -1284,19 +1265,17 @@ export default function TenantPortal() {
 
         {/* 설정 */}
         {activeTab === 'settings' && (
-          <SettingsTabWrapper>
-            <MyPageTabs
-              tenantId={currentTenant?.id}
-              initialData={tenantData.criteriaSheet || criteriaData}
-              initialLibrary={libraryData}
-              initialSettings={settingsData}
-              templates={templates}
-              onSave={handleMatrixSave}
-              onSaveLibrary={handleLibrarySave}
-              onSaveSettings={handleSettingsSave}
-              defaultTab="settings"
-            />
-          </SettingsTabWrapper>
+          <MyPageTabs
+            tenantId={currentTenant?.id}
+            initialData={tenantData.criteriaSheet || criteriaData}
+            initialLibrary={libraryData}
+            initialSettings={settingsData}
+            templates={templates}
+            onSave={handleMatrixSave}
+            onSaveLibrary={handleLibrarySave}
+            onSaveSettings={handleSettingsSave}
+            defaultTab="settings"
+          />
         )}
       </main>
 

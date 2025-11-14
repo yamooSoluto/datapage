@@ -53,43 +53,33 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* iOS Safari 16px 미만 폰트 자동 확대 방지 */
+/* 모바일 input/textarea/select 화면 확대 방지 */
 input,
 textarea,
 select {
   font-size: 16px !important;
   -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
 }
 
-/* 입력 요소 포커스 시에도 확대 방지 */
-input:focus,
-textarea:focus,
-select:focus {
-  font-size: 16px !important;
-}
-
-/* iOS Safari 확대 완전 차단 */
-@supports (-webkit-touch-callout: none) {
+/* iOS Safari에서 input focus 시 확대 방지 */
+@media screen and (max-width: 768px) {
 
   input,
   textarea,
   select {
     font-size: 16px !important;
+    -webkit-text-size-adjust: 100%;
+    -webkit-appearance: none;
+    appearance: none;
   }
-}
 
-/* 모바일 키보드 대응 */
-@media (max-width: 768px) {
+  /* 키보드가 나타날 때 레이아웃 깨짐 방지 - viewport height 고정 */
+  html {
+    height: -webkit-fill-available;
+  }
+
   body {
-    position: fixed;
-    width: 100%;
-    overflow: hidden;
-  }
-
-  input,
-  textarea,
-  select {
-    font-size: 16px !important;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
   }
 }

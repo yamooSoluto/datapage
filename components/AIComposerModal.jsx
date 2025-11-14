@@ -286,6 +286,7 @@ export default function AIComposerModal({
                                     value={directInput}
                                     onChange={(e) => setDirectInput(e.target.value)}
                                     placeholder="답변 내용을 입력하세요..."
+                                    style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
                                     className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                                 />
                             </div>
@@ -390,6 +391,7 @@ export default function AIComposerModal({
                                 <textarea
                                     value={correctedText}
                                     onChange={(e) => setCorrectedText(e.target.value)}
+                                    style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
                                     className="w-full h-48 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 font-medium resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="보정된 답변을 확인하고 필요시 수정하세요..."
                                 />
