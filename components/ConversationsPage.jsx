@@ -46,13 +46,24 @@ export default function ConversationsPage({ tenantId }) {
     // ✅ 웹에서 전체 스크롤 방지 (각 섹션만 스크롤 가능하도록)
     useEffect(() => {
         // body 스크롤 방지
+        const originalBodyOverflow = document.body.style.overflow;
+        const originalHtmlOverflow = document.documentElement.style.overflow;
+
         document.body.style.overflow = 'hidden';
         document.documentElement.style.overflow = 'hidden';
 
         return () => {
-            // 컴포넌트 언마운트 시 복원
-            document.body.style.overflow = '';
-            document.documentElement.style.overflow = '';
+            // 컴포넌트 언마운트 시 확실히 복원
+            document.body.style.overflow = originalBodyOverflow || '';
+            document.documentElement.style.overflow = originalHtmlOverflow || '';
+
+            // 추가 안전장치: 명시적으로 auto로 설정
+            if (!document.body.style.overflow) {
+                document.body.style.overflow = 'auto';
+            }
+            if (!document.documentElement.style.overflow) {
+                document.documentElement.style.overflow = 'auto';
+            }
         };
     }, []);
 

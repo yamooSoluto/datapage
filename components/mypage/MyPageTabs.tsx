@@ -32,6 +32,21 @@ export default function MyPageTabs({
 }: MyPageTabsProps) {
     const [activeTab, setActiveTab] = React.useState<"settings" | "data" | "library">(defaultTab);
 
+    // ✅ 페이지 마운트 시 스크롤 복원 (다른 페이지에서 overflow: hidden이 설정된 경우 대비)
+    React.useEffect(() => {
+        // 스크롤 복원
+        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
+        
+        // 명시적으로 auto로 설정
+        if (!document.body.style.overflow) {
+            document.body.style.overflow = 'auto';
+        }
+        if (!document.documentElement.style.overflow) {
+            document.documentElement.style.overflow = 'auto';
+        }
+    }, []);
+
     // defaultTab이 'library'면 헤더 없이 바로 라이브러리만 렌더링
     if (defaultTab === "library") {
         return (

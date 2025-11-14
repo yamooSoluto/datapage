@@ -484,7 +484,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         <>
             {/* 임베디드 모드: 모달 없이 전체 화면 사용 */}
             {isEmbedded ? (
-                <div className="flex flex-col h-full w-full bg-white overflow-hidden max-h-full">
+                <div className="flex flex-col h-full w-full bg-white overflow-hidden">
                     {/* 헤더 */}
                     <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0 bg-white">
                         <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
@@ -736,7 +736,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
                     onClick={(e) => e.target === e.currentTarget && onClose()}
                 >
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[80vh] flex flex-col border border-gray-200">
                         {/* 헤더 */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
                             <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
