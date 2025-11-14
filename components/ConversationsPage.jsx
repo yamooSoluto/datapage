@@ -409,7 +409,7 @@ export default function ConversationsPage({ tenantId }) {
                         </div>
 
                         {/* 리스트 영역 */}
-                        <div className="flex-1 overflow-y-auto px-3 py-3">
+                        <div className="flex-1 overflow-y-auto px-3 py-3 pb-safe">
                             {paginatedConversations.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-500 py-12">
                                     <User className="w-12 h-12 mb-4 opacity-50" />
@@ -503,7 +503,7 @@ export default function ConversationsPage({ tenantId }) {
                 />
             )}
 
-            {/* 스크롤바 숨김 스타일 */}
+            {/* 스크롤바 숨김 스타일 및 하단 탭 여백 */}
             <style jsx>{`
                 .scrollbar-hide::-webkit-scrollbar {
                     display: none;
@@ -511,6 +511,12 @@ export default function ConversationsPage({ tenantId }) {
                 .scrollbar-hide {
                     -ms-overflow-style: none;
                     scrollbar-width: none;
+                }
+                /* 모바일 하단 탭 높이만큼 여백 추가 */
+                @media (max-width: 768px) {
+                    .pb-safe {
+                        padding-bottom: calc(60px + env(safe-area-inset-bottom));
+                    }
                 }
             `}</style>
         </div>
