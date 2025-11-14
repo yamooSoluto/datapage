@@ -1,6 +1,36 @@
 // pages/api/tenants/policy.js
-import { adminDb } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
+
+// Firebase Admin 초기화
+if (!admin.apps.length) {
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+    let formattedKey = privateKey;
+    if (privateKey) {
+        if (privateKey.includes('\n')) {
+            formattedKey = privateKey;
+        } else if (privateKey.includes('\\n')) {
+            formattedKey = privateKey.replace(/\\n/g, '\n');
+        }
+        formattedKey = formattedKey.replace(/^["']|["']$/g, '');
+    }
+
+    try {
+        admin.initializeApp({
+            credential: admin.credential.cert({
+                projectId: process.env.FIREBASE_PROJECT_ID,
+                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                privateKey: formattedKey,
+            }),
+        });
+        console.log('✅ Firebase Admin initialized');
+    } catch (initError) {
+        console.error('❌ Firebase Admin initialization failed:', initError.message);
+        throw initError;
+    }
+}
+
+const db = admin.firestore();
 
 export default async function handler(req, res) {
     if (req.method !== 'PATCH') {
@@ -14,10 +44,10 @@ export default async function handler(req, res) {
     }
 
     try {
-        const tenantRef = adminDb.collection('Tenants').doc(tenantId);
+        const tenantRef = db.collection('Tenants').doc(tenantId);
 
         // 트랜잭션으로 원자성 보장
-        await adminDb.runTransaction(async (transaction) => {
+        await db.runTransaction(async (transaction) => {
             const tenantDoc = await transaction.get(tenantRef);
 
             if (!tenantDoc.exists) {
@@ -32,7 +62,7 @@ export default async function handler(req, res) {
             });
 
             // 2. 전역 모드 문서 업데이트
-            const globalModeRef = adminDb
+            const globalModeRef = db
                 .collection('Conversation_Mode')
                 .doc(`${tenantId}_global`);
 
