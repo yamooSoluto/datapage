@@ -104,7 +104,7 @@ export default function AIComposerModal({
 
             // ✅ 2. conversationId로 폴링 시작
             const conversationId = conversation?.chatId || conversation?.id;
-            
+
             if (!conversationId) {
                 throw new Error('대화 ID를 찾을 수 없습니다.');
             }
@@ -145,18 +145,18 @@ export default function AIComposerModal({
                             setCorrectedText(extractedCorrectedText);
                             setOriginalText(finalContent);
                             setCustomerMessage(pollData.customerMessage || conversation.lastMessage || '');
-                            
+
                             // ✅ recentMessages가 배열인지 확인 후 저장
-                            const safeRecentMessages = Array.isArray(pollData.recentMessages) 
-                                ? pollData.recentMessages 
-                                : (Array.isArray(pollData.recent_messages) 
-                                    ? pollData.recent_messages 
+                            const safeRecentMessages = Array.isArray(pollData.recentMessages)
+                                ? pollData.recentMessages
+                                : (Array.isArray(pollData.recent_messages)
+                                    ? pollData.recent_messages
                                     : []);
                             setRecentMessages(safeRecentMessages);
-                            
+
                             // ✅ step 변경 전에 잠시 대기하여 state가 확실히 업데이트되도록 함
                             await new Promise(resolve => setTimeout(resolve, 100));
-                            
+
                             setStep('result');
                             setProcessing(false);
                             return;
@@ -286,7 +286,7 @@ export default function AIComposerModal({
                                     value={directInput}
                                     onChange={(e) => setDirectInput(e.target.value)}
                                     placeholder="답변 내용을 입력하세요..."
-                                    className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                                    className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                                 />
                             </div>
 
@@ -390,7 +390,7 @@ export default function AIComposerModal({
                                 <textarea
                                     value={correctedText}
                                     onChange={(e) => setCorrectedText(e.target.value)}
-                                    className="w-full h-48 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="w-full h-48 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 font-medium resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="보정된 답변을 확인하고 필요시 수정하세요..."
                                 />
                                 <p className="text-xs text-gray-800 mt-2 font-medium">
