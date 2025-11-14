@@ -83,26 +83,36 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
     }, [detail?.messages]);
 
-    const fetchDetail = async () => {
+    const fetchDetail = async (options = {}) => {
+        const { skipLoading = false } = options;
+
         if (!chatId) {
-            console.error('[ConversationDetail] Cannot fetch detail: chatId is missing');
+            console.error('[ConversationDetail] Missing chatId');
             return;
         }
-        setLoading(true);
+
+        if (!skipLoading) {
+            setLoading(true);
+        }
+
         try {
             const res = await fetch(`/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${chatId}`);
-            if (!res.ok) {
-                throw new Error(`Failed to fetch: ${res.status}`);
-            }
+            if (!res.ok) throw new Error('상세 조회 실패');
+
             const data = await res.json();
             setDetail(data);
         } catch (error) {
             console.error('[ConversationDetail] Failed to fetch detail:', error);
-            setDetail(null);
+            if (!skipLoading) {
+                setDetail(null);
+            }
         } finally {
-            setLoading(false);
+            if (!skipLoading) {
+                setLoading(false);
+            }
         }
     };
+
 
     useEffect(() => {
         const handleEsc = (e) => {
@@ -183,8 +193,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         el.style.height = newHeight + 'px';
     };
 
-    // 기존 handleSend 전체를 이렇게 교체
-
     const handleSend = async () => {
         if (sending || uploading) return;
 
@@ -207,7 +215,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         const savedDraft = draft;
         const savedAttachments = [...attachments];
 
-        // ✅ 옵티미스틱 메시지
+        // ================================================
+        // ① 옵티미스틱 메시지 (UI 먼저 반응)
+        // ================================================
         const tempId = `local-${Date.now()}`;
         const optimisticMessage = {
             sender: 'agent',
@@ -218,28 +228,24 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             _status: 'pending',
         };
 
-        if (detail?.messages) {
-            setDetail(prev =>
-                prev
-                    ? { ...prev, messages: [...(prev.messages || []), optimisticMessage] }
-                    : prev
-            );
-        }
+        setDetail(prev =>
+            prev
+                ? { ...prev, messages: [...(prev.messages || []), optimisticMessage] }
+                : prev
+        );
 
-        // ✅ 입력창/첨부는 즉시 리셋 (체감 속도용)
+        // ================================================
+        // ② 입력창/첨부 즉시 리셋 (로딩감 제거 → 체감 속도↑)
+        // ================================================
         setDraft('');
         setAttachments([]);
-        try {
-            localStorage.removeItem(draftKey);
-        } catch (e) {
-            console.error('[ConversationDetail] Failed to clear draft:', e);
-        }
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-        }
+        try { localStorage.removeItem(draftKey); } catch (e) { }
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
         try {
-            // 실제 전송
+            // ================================================
+            // ③ 실제 전송 (UI는 이미 반응했기 때문에 기다릴 필요 없음)
+            // ================================================
             await onSend?.({
                 text: text || '',
                 attachments: savedAttachments.map(att => ({
@@ -252,7 +258,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 chatId: chatId,
             });
 
-            // ✅ 성공 시: pending → sent
+            // ================================================
+            // ④ 성공 → pending → sent
+            // ================================================
             setDetail(prev => {
                 if (!prev?.messages) return prev;
                 return {
@@ -263,27 +271,29 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 };
             });
 
-            // ✅ 상세 재조회는 비동기 (기다리지 않음)
-            fetchDetail().catch(err => {
-                console.error('[ConversationDetail] Failed to refresh detail:', err);
+            // ================================================
+            // ⑤ “전체 새로고침 없이” 백그라운드만 갈아끼우기
+            //    (스피너 없음, 화면 깜빡임 없음)
+            // ================================================
+            fetchDetail({ skipLoading: true }).catch(err => {
+                console.error('[ConversationDetail] refresh fail:', err);
             });
+
         } catch (error) {
             console.error('[ConversationDetail] Send failed:', error);
 
-            // ✅ 실패 시: 버블은 살려두고 상태만 error로
+            // ⑥ 실패 → 버블만 error 처리
             setDetail(prev => {
                 if (!prev?.messages) return prev;
                 return {
                     ...prev,
                     messages: prev.messages.map(m =>
-                        m.msgId === tempId
-                            ? { ...m, _status: 'error' }
-                            : m
+                        m.msgId === tempId ? { ...m, _status: 'error' } : m
                     ),
                 };
             });
 
-            // 선택: 입력 복원
+            // 입력값 복원
             setDraft(savedDraft);
             setAttachments(savedAttachments);
 
@@ -406,22 +416,13 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     </div>
                                 )}
 
-                                {detail.messages.map((msg, idx) => {
-                                    // ✅ 옵티미스틱 메시지 표시 (pending 상태)
-                                    const isPending = msg._status === 'pending';
-                                    const isError = msg._status === 'error';
-                                    return (
-                                        <div key={msg.msgId || idx} className="relative">
-                                            <MessageBubble message={msg} onImageClick={(url) => setImagePreview(url)} />
-                                            {isPending && (
-                                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse" title="전송 중..." />
-                                            )}
-                                            {isError && (
-                                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" title="전송 실패" />
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                {detail.messages.map((msg, idx) => (
+                                    <MessageBubble
+                                        key={msg.msgId || idx}
+                                        message={msg}
+                                        onImageClick={(url) => setImagePreview(url)}
+                                    />
+                                ))}
                                 <div ref={messagesEndRef} />
                             </div>
                         ) : (
