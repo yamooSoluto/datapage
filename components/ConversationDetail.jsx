@@ -148,49 +148,47 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                 const data = snapshot.data();
 
-                // messages 배열 추출 및 변환
-                const messages = Array.isArray(data.messages)
-                    ? data.messages.map(m => ({
-                        sender: m.sender,
-                        text: m.text || '',
-                        pics: Array.isArray(m.pics) ? m.pics : [],
-                        timestamp: m.timestamp?.toDate?.()?.toISOString() || m.timestamp || new Date().toISOString(),
-                        msgId: m.msgId || null,
-                        modeSnapshot: m.modeSnapshot || null,
-                    }))
-                    : [];
+                // ✅ 서버 메시지 정규화 및 옵티미스틱 메시지 병합
+                const serverMessages = normalizeServerMessages(data.messages);
 
-                // conversation 정보 업데이트
-                setDetail({
-                    conversation: {
-                        id: snapshot.id,
-                        chatId: data.chat_id || chatId,
-                        userId: data.user_id,
-                        userName: data.user_name || '익명',
-                        brandName: data.brandName || null,
-                        channel: data.channel || 'unknown',
-                        status: data.status || 'waiting',
-                        modeSnapshot: data.modeSnapshot || 'AUTO',
-                        lastMessageAt: data.lastMessageAt?.toDate?.()?.toISOString() || data.lastMessageAt,
-                        cwConversationId: data.cw_conversation_id || null,
-                        summary: typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null,
-                        category: data.category || null,
-                        categories: data.category ? data.category.split('|').map(c => c.trim()) : [],
-                    },
-                    messages,
-                });
+                setDetail(prev => {
+                    const optimisticMessages = prev?.messages?.filter(m =>
+                        m._status === 'pending' || m._status === 'sent'
+                    ) || [];
 
-                // ✅ 초기 로딩일 때만 로딩 상태 변경 (이후 업데이트는 조용히)
-                const isInitialLoad = !initialLoadedRef.current;
-                if (isInitialLoad) {
-                    setLoading(false);
-                    initialLoadedRef.current = true;
-                }
+                    const mergedMessages = mergeOptimisticMessages(serverMessages, optimisticMessages);
 
-                console.log('[ConversationDetail] Firestore update received:', {
-                    messagesCount: messages.length,
-                    lastMessage: messages[messages.length - 1]?.text?.substring(0, 50),
-                    isInitialLoad,
+                    // ✅ 초기 로딩일 때만 로딩 상태 변경 (이후 업데이트는 조용히)
+                    const isInitialLoad = !initialLoadedRef.current;
+                    if (isInitialLoad) {
+                        setLoading(false);
+                        initialLoadedRef.current = true;
+                    }
+
+                    console.log('[ConversationDetail] Firestore update received:', {
+                        messagesCount: mergedMessages.length,
+                        lastMessage: mergedMessages[mergedMessages.length - 1]?.text?.substring(0, 50),
+                        isInitialLoad,
+                    });
+
+                    return {
+                        conversation: {
+                            id: snapshot.id,
+                            chatId: data.chat_id || chatId,
+                            userId: data.user_id,
+                            userName: data.user_name || '익명',
+                            brandName: data.brandName || null,
+                            channel: data.channel || 'unknown',
+                            status: data.status || 'waiting',
+                            modeSnapshot: data.modeSnapshot || 'AUTO',
+                            lastMessageAt: data.lastMessageAt?.toDate?.()?.toISOString() || data.lastMessageAt,
+                            cwConversationId: data.cw_conversation_id || null,
+                            summary: typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null,
+                            category: data.category || null,
+                            categories: data.category ? data.category.split('|').map(c => c.trim()) : [],
+                        },
+                        messages: mergedMessages,
+                    };
                 });
             },
             (error) => {
@@ -216,6 +214,54 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [chatId, effectiveTenantId]);
 
+    // ✅ 서버 메시지 정규화 헬퍼 함수 (Firestore Timestamp 및 일반 문자열 모두 처리)
+    const normalizeServerMessages = (messages) => {
+        if (!Array.isArray(messages)) return [];
+        return messages.map(m => ({
+            sender: m.sender,
+            text: m.text || '',
+            pics: Array.isArray(m.pics) ? m.pics : [],
+            timestamp: m.timestamp?.toDate?.()?.toISOString() || m.timestamp || new Date().toISOString(),
+            msgId: m.msgId || null,
+            modeSnapshot: m.modeSnapshot || null,
+        }));
+    };
+
+    // ✅ 옵티미스틱 메시지와 서버 메시지 병합 헬퍼 함수
+    const mergeOptimisticMessages = (serverMessages, optimisticMessages) => {
+        const serverMsgIds = new Set(serverMessages.map(m => m.msgId).filter(Boolean));
+
+        // 서버에 저장된 옵티미스틱 메시지 제거
+        const remaining = optimisticMessages.filter(opt => {
+            // msgId로 매칭
+            if (opt.msgId && serverMsgIds.has(opt.msgId)) return false;
+
+            // 타임스탬프 + 내용으로 매칭
+            const optTime = new Date(opt.timestamp).getTime();
+            const optText = (opt.text || '').trim();
+            const optPicsCount = (opt.pics || []).length;
+
+            return !serverMessages.some(server => {
+                const serverTime = new Date(server.timestamp).getTime();
+                const timeDiff = Math.abs(optTime - serverTime);
+                const serverText = (server.text || '').trim();
+                const serverPicsCount = (server.pics || []).length;
+
+                // 사진만: 타임스탬프 + 사진 개수만
+                if (!optText && !serverText && optPicsCount > 0 && serverPicsCount > 0) {
+                    return timeDiff < 10000 && optPicsCount === serverPicsCount;
+                }
+                // 텍스트 있음: 타임스탬프 + 텍스트 + 사진 개수
+                if (optText && serverText) {
+                    return timeDiff < 5000 && optText === serverText && optPicsCount === serverPicsCount;
+                }
+                return false;
+            });
+        });
+
+        return [...serverMessages, ...remaining];
+    };
+
     const fetchDetail = async (options = {}) => {
         const { skipLoading = false } = options;
 
@@ -237,7 +283,19 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             }
 
             const data = await res.json();
-            setDetail(data);
+
+            setDetail(prev => {
+                const optimisticMessages = prev?.messages?.filter(m =>
+                    m._status === 'pending' || m._status === 'sent'
+                ) || [];
+
+                const serverMessages = normalizeServerMessages(data.messages);
+
+                return {
+                    ...data,
+                    messages: mergeOptimisticMessages(serverMessages, optimisticMessages),
+                };
+            });
         } catch (error) {
             console.error('[ConversationDetail] Failed to fetch detail:', error);
             if (!skipLoading) {
@@ -354,12 +412,13 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
         // ================================================
         // ① 옵티미스틱 메시지 (UI 먼저 반응)
+        // 사진만 전송할 때는 text가 빈 문자열, pics만 있음 (카카오톡처럼 버블 없이 이미지만 표시)
         // ================================================
         const tempId = `local-${Date.now()}`;
         const optimisticMessage = {
             sender: 'agent',
-            text: text || '',
-            pics: savedAttachments.map(att => att.preview || att.url || '').filter(Boolean),
+            text: text || '', // 사진만 전송할 때는 빈 문자열
+            pics: savedAttachments.map(att => att.preview || att.url || '').filter(Boolean), // blob URL (preview)
             timestamp: new Date().toISOString(),
             msgId: tempId,
             _status: 'pending',
@@ -409,12 +468,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             });
 
             // ================================================
-            // ⑤ “전체 새로고침 없이” 백그라운드만 갈아끼우기
-            //    (스피너 없음, 화면 깜빡임 없음)
+            // ⑤ Firestore 리스너가 자동으로 업데이트하므로 fetchDetail 불필요
+            //    (옵티미스틱 메시지가 보존되고, 서버 메시지가 자동으로 추가됨)
             // ================================================
-            fetchDetail({ skipLoading: true }).catch(err => {
-                console.error('[ConversationDetail] refresh fail:', err);
-            });
+            // fetchDetail 제거: Firestore 리스너가 자동으로 업데이트함
 
         } catch (error) {
             console.error('[ConversationDetail] Send failed:', error);

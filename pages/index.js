@@ -1086,7 +1086,7 @@ export default function TenantPortal() {
       />
 
       {/* 메인 컨텐츠 */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-20 md:pb-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 pb-20 md:pt-16 md:pb-6">
         {/* 대화 관리 (메인) */}
         {activeTab === 'conversations' && (
           <ConversationsPage tenantId={currentTenant?.id} />

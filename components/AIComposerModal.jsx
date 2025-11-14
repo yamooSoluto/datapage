@@ -185,24 +185,64 @@ export default function AIComposerModal({
     };
 
     // ✅ 전송 핸들러
-    const handleSend = async () => {
+    const handleSend = () => {
         const trimmedText = correctedText?.trim() || '';
 
+        console.log('[AIComposerModal] handleSend called:', {
+            correctedText,
+            correctedTextType: typeof correctedText,
+            correctedTextLength: correctedText?.length,
+            trimmedText,
+            trimmedTextLength: trimmedText.length,
+            isEmpty: !correctedText,
+            isEmptyAfterTrim: !trimmedText,
+            step,
+            conversation: {
+                chatId: conversation?.chatId,
+                id: conversation?.id,
+                tenant: conversation?.tenant,
+                tenantId: conversation?.tenantId,
+            },
+        });
+
+        // 내용이 진짜 비어있으면 막기
         if (!trimmedText) {
+            console.warn('[AIComposerModal] Empty correctedText, blocking send.', {
+                correctedText,
+                trimmedText,
+                step,
+            });
             setError('전송할 내용이 없습니다.');
             return;
         }
 
+        // 버튼 중복 클릭 방지 정도만
         setSending(true);
         setError('');
 
         try {
-            await onSend(trimmedText);
-            onClose();
+            console.log('[AIComposerModal] Fire-and-forget onSend:', {
+                text: trimmedText,
+                textLength: trimmedText.length,
+            });
+
+            // ✅ 1) onSend 호출 (비동기지만 "기다리지 않음")
+            const maybePromise = onSend?.(trimmedText);
+
+            if (maybePromise && typeof maybePromise.then === 'function') {
+                maybePromise.catch((err) => {
+                    console.error('[AIComposerModal] Send error (async):', err);
+                    // 여기에서 나중에 토스트나 전역 에러 핸들러 붙일 수 있음
+                });
+            }
         } catch (err) {
-            setError(err.message || '전송 중 오류가 발생했습니다.');
+            // onSend 자체가 동기 에러를 던지는 경우만 여기서 잡힘
+            console.error('[AIComposerModal] Immediate send error:', err);
         } finally {
-            setSending(false);
+            // ✅ 2) UI는 바로 정리: 모달 닫기 + 상태 리셋
+            onClose();
+            // 모달이 이미 언마운트될 거라 사실 의미는 거의 없지만 안전용
+            setTimeout(() => setSending(false), 50);
         }
     };
 
