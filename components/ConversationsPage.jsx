@@ -179,7 +179,25 @@ export default function ConversationsPage({ tenantId }) {
                 throw new Error(errorData.error || `전송 실패: ${response.status}`);
             }
 
-            return await response.json();
+            const result = await response.json();
+
+            // 🔹 1) 리스트는 "조용히" 비동기 리프레시 (로딩 플래그 X, await X)
+            fetchConversations({ skipLoading: true }).catch((e) => {
+                console.warn('[ConversationsPage] silent refresh failed:', e);
+            });
+
+            // 🔹 2) 선택된 대화만 살짝 메타 업데이트 (완전 필수는 아님)
+            setSelectedConv((prev) => {
+                if (!prev || prev.chatId !== effectiveChatId) return prev;
+                return {
+                    ...prev,
+                    lastMessageAt: new Date().toISOString(),
+                    lastAgentMessage: finalTextTrimmed || prev.lastAgentMessage,
+                    hasAgentResponse: true,
+                };
+            });
+
+            return result;
         } catch (error) {
             console.error('[ConversationsPage] Failed to send message:', error);
             throw error;
@@ -209,7 +227,7 @@ export default function ConversationsPage({ tenantId }) {
     };
 
     return (
-        <div className="flex h-screen bg-gray-50">
+        <div className="flex h-screen bg-gray-50 overflow-hidden">
             {/* 메인 컨텐츠 */}
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
@@ -221,10 +239,10 @@ export default function ConversationsPage({ tenantId }) {
             ) : (
                 <>
                     {/* 좌측: 대화 리스트 */}
-                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white">
+                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white h-full">
                         {/* 좌측 헤더 */}
-                        <div className="flex-shrink-0 px-4 py-4 border-b border-gray-200">
-                            <div className="flex items-center justify-between mb-4">
+                        <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-gray-200">
+                            <div className="flex items-center justify-between mb-3">
                                 <h1 className="text-xl font-bold text-gray-900">대화 관리</h1>
                                 <button
                                     onClick={() => fetchConversations()}
@@ -292,7 +310,7 @@ export default function ConversationsPage({ tenantId }) {
 
                             {/* 고급 필터 */}
                             {showAdvancedFilters && (
-                                <div className="mt-3 space-y-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <div className="mt-3 space-y-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
                                     <div>
                                         <label className="block text-xs font-semibold text-gray-700 mb-1">채널</label>
                                         <select
