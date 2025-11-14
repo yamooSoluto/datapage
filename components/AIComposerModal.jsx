@@ -193,14 +193,20 @@ export default function AIComposerModal({
             return;
         }
 
+        // ✅ 로딩 상태는 최소화 (옵티미스틱 UI가 이미 메시지를 표시함)
         setSending(true);
         setError('');
 
         try {
+            // ✅ 전송 요청 (옵티미스틱 UI는 상위 컴포넌트에서 처리)
             await onSend(trimmedText);
+
+            // ✅ 성공 시 즉시 모달 닫기 (메시지는 이미 표시됨)
             onClose();
         } catch (err) {
+            // ✅ 실패 시 에러 표시 (메시지 버블에 오류 표시는 상위 컴포넌트에서 처리)
             setError(err.message || '전송 중 오류가 발생했습니다.');
+            // 모달은 열어둠 (사용자가 재시도할 수 있도록)
         } finally {
             setSending(false);
         }
