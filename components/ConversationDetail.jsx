@@ -7,9 +7,10 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebaseClient';
 import AIComposerModal from './AIComposerModal';
 
-export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId, planName = 'trial' }) {
+export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId, planName = 'trial', isEmbedded = false }) {
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
+    const initialLoadedRef = useRef(false); // ✅ 초기 로딩 완료 플래그 (클로저 문제 방지)
     const [imagePreview, setImagePreview] = useState(null);
     const [showAIComposer, setShowAIComposer] = useState(false); // ✅ AI 보정 모달 상태
     const messagesEndRef = useRef(null);
@@ -81,6 +82,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     useEffect(() => {
         if (!chatId || !effectiveTenantId) {
             setLoading(false);
+            initialLoadedRef.current = false;
             return;
         }
 
@@ -89,8 +91,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
         console.log('[ConversationDetail] Setting up Firestore listener for:', docId);
 
-        // 초기 로딩 시작
+        // 초기 로딩 시작 (chatId가 변경되면 초기화)
         setLoading(true);
+        initialLoadedRef.current = false;
 
         // 실시간 리스너 등록 (초기 데이터도 자동으로 받아옴)
         const unsubscribe = onSnapshot(
@@ -98,7 +101,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             (snapshot) => {
                 if (!snapshot.exists()) {
                     console.warn('[ConversationDetail] Document does not exist:', docId);
-                    setLoading(false);
+                    // 초기 로딩일 때만 로딩 상태 변경
+                    if (!initialLoadedRef.current) {
+                        setLoading(false);
+                        initialLoadedRef.current = true;
+                    }
                     setDetail(null);
                     return;
                 }
@@ -137,17 +144,26 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     messages,
                 });
 
-                // 로딩 완료
-                setLoading(false);
+                // ✅ 초기 로딩일 때만 로딩 상태 변경 (이후 업데이트는 조용히)
+                const isInitialLoad = !initialLoadedRef.current;
+                if (isInitialLoad) {
+                    setLoading(false);
+                    initialLoadedRef.current = true;
+                }
 
                 console.log('[ConversationDetail] Firestore update received:', {
                     messagesCount: messages.length,
                     lastMessage: messages[messages.length - 1]?.text?.substring(0, 50),
+                    isInitialLoad,
                 });
             },
             (error) => {
                 console.error('[ConversationDetail] Firestore listener error:', error);
-                setLoading(false);
+                // 초기 로딩일 때만 로딩 상태 변경
+                if (!initialLoadedRef.current) {
+                    setLoading(false);
+                    initialLoadedRef.current = true;
+                }
                 // 에러 발생 시 기존 fetchDetail로 폴백
                 fetchDetail({ skipLoading: true }).catch((e) => {
                     console.error('[ConversationDetail] Fallback fetchDetail failed:', e);
@@ -159,6 +175,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         return () => {
             console.log('[ConversationDetail] Cleaning up Firestore listener');
             unsubscribe();
+            initialLoadedRef.current = false; // 리스너 해제 시 플래그도 초기화
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [chatId, effectiveTenantId]);
@@ -437,13 +454,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     return (
         <>
-            <div
-                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                onClick={(e) => e.target === e.currentTarget && onClose()}
-            >
-                <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
+            {/* 임베디드 모드: 모달 없이 전체 화면 사용 */}
+            {isEmbedded ? (
+                <div className="flex flex-col h-full bg-white">
                     {/* 헤더 */}
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0 bg-white">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
                                 <span className="text-white text-sm font-semibold">
@@ -459,7 +474,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         </div>
 
                         <div className="flex items-center gap-2">
-                            {/* ✅ AI 보정 버튼 */}
+                            {/* AI 보정 버튼 */}
                             {(planName === 'pro' || planName === 'business') && (
                                 <button
                                     onClick={() => setShowAIComposer(true)}
@@ -469,13 +484,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     AI 보정
                                 </button>
                             )}
-
-                            <button
-                                onClick={onClose}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
                         </div>
                     </div>
 
@@ -520,8 +528,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     </div>
 
                     {/* 입력 영역 */}
-                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl">
-                        {/* ✅ 요약 정보 - 입력창 위로 이동 + 스타일 개선 */}
+                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white">
+                        {/* 요약 정보 */}
                         {detail?.conversation?.summary && (
                             <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
                                 <div className="text-sm text-blue-900">
@@ -536,7 +544,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 {attachments.map((att, idx) => (
                                     <div key={idx} className="relative group">
                                         {att.preview ? (
-                                            // 이미지 미리보기
                                             <>
                                                 <img
                                                     src={att.preview}
@@ -547,13 +554,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                                     onClick={() => removeAttachment(idx)}
                                                     disabled={uploading}
                                                     className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    aria-label="첨부파일 삭제"
                                                 >
                                                     ×
                                                 </button>
                                             </>
                                         ) : (
-                                            // 일반 파일 (PDF 등)
                                             <div className="relative">
                                                 <div className="w-20 h-20 bg-gray-100 rounded-lg border border-gray-200 flex flex-col items-center justify-center p-2">
                                                     <Paperclip className="w-6 h-6 text-gray-400 mb-1" />
@@ -568,7 +573,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                                     onClick={() => removeAttachment(idx)}
                                                     disabled={sending || uploading}
                                                     className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    aria-label="첨부파일 삭제"
                                                 >
                                                     ×
                                                 </button>
@@ -581,76 +585,282 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                         {/* 업로드 중 표시 */}
                         {uploading && (
-                            <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+                            <div className="mb-2 text-sm text-blue-600 flex items-center gap-2">
                                 <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600" />
-                                <span className="text-sm text-blue-900">파일 처리 중...</span>
+                                파일 업로드 중...
                             </div>
                         )}
 
-                        {/* 입력바 */}
+                        {/* 입력창 */}
                         <div className="flex items-end gap-2">
+                            <input
+                                type="file"
+                                ref={filePickerRef}
+                                onChange={(e) => handleFiles(e.target.files)}
+                                className="hidden"
+                                multiple
+                                accept="image/*,.pdf"
+                            />
+
                             <button
                                 onClick={() => filePickerRef.current?.click()}
-                                disabled={uploading}
-                                className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                aria-label="첨부"
-                            >
-                                <Paperclip className="w-4 h-4 text-gray-600" />
-                            </button>
-
-                            {/* ✅ AI 보정 버튼 - AIComposerModal 연결 */}
-                            <button
-                                onClick={() => setShowAIComposer(true)}
                                 disabled={sending || uploading}
-                                className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                                aria-label="AI 보정"
-                                title="AI 톤 보정"
+                                className="flex-shrink-0 p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <Sparkles className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                                <Paperclip className="w-5 h-5" />
                             </button>
 
                             <textarea
                                 ref={textareaRef}
-                                value={draft} // ❌ sending 여부에 따라 바꾸지 않기
+                                value={draft}
                                 onChange={(e) => {
-                                    if (!uploading) {            // ❌ sending은 무시
-                                        setDraft(e.target.value);
-                                        autoResize(e.target);
-                                    }
+                                    setDraft(e.target.value);
+                                    autoResize(e.target);
                                 }}
                                 onKeyDown={onKeyDown}
                                 onPaste={onPaste}
-                                placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
-                                disabled={uploading}             // ❌ sending으로 disable 안 함
-                                enterKeyHint="send"
-                                className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
+                                placeholder="메시지를 입력하세요..."
+                                disabled={sending || uploading}
+                                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{ minHeight: '42px', maxHeight: '120px' }}
                                 rows={1}
                             />
+
                             <button
                                 onClick={handleSend}
                                 disabled={!canSend || sending || uploading}
-                                className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${canSend && !sending && !uploading
-                                    ? 'bg-blue-500 hover:bg-blue-600 active:scale-95 text-white shadow-sm'
+                                className={`flex-shrink-0 p-2.5 rounded-xl transition-all ${canSend && !sending && !uploading
+                                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
                                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                     }`}
-                                aria-label="전송"
                             >
-                                {/* 항상 아이콘만 */}
-                                <Send className="w-4 h-4" />
+                                <Send className="w-5 h-5" />
                             </button>
+                        </div>
 
-                            <input
-                                ref={filePickerRef}
-                                type="file"
-                                accept="image/*,video/*,application/pdf"
-                                multiple
-                                className="hidden"
-                                onChange={(e) => handleFiles(e.target.files)}
-                            />
+                        {/* 데스크톱 힌트 */}
+                        <div className="hidden md:block mt-2 text-xs text-gray-400 text-center">
+                            Enter 전송 • Shift+Enter 줄바꿈
                         </div>
                     </div>
                 </div>
-            </div>
+            ) : (
+                /* 모달 모드: 기존 코드 유지 */
+                <div
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    onClick={(e) => e.target === e.currentTarget && onClose()}
+                >
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
+                        {/* 헤더 */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
+                                    <span className="text-white text-sm font-semibold">
+                                        {conversation.userName?.charAt(0) || '?'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
+                                    <p className="text-xs text-gray-500">
+                                        {conversation.channel || 'unknown'} • {chatId || 'N/A'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                {/* AI 보정 버튼 */}
+                                {(planName === 'pro' || planName === 'business') && (
+                                    <button
+                                        onClick={() => setShowAIComposer(true)}
+                                        className="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all flex items-center gap-2 text-sm font-medium"
+                                    >
+                                        <Sparkles className="w-4 h-4" />
+                                        AI 보정
+                                    </button>
+                                )}
+
+                                <button
+                                    onClick={onClose}
+                                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 메시지 영역 */}
+                        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+                            {loading ? (
+                                <div className="flex items-center justify-center py-20">
+                                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600" />
+                                </div>
+                            ) : detail?.messages && detail.messages.length > 0 ? (
+                                <div className="space-y-3">
+                                    {detail.messages[0]?.timestamp && (
+                                        <div className="flex items-center justify-center my-4">
+                                            <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
+                                                {new Date(detail.messages[0].timestamp).toLocaleDateString('ko-KR', {
+                                                    year: 'numeric',
+                                                    month: 'long',
+                                                    day: 'numeric',
+                                                    weekday: 'long',
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {detail.messages.map((msg, idx) => (
+                                        <MessageBubble
+                                            key={msg.msgId || idx}
+                                            message={msg}
+                                            onImageClick={(url) => setImagePreview(url)}
+                                        />
+                                    ))}
+                                    <div ref={messagesEndRef} />
+                                </div>
+                            ) : (
+                                <div className="text-center py-20">
+                                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                        <User className="w-8 h-8 text-gray-400" />
+                                    </div>
+                                    <p className="text-gray-500">메시지가 없습니다</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 입력 영역 */}
+                        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl">
+                            {/* ✅ 요약 정보 - 입력창 위로 이동 + 스타일 개선 */}
+                            {detail?.conversation?.summary && (
+                                <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                                    <div className="text-sm text-blue-900">
+                                        <span className="font-semibold">💡 요약:</span> {detail.conversation.summary}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 첨부 파일 미리보기 */}
+                            {attachments.length > 0 && (
+                                <div className="mb-3 flex flex-wrap gap-2">
+                                    {attachments.map((att, idx) => (
+                                        <div key={idx} className="relative group">
+                                            {att.preview ? (
+                                                // 이미지 미리보기
+                                                <>
+                                                    <img
+                                                        src={att.preview}
+                                                        alt={att.name}
+                                                        className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                                                    />
+                                                    <button
+                                                        onClick={() => removeAttachment(idx)}
+                                                        disabled={uploading}
+                                                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        aria-label="첨부파일 삭제"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                // 일반 파일 (PDF 등)
+                                                <div className="relative">
+                                                    <div className="w-20 h-20 bg-gray-100 rounded-lg border border-gray-200 flex flex-col items-center justify-center p-2">
+                                                        <Paperclip className="w-6 h-6 text-gray-400 mb-1" />
+                                                        <span className="text-xs text-gray-600 truncate w-full text-center">
+                                                            {att.name.slice(0, 8)}...
+                                                        </span>
+                                                        <span className="text-xs text-gray-400">
+                                                            {formatFileSize(att.size)}
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => removeAttachment(idx)}
+                                                        disabled={sending || uploading}
+                                                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        aria-label="첨부파일 삭제"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* 업로드 중 표시 */}
+                            {uploading && (
+                                <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600" />
+                                    <span className="text-sm text-blue-900">파일 처리 중...</span>
+                                </div>
+                            )}
+
+                            {/* 입력바 */}
+                            <div className="flex items-end gap-2">
+                                <button
+                                    onClick={() => filePickerRef.current?.click()}
+                                    disabled={uploading}
+                                    className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    aria-label="첨부"
+                                >
+                                    <Paperclip className="w-4 h-4 text-gray-600" />
+                                </button>
+
+                                {/* ✅ AI 보정 버튼 - AIComposerModal 연결 */}
+                                <button
+                                    onClick={() => setShowAIComposer(true)}
+                                    disabled={sending || uploading}
+                                    className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                                    aria-label="AI 보정"
+                                    title="AI 톤 보정"
+                                >
+                                    <Sparkles className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                                </button>
+
+                                <textarea
+                                    ref={textareaRef}
+                                    value={draft} // ❌ sending 여부에 따라 바꾸지 않기
+                                    onChange={(e) => {
+                                        if (!uploading) {            // ❌ sending은 무시
+                                            setDraft(e.target.value);
+                                            autoResize(e.target);
+                                        }
+                                    }}
+                                    onKeyDown={onKeyDown}
+                                    onPaste={onPaste}
+                                    placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
+                                    disabled={uploading}             // ❌ sending으로 disable 안 함
+                                    enterKeyHint="send"
+                                    className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
+                                    rows={1}
+                                />
+                                <button
+                                    onClick={handleSend}
+                                    disabled={!canSend || sending || uploading}
+                                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${canSend && !sending && !uploading
+                                        ? 'bg-blue-500 hover:bg-blue-600 active:scale-95 text-white shadow-sm'
+                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                        }`}
+                                    aria-label="전송"
+                                >
+                                    {/* 항상 아이콘만 */}
+                                    <Send className="w-4 h-4" />
+                                </button>
+
+                                <input
+                                    ref={filePickerRef}
+                                    type="file"
+                                    accept="image/*,video/*,application/pdf"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => handleFiles(e.target.files)}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* 이미지 프리뷰 모달 */}
             {imagePreview && (
