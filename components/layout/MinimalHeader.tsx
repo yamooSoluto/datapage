@@ -344,7 +344,7 @@ export default function MinimalHeader({
 
             {/* 모바일 하단 탭 - 솜사탕 그라데이션 */}
             <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-100/90 via-yellow-100/90 to-sky-100/90 backdrop-blur-xl border-t border-white/50 safe-area-pb">
-                <div className="flex items-center justify-around px-2 py-1.5">
+                <div className="flex items-center justify-around px-2 py-1">
                     {tabs.map(tab => {
                         const Icon = tab.icon;
                         const isActive = currentTab === tab.key;
@@ -353,7 +353,7 @@ export default function MinimalHeader({
                                 key={tab.key}
                                 onClick={() => onTabChange(tab.key)}
                                 className={`
-                                    flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all
+                                    flex flex-col items-center gap-0 px-3 py-1 rounded-xl transition-all
                                     ${isActive
                                         ? 'text-gray-900'
                                         : 'text-gray-500'

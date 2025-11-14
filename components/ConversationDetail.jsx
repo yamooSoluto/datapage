@@ -78,20 +78,31 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
     }, [detail?.messages]);
 
-    // ✅ 키보드 열릴 때 스크롤 조정
+    // ✅ 키보드 열릴 때 스크롤 조정 및 전체 스크롤 방지
     useEffect(() => {
-        const handleFocus = () => {
+        const handleFocus = (e) => {
+            // 전체 페이지 스크롤 방지
+            e.preventDefault?.();
+
             // 키보드가 열리면 메시지 영역을 조금 위로 스크롤
             setTimeout(() => {
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }, 300);
+        };
+
+        const handleBlur = () => {
+            // 포커스 해제 시에도 스크롤 방지 유지
+            document.body.style.overflow = 'hidden';
+            document.documentElement.style.overflow = 'hidden';
         };
 
         const textarea = textareaRef.current;
         textarea?.addEventListener('focus', handleFocus);
+        textarea?.addEventListener('blur', handleBlur);
 
         return () => {
             textarea?.removeEventListener('focus', handleFocus);
+            textarea?.removeEventListener('blur', handleBlur);
         };
     }, []);
 
@@ -473,7 +484,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         <>
             {/* 임베디드 모드: 모달 없이 전체 화면 사용 */}
             {isEmbedded ? (
-                <div className="flex flex-col h-full w-full bg-white overflow-hidden">
+                <div className="flex flex-col h-full w-full bg-white overflow-hidden max-h-full">
                     {/* 헤더 */}
                     <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0 bg-white">
                         <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}

@@ -43,6 +43,19 @@ export default function ConversationsPage({ tenantId }) {
         fetchConversations();
     }, [tenantId]);
 
+    // ✅ 웹에서 전체 스크롤 방지 (각 섹션만 스크롤 가능하도록)
+    useEffect(() => {
+        // body 스크롤 방지
+        document.body.style.overflow = 'hidden';
+        document.documentElement.style.overflow = 'hidden';
+
+        return () => {
+            // 컴포넌트 언마운트 시 복원
+            document.body.style.overflow = '';
+            document.documentElement.style.overflow = '';
+        };
+    }, []);
+
     const fetchConversations = async (options = {}) => {
         const { skipLoading = false } = options;
 
@@ -227,7 +240,7 @@ export default function ConversationsPage({ tenantId }) {
     };
 
     return (
-        <div className="flex h-screen bg-gray-50 overflow-hidden">
+        <div className="fixed inset-0 flex bg-gray-50 overflow-hidden">
             {/* 메인 컨텐츠 */}
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
@@ -239,7 +252,7 @@ export default function ConversationsPage({ tenantId }) {
             ) : (
                 <>
                     {/* 좌측: 대화 리스트 */}
-                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white h-full">
+                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white h-full max-h-full overflow-hidden">
                         {/* 좌측 헤더 */}
                         <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-gray-200">
                             <div className="flex items-center justify-between mb-3">
@@ -261,7 +274,8 @@ export default function ConversationsPage({ tenantId }) {
                                     placeholder="이름, 내용 검색..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-9 pr-9 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-sm"
+                                    style={{ fontSize: '16px' }}
+                                    className="w-full pl-9 pr-9 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 placeholder-gray-400"
                                 />
                                 {searchQuery && (
                                     <button
@@ -278,9 +292,6 @@ export default function ConversationsPage({ tenantId }) {
                                 {[
                                     { key: 'all', label: '전체', icon: MessageSquare },
                                     { key: 'today', label: '오늘', icon: Clock },
-                                    { key: 'unanswered', label: '미답변', icon: User },
-                                    { key: 'ai', label: 'AI', icon: SparklesIcon },
-                                    { key: 'agent', label: '상담원', icon: User },
                                 ].map(({ key, label, icon: Icon }) => (
                                     <button
                                         key={key}
@@ -299,10 +310,13 @@ export default function ConversationsPage({ tenantId }) {
                                 ))}
                             </div>
 
-                            {/* 고급 필터 토글 */}
+                            {/* 상세 필터 토글 - 더 눈에 띄게 */}
                             <button
                                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                                className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all w-full ${showAdvancedFilters
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    }`}
                             >
                                 <Filter className="w-3.5 h-3.5" />
                                 {showAdvancedFilters ? '필터 숨기기' : '상세 필터'}
@@ -432,7 +446,7 @@ export default function ConversationsPage({ tenantId }) {
                     </div>
 
                     {/* 우측: 대화 상세 (웹 전용) */}
-                    <div className="hidden lg:flex flex-1 bg-gray-50">
+                    <div className="hidden lg:flex flex-1 bg-gray-50 overflow-hidden h-full">
                         {selectedConv ? (
                             <ConversationDetail
                                 conversation={selectedConv}
@@ -443,7 +457,7 @@ export default function ConversationsPage({ tenantId }) {
                                 isEmbedded={true}
                             />
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 h-full">
                                 <MessageSquare className="w-16 h-16 mb-4 opacity-30" />
                                 <p className="text-lg font-medium">대화를 선택해주세요</p>
                                 <p className="text-sm mt-2">좌측 리스트에서 대화를 클릭하면 내용을 확인할 수 있습니다</p>
