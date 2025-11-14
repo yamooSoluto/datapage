@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, RefreshCw, X, User, Calendar, Filter, Sparkles as SparklesIcon, MessageSquare, Clock } from 'lucide-react';
+import toast from 'react-hot-toast';
 import ConversationCard from './ConversationCard';
 import ConversationDetail from './ConversationDetail';
 import AIComposerModal from './AIComposerModal';
@@ -12,6 +13,8 @@ export default function ConversationsPage({ tenantId }) {
     const [selectedConv, setSelectedConv] = useState(null);
     const [loading, setLoading] = useState(false);
     const [showAIModal, setShowAIModal] = useState(false);
+    const [globalMode, setGlobalMode] = useState('AUTO'); // 'AUTO' | 'CONFIRM'
+    const [isUpdating, setIsUpdating] = useState(false);
 
     // 빠른 필터
     const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'today' | 'unanswered' | 'ai' | 'agent'
@@ -212,6 +215,40 @@ export default function ConversationsPage({ tenantId }) {
             tenantId,
             chatId: selectedConv.chatId,
         });
+    };
+
+    const handleModeToggle = async () => {
+        const nextMode = globalMode === 'AUTO' ? 'CONFIRM' : 'AUTO';
+        setIsUpdating(true);
+
+        try {
+            const response = await fetch('/api/tenants/policy', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenantId: tenantId,
+                    defaultMode: nextMode,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                setGlobalMode(nextMode);
+                toast.success(
+                    nextMode === 'CONFIRM'
+                        ? '🟡 모든 답변을 검토 후 전송합니다'
+                        : '🟢 AI가 자동으로 답변합니다'
+                );
+            } else {
+                throw new Error(data.error || 'Unknown error');
+            }
+        } catch (error) {
+            console.error('Mode toggle error:', error);
+            toast.error('모드 변경에 실패했습니다');
+        } finally {
+            setIsUpdating(false);
+        }
     };
 
     const resetFilters = () => {
