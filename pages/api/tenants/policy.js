@@ -39,19 +39,24 @@ export default async function handler(req, res) {
 
     const { tenantId, defaultMode } = req.body;
 
+    if (!tenantId) {
+        return res.status(400).json({ error: 'tenantId is required' });
+    }
+
     if (!['AUTO', 'CONFIRM', 'AGENT'].includes(defaultMode)) {
         return res.status(400).json({ error: 'Invalid mode' });
     }
 
     try {
-        const tenantRef = db.collection('Tenants').doc(tenantId);
+        const tenantRef = db.collection('tenants').doc(tenantId);
 
         // 트랜잭션으로 원자성 보장
         await db.runTransaction(async (transaction) => {
             const tenantDoc = await transaction.get(tenantRef);
 
             if (!tenantDoc.exists) {
-                throw new Error('Tenant not found');
+                console.error(`[API] Tenant not found: ${tenantId}`);
+                throw new Error(`Tenant not found: ${tenantId}`);
             }
 
             // 1. 테넌트 정책 업데이트
@@ -66,12 +71,20 @@ export default async function handler(req, res) {
                 .collection('Conversation_Mode')
                 .doc(`${tenantId}_global`);
 
-            transaction.set(globalModeRef, {
+            // createdAt은 첫 생성 시에만 설정 (merge: true로 기존 문서는 유지)
+            const existingDoc = await transaction.get(globalModeRef);
+            const updateData = {
                 tenantId,
                 sticky: true,
                 mode: defaultMode,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            }, { merge: true });
+            };
+
+            if (!existingDoc.exists) {
+                updateData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+            }
+
+            transaction.set(globalModeRef, updateData, { merge: true });
         });
 
         return res.status(200).json({

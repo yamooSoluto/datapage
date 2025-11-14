@@ -277,7 +277,7 @@ export default function ConversationsPage({ tenantId }) {
             ) : (
                 <>
                     {/* 좌측: 대화 리스트 */}
-                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white h-full overflow-hidden">
+                    <div className="flex flex-col w-full lg:w-[400px] xl:w-[450px] border-r border-gray-200 bg-white h-full overflow-hidden z-10">
                         {/* 좌측 헤더 */}
                         <div className="flex-shrink-0 px-4 pt-4 pb-3 border-b border-gray-200">
                             <div className="flex items-center justify-between mb-3">
@@ -291,7 +291,7 @@ export default function ConversationsPage({ tenantId }) {
                                 </button>
                             </div>
 
-                            {/* 전역 모드 토글 */}
+                            {/* 전역 모드 토글 - 모바일/데스크톱 모두 표시 */}
                             <div className="mb-3">
                                 <GlobalModeToggle
                                     mode={globalMode}
@@ -522,7 +522,7 @@ export default function ConversationsPage({ tenantId }) {
 
             {/* 모바일: 대화 상세 모달 */}
             {selectedConv && (
-                <div className="lg:hidden">
+                <div className="lg:hidden z-[100]">
                     <ConversationDetail
                         conversation={selectedConv}
                         tenantId={tenantId}
