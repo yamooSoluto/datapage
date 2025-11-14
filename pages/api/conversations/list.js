@@ -182,12 +182,13 @@ export default async function handler(req, res) {
         // 응답 변환
         const conversations = uniqueDocs.map(({ doc, data: v }) => {
             const msgs = Array.isArray(v.messages) ? v.messages : [];
-            const userCount = msgs.filter(m => m.sender === "user").length;
-            const aiCount = msgs.filter(m => m.sender === "ai").length;
-            const agentCount = msgs.filter(m => {
-                const s = String(m.sender || '').toLowerCase();
-                return s === 'agent' || s === 'admin';
-            }).length;
+
+            // ✅ stats_conversations에서 메시지 카운트 가져오기
+            const stats = statsMap.get(v.chat_id) || null;
+            const userCount = stats?.user_chats || 0;
+            const aiCount = stats?.ai_allchats || 0;
+            const agentCount = stats?.agent_chats || 0;
+            const totalCount = userCount + aiCount + agentCount;
 
             const lastMsg = msgs[msgs.length - 1] || null;
 
@@ -206,8 +207,7 @@ export default async function handler(req, res) {
             });
 
             const slack = slackMap.get(doc.id);
-            // stats_conversations 에 저장된 집계
-            const stats = statsMap.get(v.chat_id) || null;
+            // ✅ stats는 위에서 이미 가져옴 (재사용)
             const { everWork, lastSlackRoute } = getTaskFlagsFromStats(stats);
 
             // conv 문서 자체에 남겨둔 slack_route 와 stats 의 last_slack_route 를 함께 고려
@@ -251,7 +251,7 @@ export default async function handler(req, res) {
                 firstImageUrl: allPics[0] || null,
                 firstThumbnailUrl: allThumbnails[0] || null,
 
-                messageCount: { user: userCount, ai: aiCount, agent: agentCount, total: msgs.length },
+                messageCount: { user: userCount, ai: aiCount, agent: agentCount, total: totalCount },
 
                 category: v.category || null,
                 categories: v.category ? v.category.split('|').map(c => c.trim()) : [],
