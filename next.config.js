@@ -8,6 +8,9 @@ const withPWA = require('next-pwa')({
     /middleware-manifest\.json$/,
     /dynamic-css-manifest\.json$/,
   ],
+  exclude: [
+    /faq-sample-builder\.html$/,
+  ],
 });
 
 const nextConfig = {

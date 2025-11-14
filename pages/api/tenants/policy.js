@@ -51,14 +51,21 @@ export default async function handler(req, res) {
         const tenantRef = db.collection('tenants').doc(tenantId);
 
         // 트랜잭션으로 원자성 보장
+        const globalModeRef = db
+            .collection('Conversation_Mode')
+            .doc(`${tenantId}_global`);
+
         await db.runTransaction(async (transaction) => {
+            // 모든 읽기를 먼저 실행
             const tenantDoc = await transaction.get(tenantRef);
+            const existingModeDoc = await transaction.get(globalModeRef);
 
             if (!tenantDoc.exists) {
                 console.error(`[API] Tenant not found: ${tenantId}`);
                 throw new Error(`Tenant not found: ${tenantId}`);
             }
 
+            // 모든 쓰기를 읽기 후에 실행
             // 1. 테넌트 정책 업데이트
             transaction.update(tenantRef, {
                 'policy.defaultMode': defaultMode,
@@ -67,12 +74,7 @@ export default async function handler(req, res) {
             });
 
             // 2. 전역 모드 문서 업데이트
-            const globalModeRef = db
-                .collection('Conversation_Mode')
-                .doc(`${tenantId}_global`);
-
             // createdAt은 첫 생성 시에만 설정 (merge: true로 기존 문서는 유지)
-            const existingDoc = await transaction.get(globalModeRef);
             const updateData = {
                 tenantId,
                 sticky: true,
@@ -80,7 +82,7 @@ export default async function handler(req, res) {
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
 
-            if (!existingDoc.exists) {
+            if (!existingModeDoc.exists) {
                 updateData.createdAt = admin.firestore.FieldValue.serverTimestamp();
             }
 
