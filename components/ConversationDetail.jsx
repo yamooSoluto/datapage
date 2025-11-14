@@ -217,14 +217,27 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ 서버 메시지 정규화 헬퍼 함수 (Firestore Timestamp 및 일반 문자열 모두 처리)
     const normalizeServerMessages = (messages) => {
         if (!Array.isArray(messages)) return [];
-        return messages.map(m => ({
-            sender: m.sender,
-            text: m.text || '',
-            pics: Array.isArray(m.pics) ? m.pics : [],
-            timestamp: m.timestamp?.toDate?.()?.toISOString() || m.timestamp || new Date().toISOString(),
-            msgId: m.msgId || null,
-            modeSnapshot: m.modeSnapshot || null,
-        }));
+        return messages.map(m => {
+            // pics 배열 추출: pics가 있으면 사용, 없으면 attachments에서 변환
+            let pics = [];
+            if (Array.isArray(m.pics) && m.pics.length > 0) {
+                pics = m.pics;
+            } else if (Array.isArray(m.attachments) && m.attachments.length > 0) {
+                // attachments 배열에서 url 추출
+                pics = m.attachments
+                    .map(att => (typeof att === 'string' ? att : att.url))
+                    .filter(Boolean);
+            }
+
+            return {
+                sender: m.sender,
+                text: m.text || '',
+                pics: pics,
+                timestamp: m.timestamp?.toDate?.()?.toISOString() || m.timestamp || new Date().toISOString(),
+                msgId: m.msgId || m.message_id || null, // message_id도 확인
+                modeSnapshot: m.modeSnapshot || null,
+            };
+        });
     };
 
     // ✅ 옵티미스틱 메시지와 서버 메시지 병합 헬퍼 함수
@@ -312,8 +325,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     useEffect(() => {
         const handleEsc = (e) => {
             if (e.key === 'Escape') {
-                if (imagePreview) setImagePreview(null);
-                else onClose();
+                if (imagePreview) {
+                    setImagePreview(null);
+                } else {
+                    onClose();
+                }
             }
         };
         window.addEventListener('keydown', handleEsc);
@@ -1117,16 +1133,25 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4"
                     onClick={() => setImagePreview(null)}
                 >
+                    {/* 닫기 버튼 - 모바일: 하단 중앙, 데스크톱: 우측 상단 */}
                     <button
-                        onClick={() => setImagePreview(null)}
-                        className="absolute top-4 right-4 p-2 text-white hover:bg-white/10 rounded-lg transition-colors"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setImagePreview(null);
+                        }}
+                        className="fixed md:absolute bottom-6 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-auto md:top-16 md:right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors backdrop-blur-sm z-10"
+                        aria-label="닫기"
                     >
-                        <X className="w-6 h-6" />
+                        <X className="w-6 h-6 text-white" />
                     </button>
+                    {/* ESC 키 안내 (모바일 제외) */}
+                    <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/50 text-white text-xs rounded-lg backdrop-blur-sm hidden md:block">
+                        ESC로 닫기
+                    </div>
                     <img
                         src={imagePreview}
                         alt="미리보기"
-                        className="max-w-full max-h-full object-contain"
+                        className="max-w-full max-h-full object-contain cursor-pointer"
                         onClick={(e) => e.stopPropagation()}
                     />
                 </div>
