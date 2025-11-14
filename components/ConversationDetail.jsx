@@ -78,6 +78,23 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
     }, [detail?.messages]);
 
+    // ✅ 키보드 열릴 때 스크롤 조정
+    useEffect(() => {
+        const handleFocus = () => {
+            // 키보드가 열리면 메시지 영역을 조금 위로 스크롤
+            setTimeout(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 300);
+        };
+
+        const textarea = textareaRef.current;
+        textarea?.addEventListener('focus', handleFocus);
+
+        return () => {
+            textarea?.removeEventListener('focus', handleFocus);
+        };
+    }, []);
+
     // ✅ Firestore 실시간 리스너: 모달이 열려 있는 동안 새 메시지 자동 감지
     useEffect(() => {
         if (!chatId || !effectiveTenantId) {
@@ -456,15 +473,58 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         <>
             {/* 임베디드 모드: 모달 없이 전체 화면 사용 */}
             {isEmbedded ? (
-                <div className="flex flex-col h-full bg-white">
+                <div className="flex flex-col h-full w-full bg-white overflow-hidden">
                     {/* 헤더 */}
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0 bg-white">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
-                                <span className="text-white text-sm font-semibold">
-                                    {conversation.userName?.charAt(0) || '?'}
-                                </span>
-                            </div>
+                    <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0 bg-white">
+                        <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
+                            {(() => {
+                                // ConversationCard와 동일한 로직
+                                const getAvatarStyle = () => {
+                                    if (!conversation.hasSlackCard && !conversation.taskType) {
+                                        return {
+                                            bg: 'bg-gradient-to-br from-blue-500 to-blue-600',
+                                            text: 'text-white'
+                                        };
+                                    }
+                                    if (conversation.taskType === 'shadow') {
+                                        return {
+                                            bg: 'bg-gradient-to-br from-gray-300 to-gray-400',
+                                            text: 'text-gray-600'
+                                        };
+                                    }
+                                    if (conversation.taskType === 'work') {
+                                        return {
+                                            bg: 'bg-gradient-to-br from-yellow-400 to-orange-500',
+                                            text: 'text-white'
+                                        };
+                                    }
+                                    if (conversation.taskType === 'confirm') {
+                                        return {
+                                            bg: 'bg-gradient-to-br from-purple-400 to-purple-500',
+                                            text: 'text-white'
+                                        };
+                                    }
+                                    if (conversation.taskType === 'agent') {
+                                        return {
+                                            bg: 'bg-gradient-to-br from-red-400 to-red-500',
+                                            text: 'text-white'
+                                        };
+                                    }
+                                    return {
+                                        bg: 'bg-gradient-to-br from-indigo-400 to-indigo-500',
+                                        text: 'text-white'
+                                    };
+                                };
+
+                                const avatarStyle = getAvatarStyle();
+                                return (
+                                    <div className={`w-10 h-10 rounded-full ${avatarStyle.bg} flex items-center justify-center`}>
+                                        <span className={`${avatarStyle.text} text-sm font-semibold`}>
+                                            {conversation.userNameInitial || conversation.userName?.charAt(0) || '?'}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
                                 <p className="text-xs text-gray-500">
@@ -489,9 +549,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                     {/* 메시지 영역 */}
                     <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
-                        {loading ? (
-                            <div className="flex items-center justify-center py-20">
-                                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600" />
+                        {loading || !detail ? (
+                            <div className="flex flex-col items-center justify-center py-20">
+                                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mb-4" />
+                                <p className="text-gray-600">메시지를 불러오는 중...</p>
                             </div>
                         ) : detail?.messages && detail.messages.length > 0 ? (
                             <div className="space-y-3">
@@ -621,8 +682,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 onPaste={onPaste}
                                 placeholder="메시지를 입력하세요..."
                                 disabled={sending || uploading}
-                                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                style={{ minHeight: '42px', maxHeight: '120px' }}
+                                style={{
+                                    minHeight: '42px',
+                                    maxHeight: '120px',
+                                    fontSize: '16px' // iOS 자동 확대 방지
+                                }}
+                                className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                                 rows={1}
                             />
 
@@ -643,6 +708,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             Enter 전송 • Shift+Enter 줄바꿈
                         </div>
                     </div>
+
+                    {/* 모바일 키보드 대응 스타일 */}
+                    <style jsx>{`
+                        @media (max-width: 768px) {
+                            input, textarea, select {
+                                font-size: 16px !important;
+                                -webkit-text-size-adjust: 100%;
+                            }
+                        }
+                    `}</style>
                 </div>
             ) : (
                 /* 모달 모드: 기존 코드 유지 */
@@ -653,12 +728,54 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
                         {/* 헤더 */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
-                                    <span className="text-white text-sm font-semibold">
-                                        {conversation.userName?.charAt(0) || '?'}
-                                    </span>
-                                </div>
+                            <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
+                                {(() => {
+                                    const getAvatarStyle = () => {
+                                        if (!conversation.hasSlackCard && !conversation.taskType) {
+                                            return {
+                                                bg: 'bg-gradient-to-br from-blue-500 to-blue-600',
+                                                text: 'text-white'
+                                            };
+                                        }
+                                        if (conversation.taskType === 'shadow') {
+                                            return {
+                                                bg: 'bg-gradient-to-br from-gray-300 to-gray-400',
+                                                text: 'text-gray-600'
+                                            };
+                                        }
+                                        if (conversation.taskType === 'work') {
+                                            return {
+                                                bg: 'bg-gradient-to-br from-yellow-400 to-orange-500',
+                                                text: 'text-white'
+                                            };
+                                        }
+                                        if (conversation.taskType === 'confirm') {
+                                            return {
+                                                bg: 'bg-gradient-to-br from-purple-400 to-purple-500',
+                                                text: 'text-white'
+                                            };
+                                        }
+                                        if (conversation.taskType === 'agent') {
+                                            return {
+                                                bg: 'bg-gradient-to-br from-red-400 to-red-500',
+                                                text: 'text-white'
+                                            };
+                                        }
+                                        return {
+                                            bg: 'bg-gradient-to-br from-indigo-400 to-indigo-500',
+                                            text: 'text-white'
+                                        };
+                                    };
+
+                                    const avatarStyle = getAvatarStyle();
+                                    return (
+                                        <div className={`w-10 h-10 rounded-full ${avatarStyle.bg} flex items-center justify-center`}>
+                                            <span className={`${avatarStyle.text} text-sm font-semibold`}>
+                                                {conversation.userNameInitial || conversation.userName?.charAt(0) || '?'}
+                                            </span>
+                                        </div>
+                                    );
+                                })()}
                                 <div>
                                     <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
                                     <p className="text-xs text-gray-500">
@@ -690,9 +807,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                         {/* 메시지 영역 */}
                         <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
-                            {loading ? (
-                                <div className="flex items-center justify-center py-20">
-                                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600" />
+                            {loading || !detail ? (
+                                <div className="flex flex-col items-center justify-center py-20">
+                                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mb-4" />
+                                    <p className="text-gray-600">메시지를 불러오는 중...</p>
                                 </div>
                             ) : detail?.messages && detail.messages.length > 0 ? (
                                 <div className="space-y-3">
@@ -832,6 +950,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
                                     disabled={uploading}             // ❌ sending으로 disable 안 함
                                     enterKeyHint="send"
+                                    style={{
+                                        fontSize: '16px' // iOS 자동 확대 방지
+                                    }}
                                     className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
                                     rows={1}
                                 />
