@@ -742,7 +742,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
                     onClick={(e) => e.target === e.currentTarget && onClose()}
                 >
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col border border-gray-200">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[80vh] flex flex-col border border-gray-200">
                         {/* 헤더 */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
                             <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}

@@ -227,7 +227,7 @@ export default function ConversationsPage({ tenantId }) {
     };
 
     return (
-        <div className="fixed inset-0 flex bg-gray-50 overflow-hidden">
+        <div className="fixed top-12 left-0 right-0 bottom-0 flex bg-gray-50 overflow-hidden md:top-12">
             {/* 메인 컨텐츠 */}
             {loading ? (
                 <div className="flex-1 flex items-center justify-center">
