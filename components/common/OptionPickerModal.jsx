@@ -264,10 +264,10 @@ export default function OptionPickerModal({
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-50 md:flex md:items-center md:justify-center md:p-4">
+        <div className="fixed inset-0 z-[100] md:flex md:items-center md:justify-center md:p-4 md:pt-16 md:pb-20">
             <div className="absolute inset-0 bg-black/30" onClick={handleClose} />
 
-            <div className="absolute bottom-0 left-0 right-0 md:relative md:w-full md:max-w-lg rounded-t-3xl md:rounded-3xl bg-white p-4 md:p-6 shadow-2xl space-y-3 max-h-[85vh] md:max-h-[80vh] overflow-auto">
+            <div className="absolute bottom-0 left-0 right-0 md:relative md:w-full md:max-w-lg rounded-t-3xl md:rounded-3xl bg-white p-4 md:p-6 shadow-2xl space-y-3 max-h-[85vh] md:max-h-[80vh] overflow-auto pb-[calc(env(safe-area-inset-bottom)+4rem)] md:pb-6">
                 <div className="flex items-center justify-between sticky top-0 bg-white pb-2 -mt-1 z-10">
                     <div className="font-semibold text-base">{title}</div>
                     <button

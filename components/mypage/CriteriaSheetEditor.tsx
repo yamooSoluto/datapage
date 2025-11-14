@@ -549,7 +549,11 @@ function InlineDropdown({
                                                                 : [...tempSelectedKeys, opt.key];
                                                             setTempSelectedKeys(newSelected);
                                                         }}
-                                                        className="mt-0.5 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer transition-all"
+                                                        className="mt-0.5 w-4 h-4 text-blue-600 border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer transition-all checked:bg-blue-600 checked:border-blue-600"
+                                                        style={{
+                                                            WebkitAppearance: 'checkbox',
+                                                            appearance: 'checkbox',
+                                                        }}
                                                     />
                                                     <div className="flex-1 min-w-0">
                                                         <div className="text-sm font-medium text-gray-900 truncate">
@@ -1642,7 +1646,11 @@ function CellEditor({ row, facet, sheetId, openDropdown, setOpenDropdown, update
                             type="checkbox"
                             checked={isChecked}
                             onChange={(e) => updateCell(row.id, facet.key, String(e.target.checked))}
-                            className="w-5 h-5 accent-blue-600 rounded cursor-pointer"
+                            className="w-5 h-5 accent-blue-600 rounded cursor-pointer border-2 border-gray-300 checked:bg-blue-600 checked:border-blue-600"
+                            style={{
+                                WebkitAppearance: 'checkbox',
+                                appearance: 'checkbox',
+                            }}
                         />
                     ) : (
                         <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${isChecked ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}`}>

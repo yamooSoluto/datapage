@@ -389,7 +389,22 @@ export default function ConversationsPage({ tenantId }) {
                         </div>
 
                         {/* 리스트 영역 */}
-                        <div className="flex-1 overflow-y-auto px-3 py-3">
+                        <div
+                            className="flex-1 overflow-y-auto px-3 py-3"
+                            style={{
+                                WebkitOverflowScrolling: 'touch',
+                                touchAction: 'pan-y',
+                                overscrollBehavior: 'contain'
+                            }}
+                            onTouchStart={(e) => {
+                                // 터치 이벤트가 리스트 영역에서 시작되면 상위로 전파 방지
+                                e.stopPropagation();
+                            }}
+                            onTouchMove={(e) => {
+                                // 스크롤 중일 때는 상위로 전파 방지
+                                e.stopPropagation();
+                            }}
+                        >
                             {paginatedConversations.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-500 py-12">
                                     <User className="w-12 h-12 mb-4 opacity-50" />

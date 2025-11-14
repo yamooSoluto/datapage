@@ -87,7 +87,7 @@ export default function MinimalHeader({
         <>
             {/* 데스크톱 헤더 - 솜사탕 그라데이션 배경 */}
             <header
-                className="hidden md:block sticky top-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50"
+                className="hidden md:block fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50"
                 style={{ touchAction: 'none' }}
             >
                 <div className="max-w-7xl mx-auto px-6">
@@ -211,7 +211,7 @@ export default function MinimalHeader({
             </header>
 
             {/* 모바일 헤더 */}
-            <header className="md:hidden sticky top-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50">
+            <header className="md:hidden fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50">
                 <div className="px-4">
                     <div className="flex items-center justify-between h-12">
                         {/* 로고 & 브랜드 */}

@@ -768,7 +768,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             ) : (
                 /* 모달 모드: 기존 코드 유지 */
                 <div
-                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 pt-16 pb-[calc(env(safe-area-inset-bottom)+5rem)] md:pt-16 md:pb-20"
                     onClick={(e) => e.target === e.currentTarget && onClose()}
                 >
                     <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[75vh] flex flex-col border border-gray-200">
@@ -1057,7 +1057,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             {/* 이미지 프리뷰 모달 */}
             {imagePreview && (
                 <div
-                    className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4"
+                    className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4"
                     onClick={() => setImagePreview(null)}
                 >
                     <button

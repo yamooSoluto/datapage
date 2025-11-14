@@ -1281,7 +1281,7 @@ export default function TenantPortal() {
 
       {/* FAQ 추가/수정 모달 - 완전한 버전 */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 pt-16 pb-[calc(env(safe-area-inset-bottom)+5rem)] md:pt-16 md:pb-20">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             {/* 헤더 */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">

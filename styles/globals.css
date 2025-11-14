@@ -64,13 +64,35 @@ select {
 /* iOS Safari에서 input focus 시 확대 방지 */
 @media screen and (max-width: 768px) {
 
-  input,
+  input:not([type="checkbox"]):not([type="radio"]),
   textarea,
   select {
     font-size: 16px !important;
     -webkit-text-size-adjust: 100%;
     -webkit-appearance: none;
     appearance: none;
+  }
+
+  /* 체크박스 스타일 - PWA에서 보이도록 명시적 스타일 추가 */
+  input[type="checkbox"] {
+    -webkit-appearance: checkbox;
+    appearance: checkbox;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid #d1d5db;
+    border-radius: 0.25rem;
+    background-color: white;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  input[type="checkbox"]:checked {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-3.5-3.5a1 1 0 011.414-1.414L4.5 10.586l6.293-6.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
+    background-size: 100% 100%;
+    background-position: center;
+    background-repeat: no-repeat;
   }
 
   /* 키보드가 나타날 때 레이아웃 깨짐 방지 - viewport height 고정 */
