@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import ConversationCard from './ConversationCard';
 import ConversationDetail from './ConversationDetail';
 import AIComposerModal from './AIComposerModal';
+import { GlobalModeToggle } from './GlobalModeToggle';
 
 export default function ConversationsPage({ tenantId }) {
     const [conversations, setConversations] = useState([]);
@@ -288,6 +289,15 @@ export default function ConversationsPage({ tenantId }) {
                                 >
                                     <RefreshCw className="w-5 h-5" />
                                 </button>
+                            </div>
+
+                            {/* 전역 모드 토글 */}
+                            <div className="mb-3">
+                                <GlobalModeToggle
+                                    mode={globalMode}
+                                    onToggle={handleModeToggle}
+                                    disabled={isUpdating}
+                                />
                             </div>
 
                             {/* 검색 */}
