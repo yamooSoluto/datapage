@@ -86,7 +86,10 @@ export default function MinimalHeader({
     return (
         <>
             {/* 데스크톱 헤더 - 솜사탕 그라데이션 배경 */}
-            <header className="hidden md:block sticky top-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50">
+            <header
+                className="hidden md:block sticky top-0 z-50 bg-gradient-to-r from-pink-100/85 via-yellow-100/85 to-sky-100/85 backdrop-blur-xl border-b border-white/50"
+                style={{ touchAction: 'none' }}
+            >
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="flex items-center justify-between h-12">
                         {/* 로고 & 브랜드 */}

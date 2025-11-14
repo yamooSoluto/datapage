@@ -14,6 +14,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [imagePreview, setImagePreview] = useState(null);
     const [showAIComposer, setShowAIComposer] = useState(false); // ✅ AI 보정 모달 상태
     const messagesEndRef = useRef(null);
+    const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
+    const touchStartYRef = useRef(0); // 터치 시작 Y 위치
 
     // 입력바 상태
     const [draft, setDraft] = useState('');
@@ -565,7 +567,34 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     </div>
 
                     {/* 메시지 영역 */}
-                    <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+                    <div
+                        ref={messagesContainerRef}
+                        className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50"
+                        style={{
+                            WebkitOverflowScrolling: 'touch',
+                            touchAction: 'pan-y',
+                            overscrollBehavior: 'contain'
+                        }}
+                        onTouchStart={(e) => {
+                            // 터치 시작 위치 저장
+                            touchStartYRef.current = e.touches[0].clientY;
+                            const target = e.currentTarget;
+                            const isScrollable = target.scrollHeight > target.clientHeight;
+                            // 스크롤 가능한 영역에서 터치가 시작되면 상위로 전파 방지
+                            if (isScrollable) {
+                                e.stopPropagation();
+                            }
+                        }}
+                        onTouchMove={(e) => {
+                            const target = e.currentTarget;
+                            const isScrollable = target.scrollHeight > target.clientHeight;
+
+                            // 스크롤 가능한 영역에서는 항상 전파 방지
+                            if (isScrollable) {
+                                e.stopPropagation();
+                            }
+                        }}
+                    >
                         {loading || !detail ? (
                             <div className="flex flex-col items-center justify-center py-20">
                                 <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mb-4" />
@@ -742,7 +771,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
                     onClick={(e) => e.target === e.currentTarget && onClose()}
                 >
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[80vh] flex flex-col border border-gray-200">
+                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[75vh] flex flex-col border border-gray-200">
                         {/* 헤더 */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
                             <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
@@ -823,7 +852,34 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         </div>
 
                         {/* 메시지 영역 */}
-                        <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50">
+                        <div
+                            ref={messagesContainerRef}
+                            className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50"
+                            style={{
+                                WebkitOverflowScrolling: 'touch',
+                                touchAction: 'pan-y',
+                                overscrollBehavior: 'contain'
+                            }}
+                            onTouchStart={(e) => {
+                                // 터치 시작 위치 저장
+                                touchStartYRef.current = e.touches[0].clientY;
+                                const target = e.currentTarget;
+                                const isScrollable = target.scrollHeight > target.clientHeight;
+                                // 스크롤 가능한 영역에서 터치가 시작되면 상위로 전파 방지
+                                if (isScrollable) {
+                                    e.stopPropagation();
+                                }
+                            }}
+                            onTouchMove={(e) => {
+                                const target = e.currentTarget;
+                                const isScrollable = target.scrollHeight > target.clientHeight;
+
+                                // 스크롤 가능한 영역에서는 항상 전파 방지
+                                if (isScrollable) {
+                                    e.stopPropagation();
+                                }
+                            }}
+                        >
                             {loading || !detail ? (
                                 <div className="flex flex-col items-center justify-center py-20">
                                     <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mb-4" />
