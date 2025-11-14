@@ -43,8 +43,10 @@ export default function ConversationsPage({ tenantId }) {
         fetchConversations();
     }, [tenantId]);
 
-    const fetchConversations = async () => {
-        setLoading(true);
+    const fetchConversations = async (options = {}) => {
+        const { skipLoading = false } = options;
+
+        if (!skipLoading) setLoading(true);
         try {
             const params = new URLSearchParams({ tenant: tenantId || '', limit: 500 });
             const res = await fetch(`/api/conversations/list?${params}`);
@@ -54,7 +56,7 @@ export default function ConversationsPage({ tenantId }) {
         } catch (error) {
             console.error('Failed to fetch conversations:', error);
         } finally {
-            setLoading(false);
+            if (!skipLoading) setLoading(false);
         }
     };
 
@@ -188,21 +190,23 @@ export default function ConversationsPage({ tenantId }) {
                 throw new Error(error.error || 'Failed to send message');
             }
 
-            // ✅ 전송 성공 후 리스트/상세는 비동기로 새로고침 (await 제거)
-            fetchConversations().catch(err => {
-                console.error('[ConversationsPage] Failed to refresh conversations:', err);
+            // 1) 대화 목록은 조용히 리프레시 (로딩 X, await X)
+            fetchConversations({ skipLoading: true }).catch((e) => {
+                console.warn('[ConversationsPage] silent refresh failed:', e);
             });
 
-            // 선택된 대화 상세도 비동기로 새로고침
+            // 2) 선택된 대화 상세만 필요하면 가볍게 갱신 (이건 선택사항)
             if (selectedConv?.chatId) {
-                fetch(`/api/conversations/detail?tenant=${tenantId}&chatId=${selectedConv.chatId}`)
-                    .then(res => res.json())
-                    .then(detailData => {
-                        setSelectedConv(detailData.conversation);
-                    })
-                    .catch(err => {
-                        console.error('[ConversationsPage] Failed to refresh detail:', err);
-                    });
+                try {
+                    const detailRes = await fetch(
+                        `/api/conversations/detail?tenant=${tenantId}&chatId=${selectedConv.chatId}`
+                    );
+                    const detailData = await detailRes.json();
+                    setSelectedConv(detailData.conversation);
+                } catch (e) {
+                    console.error('[ConversationsPage] detail refresh failed:', e);
+                    // 여기 실패해도 "전송 실패"는 아님
+                }
             }
         } catch (error) {
             console.error('[ConversationsPage] Send error:', error);

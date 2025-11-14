@@ -3,6 +3,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebaseClient';
 import AIComposerModal from './AIComposerModal';
 
 export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId, planName = 'trial' }) {
@@ -67,15 +69,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ AI 보정 모달
     const [showAICorrector, setShowAICorrector] = useState(false);
 
-    useEffect(() => {
-        if (!chatId) {
-            console.error('[ConversationDetail] No chatId available');
-            setLoading(false);
-            return;
-        }
-        fetchDetail();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [chatId, effectiveTenantId]);
+    // 초기 로딩은 onSnapshot useEffect에서 처리
 
     useEffect(() => {
         if (detail?.messages && messagesEndRef.current) {
@@ -83,11 +77,97 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
     }, [detail?.messages]);
 
+    // ✅ Firestore 실시간 리스너: 모달이 열려 있는 동안 새 메시지 자동 감지
+    useEffect(() => {
+        if (!chatId || !effectiveTenantId) {
+            setLoading(false);
+            return;
+        }
+
+        const docId = `${effectiveTenantId}_${chatId}`;
+        const docRef = doc(db, 'FAQ_realtime_cw', docId);
+
+        console.log('[ConversationDetail] Setting up Firestore listener for:', docId);
+
+        // 초기 로딩 시작
+        setLoading(true);
+
+        // 실시간 리스너 등록 (초기 데이터도 자동으로 받아옴)
+        const unsubscribe = onSnapshot(
+            docRef,
+            (snapshot) => {
+                if (!snapshot.exists()) {
+                    console.warn('[ConversationDetail] Document does not exist:', docId);
+                    setLoading(false);
+                    setDetail(null);
+                    return;
+                }
+
+                const data = snapshot.data();
+
+                // messages 배열 추출 및 변환
+                const messages = Array.isArray(data.messages)
+                    ? data.messages.map(m => ({
+                        sender: m.sender,
+                        text: m.text || '',
+                        pics: Array.isArray(m.pics) ? m.pics : [],
+                        timestamp: m.timestamp?.toDate?.()?.toISOString() || m.timestamp || new Date().toISOString(),
+                        msgId: m.msgId || null,
+                        modeSnapshot: m.modeSnapshot || null,
+                    }))
+                    : [];
+
+                // conversation 정보 업데이트
+                setDetail({
+                    conversation: {
+                        id: snapshot.id,
+                        chatId: data.chat_id || chatId,
+                        userId: data.user_id,
+                        userName: data.user_name || '익명',
+                        brandName: data.brandName || null,
+                        channel: data.channel || 'unknown',
+                        status: data.status || 'waiting',
+                        modeSnapshot: data.modeSnapshot || 'AUTO',
+                        lastMessageAt: data.lastMessageAt?.toDate?.()?.toISOString() || data.lastMessageAt,
+                        cwConversationId: data.cw_conversation_id || null,
+                        summary: typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null,
+                        category: data.category || null,
+                        categories: data.category ? data.category.split('|').map(c => c.trim()) : [],
+                    },
+                    messages,
+                });
+
+                // 로딩 완료
+                setLoading(false);
+
+                console.log('[ConversationDetail] Firestore update received:', {
+                    messagesCount: messages.length,
+                    lastMessage: messages[messages.length - 1]?.text?.substring(0, 50),
+                });
+            },
+            (error) => {
+                console.error('[ConversationDetail] Firestore listener error:', error);
+                setLoading(false);
+                // 에러 발생 시 기존 fetchDetail로 폴백
+                fetchDetail({ skipLoading: true }).catch((e) => {
+                    console.error('[ConversationDetail] Fallback fetchDetail failed:', e);
+                });
+            }
+        );
+
+        // 클린업: 모달이 닫히거나 chatId가 변경되면 리스너 해제
+        return () => {
+            console.log('[ConversationDetail] Cleaning up Firestore listener');
+            unsubscribe();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chatId, effectiveTenantId]);
+
     const fetchDetail = async (options = {}) => {
         const { skipLoading = false } = options;
 
         if (!chatId) {
-            console.error('[ConversationDetail] Missing chatId');
+            console.error('[ConversationDetail] Cannot fetch detail: chatId is missing');
             return;
         }
 
@@ -96,8 +176,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
 
         try {
-            const res = await fetch(`/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${chatId}`);
-            if (!res.ok) throw new Error('상세 조회 실패');
+            const res = await fetch(
+                `/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${chatId}`
+            );
+            if (!res.ok) {
+                throw new Error(`Failed to fetch: ${res.status}`);
+            }
 
             const data = await res.json();
             setDetail(data);
@@ -612,8 +696,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             chatId,                       // 위에서 계산한 chatId
                         });
 
-                        // ✅ 상세는 비동기로 새로고침 (await 제거)
-                        fetchDetail().catch(e => {
+                        // ✅ 상세는 조용히 리프레시 (skipLoading: true)
+                        fetchDetail({ skipLoading: true }).catch(e => {
                             console.error('[ConversationDetail] Failed to refresh after AI send:', e);
                         });
                     }}
