@@ -183,6 +183,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         el.style.height = newHeight + 'px';
     };
 
+    // 기존 handleSend 전체를 이렇게 교체
+
     const handleSend = async () => {
         if (sending || uploading) return;
 
@@ -190,7 +192,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         const hasText = text.length > 0;
         const hasAttachments = attachments.length > 0;
 
-        // 텍스트 또는 첨부파일이 있어야 함
         if (!hasText && !hasAttachments) return;
 
         setSending(true);
@@ -203,11 +204,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             chatId: chatId,
         });
 
-        // ✅ 전송 전 내용 저장 (에러 시 복원용)
         const savedDraft = draft;
         const savedAttachments = [...attachments];
 
-        // ✅ 옵티미스틱 UI: 로컬에 먼저 메시지 추가
+        // ✅ 옵티미스틱 메시지
         const tempId = `local-${Date.now()}`;
         const optimisticMessage = {
             sender: 'agent',
@@ -218,15 +218,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             _status: 'pending',
         };
 
-        // 로컬 상태에 즉시 추가
         if (detail?.messages) {
-            setDetail({
-                ...detail,
-                messages: [...detail.messages, optimisticMessage],
-            });
+            setDetail(prev =>
+                prev
+                    ? { ...prev, messages: [...(prev.messages || []), optimisticMessage] }
+                    : prev
+            );
         }
 
-        // ✅ 입력창은 즉시 비우기 (체감 속도 개선)
+        // ✅ 입력창/첨부는 즉시 리셋 (체감 속도용)
         setDraft('');
         setAttachments([]);
         try {
@@ -239,10 +239,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
 
         try {
-            // ✅ tenantId와 첨부파일 정보를 포함하여 전달
+            // 실제 전송
             await onSend?.({
-                text: text || '', // ✅ 빈 문자열도 명시적으로 전달
-                attachments: attachments.map(att => ({
+                text: text || '',
+                attachments: savedAttachments.map(att => ({
                     name: att.name,
                     type: att.type,
                     size: att.size,
@@ -252,38 +252,47 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 chatId: chatId,
             });
 
-            // ✅ 전송 성공: pending 플래그 제거 (또는 sent로 변경)
-            if (detail?.messages) {
-                setDetail({
-                    ...detail,
-                    messages: detail.messages.map(m =>
+            // ✅ 성공 시: pending → sent
+            setDetail(prev => {
+                if (!prev?.messages) return prev;
+                return {
+                    ...prev,
+                    messages: prev.messages.map(m =>
                         m.msgId === tempId ? { ...m, _status: 'sent' } : m
                     ),
-                });
-            }
+                };
+            });
 
-            // ✅ 전송 후 상세는 비동기로 새로고침 (await 제거)
+            // ✅ 상세 재조회는 비동기 (기다리지 않음)
             fetchDetail().catch(err => {
                 console.error('[ConversationDetail] Failed to refresh detail:', err);
             });
         } catch (error) {
             console.error('[ConversationDetail] Send failed:', error);
 
-            // ✅ 실패 시: 옵티미스틱 메시지 제거 및 입력 내용 복원
-            if (detail?.messages) {
-                setDetail({
-                    ...detail,
-                    messages: detail.messages.filter(m => m.msgId !== tempId),
-                });
-            }
+            // ✅ 실패 시: 버블은 살려두고 상태만 error로
+            setDetail(prev => {
+                if (!prev?.messages) return prev;
+                return {
+                    ...prev,
+                    messages: prev.messages.map(m =>
+                        m.msgId === tempId
+                            ? { ...m, _status: 'error' }
+                            : m
+                    ),
+                };
+            });
+
+            // 선택: 입력 복원
             setDraft(savedDraft);
             setAttachments(savedAttachments);
+
             alert('메시지 전송에 실패했습니다. 다시 시도해주세요.');
         } finally {
-            // ✅ 버튼/입력창은 즉시 활성화 (전송 API 응답과 무관)
             setSending(false);
         }
     };
+
 
     const onKeyDown = (e) => {
         // ✅ 모바일/작은 화면에서는 Enter를 줄바꿈으로, 데스크톱에서는 전송으로
@@ -451,7 +460,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                                 />
                                                 <button
                                                     onClick={() => removeAttachment(idx)}
-                                                    disabled={sending || uploading}
+                                                    disabled={uploading}
                                                     className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                                     aria-label="첨부파일 삭제"
                                                 >
@@ -497,7 +506,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         <div className="flex items-end gap-2">
                             <button
                                 onClick={() => filePickerRef.current?.click()}
-                                disabled={sending || uploading}
+                                disabled={uploading}
                                 className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 aria-label="첨부"
                             >
@@ -517,22 +526,21 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                             <textarea
                                 ref={textareaRef}
-                                value={sending ? '전송 중...' : draft}
+                                value={draft} // ❌ sending 여부에 따라 바꾸지 않기
                                 onChange={(e) => {
-                                    if (!sending && !uploading) {
+                                    if (!uploading) {            // ❌ sending은 무시
                                         setDraft(e.target.value);
                                         autoResize(e.target);
                                     }
                                 }}
                                 onKeyDown={onKeyDown}
                                 onPaste={onPaste}
-                                placeholder={sending ? '전송 중...' : uploading ? '파일 처리 중...' : '메시지 입력...'}
-                                disabled={sending || uploading}
+                                placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
+                                disabled={uploading}             // ❌ sending으로 disable 안 함
                                 enterKeyHint="send"
-                                className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-wait max-h-[120px]"
+                                className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
                                 rows={1}
                             />
-
                             <button
                                 onClick={handleSend}
                                 disabled={!canSend || sending || uploading}
@@ -542,11 +550,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     }`}
                                 aria-label="전송"
                             >
-                                {sending ? (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                                ) : (
-                                    <Send className="w-4 h-4" />
-                                )}
+                                {/* 항상 아이콘만 */}
+                                <Send className="w-4 h-4" />
                             </button>
 
                             <input
