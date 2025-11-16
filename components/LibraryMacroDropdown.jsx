@@ -31,8 +31,10 @@ export default function LibraryMacroDropdown({
     onClose,
 }) {
     const dropdownRef = useRef(null);
+    const scrollContainerRef = useRef(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
+    const [isPositioned, setIsPositioned] = useState(false);
 
     // 모바일 감지
     useEffect(() => {
@@ -41,6 +43,38 @@ export default function LibraryMacroDropdown({
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
+
+    // ✅ 키보드 감지: 드롭다운이 표시되면 키보드가 올라온 것으로 간주
+    useEffect(() => {
+        // 드롭다운이 실제로 표시되고 위치가 계산되었을 때만 키보드 이벤트 발생
+        if (isPositioned && position && typeof window !== 'undefined') {
+            // 커스텀 이벤트를 발생시켜 MinimalHeader의 키보드 감지 로직에 알림
+            const event = new CustomEvent('keyboard-visibility-change', {
+                detail: { visible: true }
+            });
+            window.dispatchEvent(event);
+        }
+
+        return () => {
+            // 드롭다운이 닫힐 때 키보드가 사라진 것으로 간주
+            if (isPositioned && typeof window !== 'undefined') {
+                const event = new CustomEvent('keyboard-visibility-change', {
+                    detail: { visible: false }
+                });
+                window.dispatchEvent(event);
+            }
+        };
+    }, [isPositioned, position]);
+
+    // ✅ 위치 계산 완료 후 렌더링 (깜빡임 방지)
+    useEffect(() => {
+        if (position) {
+            // 위치가 설정되면 즉시 표시
+            setIsPositioned(true);
+        } else {
+            setIsPositioned(false);
+        }
+    }, [position]);
 
     // 모든 라이브러리 항목을 배열로 변환
     const allItems = Object.entries(libraryData || {}).flatMap(([category, items]) =>
@@ -91,6 +125,13 @@ export default function LibraryMacroDropdown({
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+                // 드롭다운 닫기 전에 키보드 이벤트 발생
+                if (typeof window !== 'undefined') {
+                    const event = new CustomEvent('keyboard-visibility-change', {
+                        detail: { visible: false }
+                    });
+                    window.dispatchEvent(event);
+                }
                 onClose?.();
             }
         };
@@ -116,11 +157,25 @@ export default function LibraryMacroDropdown({
                 case 'Enter':
                     e.preventDefault();
                     if (filteredItems[selectedIndex]) {
+                        // 선택 시 드롭다운 닫기 전에 키보드 이벤트 발생
+                        if (typeof window !== 'undefined') {
+                            const event = new CustomEvent('keyboard-visibility-change', {
+                                detail: { visible: false }
+                            });
+                            window.dispatchEvent(event);
+                        }
                         onSelect?.(filteredItems[selectedIndex].value);
                     }
                     break;
                 case 'Escape':
                     e.preventDefault();
+                    // 드롭다운 닫기 전에 키보드 이벤트 발생
+                    if (typeof window !== 'undefined') {
+                        const event = new CustomEvent('keyboard-visibility-change', {
+                            detail: { visible: false }
+                        });
+                        window.dispatchEvent(event);
+                    }
                     onClose?.();
                     break;
             }
@@ -147,17 +202,24 @@ export default function LibraryMacroDropdown({
         return null;
     }
 
+    // 위치가 계산되지 않았으면 렌더링하지 않음 (깜빡임 방지)
+    if (!isPositioned && !position) {
+        return null;
+    }
+
     return (
         <div
             ref={dropdownRef}
             className="fixed z-[100] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
             style={{
-                // ✅ 개선된 위치 계산
+                // ✅ 개선된 위치 계산 - 키보드가 올라온 경우 하단 탭 높이 제외
                 bottom: position?.bottom || (isMobile ? '72px' : 'auto'),
                 left: isMobile ? '16px' : (position?.left || 0),
                 right: isMobile ? '16px' : 'auto',
                 width: isMobile ? 'auto' : '360px',
                 maxHeight: isMobile ? '180px' : '320px', // 모바일 더 작게
+                opacity: isPositioned ? 1 : 0, // 위치 계산 완료 전에는 투명
+                transition: 'opacity 0.1s ease-out', // 부드러운 전환
             }}
         >
             {/* 헤더 */}
@@ -180,8 +242,34 @@ export default function LibraryMacroDropdown({
 
             {/* 항목 리스트 */}
             <div
+                ref={scrollContainerRef}
                 className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
-                style={{ maxHeight: isMobile ? '200px' : '280px' }}
+                style={{
+                    maxHeight: isMobile ? '200px' : '280px',
+                    WebkitOverflowScrolling: 'touch',
+                    touchAction: 'pan-y',
+                    overscrollBehavior: 'contain',
+                }}
+                onTouchStart={(e) => {
+                    // 스크롤 영역에서 터치 시작 시 이벤트 전파 방지
+                    const target = e.currentTarget;
+                    const isScrollable = target.scrollHeight > target.clientHeight;
+                    if (isScrollable) {
+                        e.stopPropagation();
+                    }
+                }}
+                onTouchMove={(e) => {
+                    // 스크롤 중에는 항상 전파 방지
+                    const target = e.currentTarget;
+                    const isScrollable = target.scrollHeight > target.clientHeight;
+                    if (isScrollable) {
+                        e.stopPropagation();
+                    }
+                }}
+                onWheel={(e) => {
+                    // 마우스 휠 이벤트도 전파 방지
+                    e.stopPropagation();
+                }}
             >
                 {/* 1. 정확 매칭 항목들 */}
                 {exactMatches.map((item, index) => {
@@ -191,7 +279,16 @@ export default function LibraryMacroDropdown({
                         <button
                             key={`exact-${item.category}-${item.key}`}
                             data-index={index}
-                            onClick={() => onSelect?.(item.value)}
+                            onClick={() => {
+                                // 선택 시 드롭다운 닫기 전에 키보드 이벤트 발생
+                                if (typeof window !== 'undefined') {
+                                    const event = new CustomEvent('keyboard-visibility-change', {
+                                        detail: { visible: false }
+                                    });
+                                    window.dispatchEvent(event);
+                                }
+                                onSelect?.(item.value);
+                            }}
                             className={`w-full px-4 py-2.5 flex items-start gap-3 transition-colors text-left ${isSelected
                                 ? 'bg-blue-50 border-l-4 border-blue-600'
                                 : 'hover:bg-gray-50 border-l-4 border-transparent'
@@ -237,7 +334,16 @@ export default function LibraryMacroDropdown({
                                     <button
                                         key={`cat-${item.category}-${item.key}`}
                                         data-index={itemIndex}
-                                        onClick={() => onSelect?.(item.value)}
+                                        onClick={() => {
+                                            // 선택 시 드롭다운 닫기 전에 키보드 이벤트 발생
+                                            if (typeof window !== 'undefined') {
+                                                const event = new CustomEvent('keyboard-visibility-change', {
+                                                    detail: { visible: false }
+                                                });
+                                                window.dispatchEvent(event);
+                                            }
+                                            onSelect?.(item.value);
+                                        }}
                                         className={`w-full px-4 py-2.5 flex items-start gap-3 transition-colors text-left ${isSelected
                                             ? 'bg-blue-50 border-l-4 border-blue-600'
                                             : 'hover:bg-gray-50 border-l-4 border-transparent'
@@ -288,7 +394,16 @@ export default function LibraryMacroDropdown({
                                     <button
                                         key={`all-${item.category}-${item.key}`}
                                         data-index={itemIndex}
-                                        onClick={() => onSelect?.(item.value)}
+                                        onClick={() => {
+                                            // 선택 시 드롭다운 닫기 전에 키보드 이벤트 발생
+                                            if (typeof window !== 'undefined') {
+                                                const event = new CustomEvent('keyboard-visibility-change', {
+                                                    detail: { visible: false }
+                                                });
+                                                window.dispatchEvent(event);
+                                            }
+                                            onSelect?.(item.value);
+                                        }}
                                         className={`w-full px-4 py-2.5 flex items-start gap-3 transition-colors text-left ${isSelected
                                             ? 'bg-blue-50 border-l-4 border-blue-600'
                                             : 'hover:bg-gray-50 border-l-4 border-transparent'

@@ -14,18 +14,19 @@ export default function AIComposerModal({
 }) {
     const [step, setStep] = useState('compose');
 
-    // ✅ 응답 타입: completed / waiting / custom
+    // ✅ initialText가 있으면 custom, 없으면 completed
     const [responseType, setResponseType] = useState(
-        initialText ? 'custom' : 'completed'
+        initialText && initialText.trim() ? 'custom' : 'completed'
     );
     const [customInput, setCustomInput] = useState(initialText || '');
 
     // ✅ 챗봇 모드 토글 (기본: 상담원)
     const [isBotMode, setIsBotMode] = useState(false);
 
-    // ✅ initialText 변경 시 자동 설정
+    // ✅ initialText 변경 시 자동 설정 (강화)
     useEffect(() => {
-        if (initialText) {
+        if (initialText && initialText.trim()) {
+            console.log('[AIComposerModal] initialText detected:', initialText);
             setCustomInput(initialText);
             setResponseType('custom');
         }
@@ -155,9 +156,14 @@ export default function AIComposerModal({
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
             <div
-                className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden transition-all duration-300"
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
                 style={{
-                    maxHeight: step === 'compose' && responseType === 'custom' ? '85vh' : '420px'
+                    maxHeight: step === 'compose' && responseType === 'custom' && toneFlags.includes('detail_adjust')
+                        ? '85vh'
+                        : step === 'compose' && responseType === 'custom'
+                            ? '580px'
+                            : '420px',
+                    transition: 'max-height 0.3s ease-in-out'
                 }}
             >
                 {/* 헤더 */}
@@ -226,7 +232,7 @@ export default function AIComposerModal({
                                 <button
                                     onClick={() => setResponseType('waiting')}
                                     className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all text-sm font-medium ${responseType === 'waiting'
-                                        ? 'bg-yellow-500 text-white shadow-sm'
+                                        ? 'bg-orange-500 text-white shadow-sm'
                                         : 'bg-white text-gray-600 hover:bg-gray-50 border-[0.5px] border-gray-300'
                                         }`}
                                 >
@@ -255,7 +261,9 @@ export default function AIComposerModal({
 
                             {/* 직접 입력 시 textarea + 옵션들 */}
                             {responseType === 'custom' && (
-                                <div className="space-y-3">
+                                <div className="space-y-3" style={{
+                                    animation: 'slideDown 0.3s ease-out'
+                                }}>
                                     <textarea
                                         value={customInput}
                                         onChange={(e) => setCustomInput(e.target.value)}
@@ -308,89 +316,140 @@ export default function AIComposerModal({
                                         </button>
                                     </div>
 
-                                    {/* 슬라이더들 - 항상 표시, 비활성/활성 전환 */}
-                                    <div className={`space-y-4 transition-opacity ${toneFlags.includes('detail_adjust') ? 'opacity-100' : 'opacity-40 pointer-events-none'
-                                        }`}>
-                                        {/* 길이감 슬라이더 */}
-                                        <div>
-                                            <div className="text-xs font-semibold text-gray-700 mb-3">길이감</div>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="2"
-                                                step="1"
-                                                disabled={!toneFlags.includes('detail_adjust')}
-                                                value={
-                                                    toneFlags.includes('concise_core') ? 0 :
-                                                        toneFlags.includes('expanded_text') ? 2 : 1
-                                                }
-                                                onChange={(e) => {
-                                                    const val = parseInt(e.target.value);
-                                                    setToneFlags(prev => {
-                                                        let updated = prev.filter(f =>
-                                                            f !== 'concise_core' && f !== 'expanded_text' && f !== 'auto_contextual'
-                                                        );
-                                                        if (val === 0) updated.push('concise_core');
-                                                        else if (val === 2) updated.push('expanded_text');
-                                                        else updated.push('auto_contextual');
+                                    {/* 슬라이더들 - 토글 시 표시 */}
+                                    {toneFlags.includes('detail_adjust') && (
+                                        <div className="space-y-4 pt-2" style={{
+                                            animation: 'slideDown 0.3s ease-out'
+                                        }}>
+                                            {/* 길이감 슬라이더 */}
+                                            <div>
+                                                <div className="text-xs font-semibold text-gray-700 mb-3">길이감</div>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="2"
+                                                    step="1"
+                                                    value={
+                                                        toneFlags.includes('concise_core') ? 0 :
+                                                            toneFlags.includes('expanded_text') ? 2 : 1
+                                                    }
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value);
+                                                        setToneFlags(prev => {
+                                                            let updated = prev.filter(f =>
+                                                                f !== 'concise_core' && f !== 'expanded_text' && f !== 'auto_contextual'
+                                                            );
+                                                            if (val === 0) updated.push('concise_core');
+                                                            else if (val === 2) updated.push('expanded_text');
+                                                            else updated.push('auto_contextual');
 
-                                                        if (!updated.includes('detail_adjust')) {
-                                                            updated.push('detail_adjust');
-                                                        }
-                                                        return updated;
-                                                    });
-                                                }}
-                                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                            />
-                                            <div className="flex justify-between items-center mt-2">
-                                                <span className="text-[11px] text-gray-400">간결</span>
-                                                <span className="text-[11px] text-gray-400">보통</span>
-                                                <span className="text-[11px] text-gray-400">풍부</span>
+                                                            if (!updated.includes('detail_adjust')) {
+                                                                updated.push('detail_adjust');
+                                                            }
+                                                            return updated;
+                                                        });
+                                                    }}
+                                                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                />
+                                                <div className="flex justify-between items-center mt-2">
+                                                    <span className="text-[11px] text-gray-400">간결</span>
+                                                    <span className="text-[11px] text-gray-400">보통</span>
+                                                    <span className="text-[11px] text-gray-400">풍부</span>
+                                                </div>
+                                            </div>
+
+                                            {/* 어투 슬라이더 */}
+                                            <div>
+                                                <div className="text-xs font-semibold text-gray-700 mb-3">어투</div>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="2"
+                                                    step="1"
+                                                    value={
+                                                        toneFlags.includes('firm') ? 0 :
+                                                            toneFlags.includes('auto_contextual') ? 1 : 2
+                                                    }
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value);
+                                                        setToneFlags(prev => {
+                                                            // 어투 관련 플래그만 제거 (특수옵션 플래그는 유지)
+                                                            let updated = prev.filter(f =>
+                                                                f !== 'firm' &&
+                                                                f !== 'auto_contextual' &&
+                                                                f !== 'friendly'
+                                                            );
+
+                                                            if (val === 0) {
+                                                                updated.push('firm');
+                                                            } else if (val === 1) {
+                                                                updated.push('auto_contextual');
+                                                            } else {
+                                                                updated.push('friendly');
+                                                            }
+
+                                                            if (!updated.includes('detail_adjust')) {
+                                                                updated.push('detail_adjust');
+                                                            }
+                                                            return updated;
+                                                        });
+                                                    }}
+                                                    className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                />
+                                                <div className="flex justify-between items-center mt-2">
+                                                    <span className="text-[11px] text-gray-400">공식적</span>
+                                                    <span className="text-[11px] text-gray-400">균형</span>
+                                                    <span className="text-[11px] text-gray-400">친근함</span>
+                                                </div>
+                                            </div>
+
+                                            {/* 특수 옵션 드롭다운 */}
+                                            <div>
+                                                <label className="text-xs font-semibold text-gray-700 mb-2 block">특수 옵션</label>
+                                                <select
+                                                    value={
+                                                        toneFlags.includes('with_emojis') ? 'with_emojis' :
+                                                            toneFlags.includes('no_emojis') ? 'no_emojis' :
+                                                                toneFlags.includes('empathetic') ? 'empathetic' :
+                                                                    toneFlags.includes('playful_humor') ? 'playful_humor' :
+                                                                        toneFlags.includes('translate') ? 'translate' :
+                                                                            'none'
+                                                    }
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setToneFlags(prev => {
+                                                            // 특수 옵션 관련 플래그만 제거 (어투 슬라이더 플래그는 유지)
+                                                            let updated = prev.filter(f =>
+                                                                f !== 'with_emojis' &&
+                                                                f !== 'no_emojis' &&
+                                                                f !== 'empathetic' &&
+                                                                f !== 'playful_humor' &&
+                                                                f !== 'translate'
+                                                            );
+
+                                                            if (val !== 'none') {
+                                                                updated.push(val);
+                                                            }
+
+                                                            // detail_adjust는 항상 유지
+                                                            if (!updated.includes('detail_adjust')) {
+                                                                updated.push('detail_adjust');
+                                                            }
+                                                            return updated;
+                                                        });
+                                                    }}
+                                                    className="w-full px-3 py-2.5 bg-white border-[0.5px] border-gray-300 rounded-lg text-sm text-gray-700 focus:border-blue-500 focus:outline-none hover:border-gray-400 transition-colors cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23666%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')] bg-[length:16px] bg-[right_0.5rem_center] bg-no-repeat pr-8"
+                                                >
+                                                    <option value="none">선택 안함 (기본)</option>
+                                                    <option value="with_emojis">😊 이모티콘 활용</option>
+                                                    <option value="no_emojis">🫥 이모티콘 없이</option>
+                                                    <option value="empathetic">🥹 공감 잔뜩</option>
+                                                    <option value="playful_humor">🤡 유쾌한 유머 한 스푼</option>
+                                                    <option value="translate">🌐 외국어로 문의가 왔을 때</option>
+                                                </select>
                                             </div>
                                         </div>
-
-                                        {/* 어투 슬라이더 */}
-                                        <div>
-                                            <div className="text-xs font-semibold text-gray-700 mb-3">어투</div>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="2"
-                                                step="1"
-                                                disabled={!toneFlags.includes('detail_adjust')}
-                                                value={
-                                                    toneFlags.includes('firm') || toneFlags.includes('no_emojis') ? 0 :
-                                                        toneFlags.includes('playful_humor') || toneFlags.includes('with_emojis') ? 2 : 1
-                                                }
-                                                onChange={(e) => {
-                                                    const val = parseInt(e.target.value);
-                                                    setToneFlags(prev => {
-                                                        let updated = prev.filter(f =>
-                                                            f !== 'firm' && f !== 'no_emojis' &&
-                                                            f !== 'playful_humor' && f !== 'with_emojis' &&
-                                                            f !== 'empathetic'
-                                                        );
-                                                        if (val === 0) {
-                                                            updated.push('firm', 'no_emojis');
-                                                        } else if (val === 2) {
-                                                            updated.push('playful_humor', 'with_emojis', 'empathetic');
-                                                        }
-
-                                                        if (!updated.includes('detail_adjust')) {
-                                                            updated.push('detail_adjust');
-                                                        }
-                                                        return updated;
-                                                    });
-                                                }}
-                                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                            />
-                                            <div className="flex justify-between items-center mt-2">
-                                                <span className="text-[11px] text-gray-400">공식적</span>
-                                                <span className="text-[11px] text-gray-400">균형</span>
-                                                <span className="text-[11px] text-gray-400">친근함</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
                             )}
 
@@ -522,6 +581,18 @@ export default function AIComposerModal({
                 
                 .animate-in {
                     animation: slide-in-from-top 0.2s ease-out;
+                }
+            `}</style>
+            <style jsx>{`
+                @keyframes slideDown {
+                    from {
+                        opacity: 0;
+                        transform: translateY(-10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
                 }
             `}</style>
         </div>

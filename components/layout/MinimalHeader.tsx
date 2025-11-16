@@ -103,6 +103,11 @@ export default function MinimalHeader({
             }
         };
 
+        // ✅ 커스텀 이벤트로 라이브러리 드롭다운 표시 시에도 키보드 감지
+        const handleKeyboardVisibilityChange = (e: CustomEvent) => {
+            setIsKeyboardVisible(e.detail.visible);
+        };
+
         // 초기 체크
         if (typeof window !== 'undefined' && window.visualViewport) {
             handleViewportResize();
@@ -110,6 +115,7 @@ export default function MinimalHeader({
 
         document.addEventListener('focusin', handleFocus, true); // capture phase로 전역 감지
         document.addEventListener('focusout', handleBlur, true);
+        window.addEventListener('keyboard-visibility-change', handleKeyboardVisibilityChange as EventListener);
         
         if (typeof window !== 'undefined' && window.visualViewport) {
             window.visualViewport.addEventListener('resize', handleViewportResize);
@@ -119,6 +125,7 @@ export default function MinimalHeader({
             clearTimeout(blurTimeout);
             document.removeEventListener('focusin', handleFocus, true);
             document.removeEventListener('focusout', handleBlur, true);
+            window.removeEventListener('keyboard-visibility-change', handleKeyboardVisibilityChange as EventListener);
             if (typeof window !== 'undefined' && window.visualViewport) {
                 window.visualViewport.removeEventListener('resize', handleViewportResize);
             }

@@ -489,24 +489,26 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             if (!textAfterHash.includes(' ') && libraryData) {
                 setMacroSearchQuery(textAfterHash);
 
-                // ✅ 위치 계산을 먼저 완료한 후 드롭다운 표시 (깜빡임 방지)
+                // ✅ 위치 계산을 한 번에 완료하여 깜빡임 방지
                 if (textareaRef.current) {
-                    // requestAnimationFrame으로 위치 계산 후 렌더링 보장
+                    // 동기적으로 위치 계산
+                    const rect = textareaRef.current.getBoundingClientRect();
+                    const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
+
+                    // 모바일에서 키보드가 올라온 경우 하단 탭 높이 고려
+                    const isMobile = window.innerWidth < 768;
+                    const bottomTabHeight = isMobile ? 64 : 0; // 하단 탭 높이
+
+                    const calculatedPosition = {
+                        bottom: inputBottom + 8, // 입력창 바로 위 8px
+                        left: rect.left,
+                    };
+
+                    // 위치와 드롭다운 상태를 동시에 설정하여 깜빡임 방지
+                    setMacroTriggerPosition(calculatedPosition);
+                    // 다음 프레임에서 드롭다운 표시 (위치가 먼저 설정되도록)
                     requestAnimationFrame(() => {
-                        if (textareaRef.current) {
-                            const rect = textareaRef.current.getBoundingClientRect();
-                            const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
-
-                            setMacroTriggerPosition({
-                                bottom: inputBottom + 8, // 입력창 바로 위 8px
-                                left: rect.left,
-                            });
-
-                            // 위치 계산 완료 후 드롭다운 표시
-                            requestAnimationFrame(() => {
-                                setShowLibraryDropdown(true);
-                            });
-                        }
+                        setShowLibraryDropdown(true);
                     });
                 } else {
                     setShowLibraryDropdown(false);
@@ -547,6 +549,14 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
                 autoResize(textareaRef.current);
             }, 0);
+        }
+
+        // 드롭다운 닫기 전에 키보드 이벤트 발생 (하단 탭 다시 표시)
+        if (typeof window !== 'undefined') {
+            const event = new CustomEvent('keyboard-visibility-change', {
+                detail: { visible: false }
+            });
+            window.dispatchEvent(event);
         }
 
         setShowLibraryDropdown(false);
