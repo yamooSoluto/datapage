@@ -181,8 +181,7 @@ export default function AIComposerModal({
                         ? '85vh'
                         : step === 'compose' && responseType === 'custom'
                             ? '580px'
-                            : '420px',
-                    transition: 'max-height 0.3s ease-in-out'
+                            : '420px'
                 }}
             >
                 {/* 헤더 */}
@@ -219,7 +218,7 @@ export default function AIComposerModal({
                                 </div>
                                 <button
                                     onClick={() => setIsBotMode(!isBotMode)}
-                                    className={`relative w-11 h-6 rounded-full transition-colors ${isBotMode ? 'bg-blue-600' : 'bg-gray-300'
+                                    className={`relative w-11 h-6 rounded-full transition-colors ${isBotMode ? 'bg-yellow-600' : 'bg-gray-300'
                                         }`}
                                 >
                                     <div
@@ -338,7 +337,7 @@ export default function AIComposerModal({
                                                     setMacroTriggerPosition(null);
                                                 }
                                             }}
-                                            placeholder="답변을 직접 입력하세요... (# 입력하면 라이브러리 사용 가능)"
+                                            placeholder="답변 혹은 지침을 직접 입력하세요..."
                                             rows={6}
                                             autoFocus
                                             className="w-full px-4 py-3 border-[0.5px] border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none resize-none text-sm text-gray-900 placeholder-gray-400"
