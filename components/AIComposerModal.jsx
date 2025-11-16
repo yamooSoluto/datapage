@@ -80,19 +80,29 @@ export default function AIComposerModal({
         setStep('processing');
 
         try {
+            // ✅ GCP 함수가 기대하는 형식에 맞춘 payload
             const payload = {
                 tenantId,
                 conversationId: conversation.chatId,
-                content: finalContent,
-                enableAI: true,
-                planName,
+                userMessage: '', // ✅ 필수 필드 (API에서 자동으로 채워짐)
+                agentInstruction: finalContent, // ✅ content → agentInstruction
+                mode: contentType === 'policy_based' ? 'mediated' : 'tone_correction', // ✅ mode 추가
                 source: 'web_portal',
+                planName: planName || 'trial',
                 voice: isBotMode ? 'bot' : 'agent', // ✅ 챗봇 모드 반영
-                ...(planName === 'business' ? {
-                    contentType,
-                    toneFlags: toneFlags.join(','),
-                } : {}),
+                contentType: contentType || 'tone_correction',
+                toneFlags: toneFlags.length > 0 ? toneFlags.join(',') : '', // ✅ 문자열로 변환
+                csTone: null, // ✅ API에서 자동으로 채워짐
+                previousMessages: [], // ✅ API에서 자동으로 채워짐
+                executionMode: 'production', // ✅ 필수 필드
             };
+
+            // ✅ Pro 플랜일 때는 기본값 설정
+            if (planName === 'pro') {
+                payload.voice = 'agent';
+                payload.contentType = 'tone_correction';
+                payload.toneFlags = '';
+            }
 
             const response = await fetch('/api/ai/tone-correction', {
                 method: 'POST',
@@ -294,18 +304,26 @@ export default function AIComposerModal({
                                                     if (!textAfterHash.includes(' ') && libraryData) {
                                                         setMacroSearchQuery(textAfterHash);
 
-                                                        // 위치 계산
+                                                        // ✅ 위치 계산을 먼저 완료한 후 드롭다운 표시 (깜빡임 방지)
                                                         if (textareaRef.current) {
+                                                            // 먼저 드롭다운 숨김 (깜빡임 방지)
+                                                            setShowLibraryDropdown(false);
+
+                                                            // 위치 계산
                                                             const rect = textareaRef.current.getBoundingClientRect();
                                                             const inputBottom = window.innerHeight - rect.top;
 
+                                                            // 위치를 먼저 설정
                                                             setMacroTriggerPosition({
                                                                 bottom: inputBottom + 8,
                                                                 left: rect.left,
                                                             });
 
+                                                            // 위치 설정이 완료된 후 다음 프레임에서 드롭다운 표시
                                                             requestAnimationFrame(() => {
-                                                                setShowLibraryDropdown(true);
+                                                                requestAnimationFrame(() => {
+                                                                    setShowLibraryDropdown(true);
+                                                                });
                                                             });
                                                         } else {
                                                             setShowLibraryDropdown(false);

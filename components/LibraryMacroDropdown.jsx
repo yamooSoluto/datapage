@@ -148,7 +148,8 @@ export default function LibraryMacroDropdown({
     }
 
     // ✅ 위치가 계산되기 전에는 렌더링하지 않음 (깜빡임 방지)
-    if (!position) {
+    // position이 있고 bottom과 left가 모두 유효한 값일 때만 렌더링
+    if (!position || position.bottom === undefined || position.left === undefined) {
         return null;
     }
 

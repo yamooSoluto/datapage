@@ -499,19 +499,24 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                 // ✅ 위치 계산을 먼저 완료한 후 드롭다운 표시 (깜빡임 방지)
                 if (textareaRef.current) {
-                    // 위치를 먼저 계산하고 상태를 한 번에 업데이트하여 깜빡임 방지
+                    // 먼저 드롭다운 숨김 (깜빡임 방지)
+                    setShowLibraryDropdown(false);
+
+                    // 위치를 먼저 계산
                     const rect = textareaRef.current.getBoundingClientRect();
                     const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
 
-                    // 위치와 표시 상태를 동시에 업데이트
+                    // 위치를 먼저 설정
                     setMacroTriggerPosition({
                         bottom: inputBottom + 8, // 입력창 바로 위 8px
                         left: rect.left,
                     });
 
-                    // 다음 프레임에서 드롭다운 표시 (위치 계산이 완료된 후)
+                    // 위치 설정이 완료된 후 다음 프레임에서 드롭다운 표시 (이중 requestAnimationFrame으로 확실히 보장)
                     requestAnimationFrame(() => {
-                        setShowLibraryDropdown(true);
+                        requestAnimationFrame(() => {
+                            setShowLibraryDropdown(true);
+                        });
                     });
                 } else {
                     setShowLibraryDropdown(false);

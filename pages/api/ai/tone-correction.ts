@@ -28,20 +28,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             tenantId,
             chatId,
             conversationId, // chatId의 alias
-            content,
+            content, // ✅ 기존 필드 (하위 호환성)
+            agentInstruction, // ✅ GCP 함수 형식 필드
+            userMessage, // ✅ GCP 함수 형식 필드 (선택적, 없으면 자동으로 채워짐)
+            mode, // ✅ GCP 함수 형식 필드
             enableAI,
             planName,
             voice,
             contentType,
             toneFlags,
             source = 'web_portal',
+            csTone, // ✅ GCP 함수 형식 필드 (선택적)
+            previousMessages, // ✅ GCP 함수 형식 필드 (선택적)
+            executionMode, // ✅ GCP 함수 형식 필드
         } = req.body || {};
 
         const actualChatId = conversationId || chatId;
+        
+        // ✅ agentInstruction 또는 content 중 하나는 필수
+        const finalContent = agentInstruction || content;
 
         // 필수 파라미터 검증
-        if (!tenantId || !actualChatId || !content) {
-            return res.status(400).json({ error: "tenantId, chatId, content required" });
+        if (!tenantId || !actualChatId || !finalContent) {
+            return res.status(400).json({ error: "tenantId, chatId, and (content or agentInstruction) required" });
         }
 
         // ✅ 동일 conversationId로 진행 중인 요청 확인
@@ -73,7 +82,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log("[tone-correction] Request:", {
             tenantId,
             chatId: actualChatId,
-            contentLength: content?.length,
+            contentLength: finalContent?.length,
+            hasAgentInstruction: !!agentInstruction,
+            hasUserMessage: !!userMessage,
+            mode,
             enableAI,
             planName,
             source,
@@ -83,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!enableAI) {
             return res.status(200).json({
                 ok: true,
-                correctedText: content,
+                correctedText: finalContent,
                 source: 'original'
             });
         }
@@ -102,8 +114,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         // ✅ 2. 대화 정보 조회 (최근 5개 메시지)
-        let userMessage = "";
-        let previousMessages = [];
+        // ✅ 요청에서 userMessage가 제공되면 사용, 없으면 자동으로 채움
+        let finalUserMessage = userMessage || "";
+        let finalPreviousMessages = previousMessages || [];
 
         try {
             // 최근 5개 문서 조회
@@ -122,9 +135,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 contextSnap.docs.forEach((doc) => {
                     const data = doc.data();
 
-                    // userMessage는 가장 최근 문서에서
-                    if (!userMessage && data.user_message) {
-                        userMessage = data.user_message;
+                    // userMessage는 가장 최근 문서에서 (요청에 없을 때만)
+                    if (!finalUserMessage && data.user_message) {
+                        finalUserMessage = data.user_message;
                     }
 
                     // 모든 문서의 messages 배열 수집
@@ -144,25 +157,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     return getMillis(a) - getMillis(b);
                 });
 
-                // 최근 5개 메시지만 추출
-                previousMessages = allMessages.slice(-5).map(m => ({
-                    sender: m.sender,
-                    text: m.text || "",
-                    timestamp: m.timestamp,
-                    modeSnapshot: m.modeSnapshot || null,
-                }));
+                // 최근 5개 메시지만 추출 (요청에 없을 때만)
+                if (!finalPreviousMessages || finalPreviousMessages.length === 0) {
+                    finalPreviousMessages = allMessages.slice(-5).map(m => ({
+                        sender: m.sender,
+                        text: m.text || "",
+                        timestamp: m.timestamp,
+                        modeSnapshot: m.modeSnapshot || null,
+                    }));
+                }
 
                 // userMessage가 없으면 마지막 user 메시지 사용
-                if (!userMessage) {
+                if (!finalUserMessage) {
                     const lastUserMsg = [...allMessages]
                         .reverse()
                         .find((m) => m.sender === "user");
                     if (lastUserMsg) {
-                        userMessage = lastUserMsg.text || "";
+                        finalUserMessage = lastUserMsg.text || "";
                     }
                 }
 
-                console.log(`[tone-correction] Context loaded: ${previousMessages.length} messages, userMessage length: ${userMessage?.length || 0}`);
+                console.log(`[tone-correction] Context loaded: ${finalPreviousMessages.length} messages, userMessage length: ${finalUserMessage?.length || 0}`);
             }
         } catch (e) {
             console.error("[tone-correction] Failed to fetch conversation context:", e);
@@ -179,30 +194,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             aiOptions.toneFlags = toneFlags || "";
         } else if (planName === 'pro') {
             aiOptions.routing = "agent_mediation";
-            aiOptions.voice = "agent";
-            aiOptions.contentType = "tone_correction";
-            aiOptions.toneFlags = "";
+            aiOptions.voice = voice || "agent";
+            aiOptions.contentType = contentType || "tone_correction";
+            aiOptions.toneFlags = toneFlags || "";
         }
 
         // ✅ 4. n8n webhook URL
         const n8nUrl = process.env.N8N_TONE_CORRECTION_WEBHOOK ||
             "https://soluto.app.n8n.cloud/webhook/tone-correction";
 
-        // ✅ 5. 페이로드 구성 (conversationId만 사용, requestId 제거)
+        // ✅ 5. 페이로드 구성 (GCP 함수 형식에 맞춤)
         const payload: any = {
             tenantId,
             conversationId: actualChatId,
-            userMessage, // ✅ 추가
-            agentInstruction: content,
-            mode: "mediated",
-            source, // 'web_portal'
+            userMessage: finalUserMessage, // ✅ 요청에서 받거나 자동으로 채워진 값
+            agentInstruction: finalContent, // ✅ agentInstruction 또는 content
+            mode: mode || (contentType === 'policy_based' ? 'mediated' : 'tone_correction'), // ✅ 요청에서 받거나 자동 설정
+            source: source || 'web_portal',
             planName: planName || "trial",
-            csTone: csTone || null, // ✅ 테넌트 CS 톤 (null로 명시)
-            previousMessages: previousMessages || [], // ✅ 최근 5개 메시지 (빈 배열로 명시)
+            csTone: csTone !== undefined ? csTone : (tenantDoc?.csTone || null), // ✅ 요청에서 받거나 자동으로 채워진 값
+            previousMessages: finalPreviousMessages, // ✅ 요청에서 받거나 자동으로 채워진 값
             ...aiOptions,
             // ✅ 웹포탈 콜백 URL (conversationId만 사용)
             callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr'}/api/ai/tone-result`,
-            executionMode: "production",
+            executionMode: executionMode || "production",
         };
 
         // ✅ undefined 필드 제거 (명시적으로)
@@ -216,9 +231,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             url: n8nUrl,
             tenantId,
             conversationId: actualChatId,
-            hasUserMessage: !!userMessage,
-            previousMessagesCount: previousMessages.length,
-            hasCsTone: !!csTone,
+            hasUserMessage: !!finalUserMessage,
+            previousMessagesCount: finalPreviousMessages.length,
+            hasCsTone: !!payload.csTone,
+            mode: payload.mode,
+            hasAgentInstruction: !!payload.agentInstruction,
         });
 
         // ✅ 페이로드 전체 로그 (디버깅용)
