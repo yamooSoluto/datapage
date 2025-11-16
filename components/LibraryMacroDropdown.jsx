@@ -1,38 +1,15 @@
 // components/LibraryMacroDropdown.jsx
 // 메시지 입력창에서 # 트리거로 라이브러리 값을 삽입할 수 있는 드롭다운
-// ✨ 콤팩트 & 모바일 최적화 버전
+// ✨ 콤팩트 & 모바일 최적화 & 카테고리 그룹 표시
 
 import { useEffect, useRef, useState } from 'react';
-import { Link as LinkIcon, Lock, FileText, Info, Hash } from 'lucide-react';
-
-const CATEGORY_CONFIG = {
-    links: {
-        icon: LinkIcon,
-        label: "링크",
-        color: "text-blue-600 bg-blue-50",
-    },
-    passwords: {
-        icon: Lock,
-        label: "비밀번호",
-        color: "text-red-600 bg-red-50",
-    },
-    rules: {
-        icon: FileText,
-        label: "규정",
-        color: "text-green-600 bg-green-50",
-    },
-    info: {
-        icon: Info,
-        label: "공통정보",
-        color: "text-purple-600 bg-purple-50",
-    },
-};
+import { Hash } from 'lucide-react';
 
 /**
- * LibraryMacroDropdown - 콤팩트 버전
+ * LibraryMacroDropdown - 카테고리 그룹 표시 버전
  * 
  * @param {Object} props
- * @param {Object} props.libraryData - { links: {...}, passwords: {...}, rules: {...}, info: {...} }
+ * @param {Object} props.libraryData - { links: {...}, passwords: {...}, ... }
  * @param {string} props.searchQuery - # 이후 검색어
  * @param {Function} props.onSelect - (value: string) => void
  * @param {Object} props.position - { bottom, left } 드롭다운 위치
@@ -61,20 +38,45 @@ export default function LibraryMacroDropdown({
     const allItems = Object.entries(libraryData || {}).flatMap(([category, items]) =>
         Object.entries(items || {}).map(([key, item]) => ({
             category,
+            categoryLabel: category,
             key,
             label: item.label,
             value: item.value,
         }))
     );
 
-    // 검색 필터링
+    // 검색 필터링 및 우선순위 정렬
+    let exactMatches = [];
+    let categoryMatches = [];
+
+    if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+
+        allItems.forEach((item) => {
+            const labelMatch = item.label.toLowerCase().includes(query);
+            const valueMatch = item.value.toLowerCase().includes(query);
+            const categoryMatch = item.categoryLabel.toLowerCase().includes(query);
+
+            if (labelMatch || valueMatch) {
+                exactMatches.push(item);
+            } else if (categoryMatch) {
+                categoryMatches.push(item);
+            }
+        });
+    }
+
     const filteredItems = searchQuery
-        ? allItems.filter(
-            (item) =>
-                item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                item.value.toLowerCase().includes(searchQuery.toLowerCase())
-        )
+        ? [...exactMatches, ...categoryMatches]
         : allItems;
+
+    // 카테고리별로 그룹화 (카테고리 매칭 항목들만)
+    const categoryGroups = categoryMatches.reduce((acc, item) => {
+        if (!acc[item.category]) {
+            acc[item.category] = [];
+        }
+        acc[item.category].push(item);
+        return acc;
+    }, {});
 
     // 외부 클릭 감지
     useEffect(() => {
@@ -131,24 +133,9 @@ export default function LibraryMacroDropdown({
         }
     }, [selectedIndex]);
 
+    // 검색 결과가 없으면 모달 표시 안 함
     if (!filteredItems.length) {
-        return (
-            <div
-                ref={dropdownRef}
-                className="fixed z-[100] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
-                style={{
-                    bottom: isMobile ? '80px' : position?.bottom || 'auto',
-                    left: isMobile ? '16px' : position?.left || 0,
-                    right: isMobile ? '16px' : 'auto',
-                    width: isMobile ? 'auto' : '360px',
-                }}
-            >
-                <div className="p-4 text-center text-gray-500 text-sm">
-                    <Hash className="w-5 h-5 mx-auto mb-2 text-gray-400" />
-                    검색 결과가 없습니다
-                </div>
-            </div>
-        );
+        return null;
     }
 
     return (
@@ -163,7 +150,7 @@ export default function LibraryMacroDropdown({
                 maxHeight: isMobile ? '240px' : '320px',
             }}
         >
-            {/* 헤더 - 콤팩트 */}
+            {/* 헤더 */}
             <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Hash className="w-3.5 h-3.5 text-gray-600" />
@@ -181,41 +168,28 @@ export default function LibraryMacroDropdown({
                 </div>
             </div>
 
-            {/* 항목 리스트 - 콤팩트 */}
-            <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+            {/* 항목 리스트 */}
+            <div
+                className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
                 style={{ maxHeight: isMobile ? '200px' : '280px' }}
             >
-                {filteredItems.map((item, index) => {
-                    const config = CATEGORY_CONFIG[item.category] || CATEGORY_CONFIG.info;
-                    const Icon = config.icon;
+                {/* 1. 정확 매칭 항목들 */}
+                {exactMatches.map((item, index) => {
                     const isSelected = index === selectedIndex;
 
                     return (
                         <button
-                            key={`${item.category}-${item.key}`}
+                            key={`exact-${item.category}-${item.key}`}
                             data-index={index}
                             onClick={() => onSelect?.(item.value)}
-                            className={`w-full px-3 py-2 flex items-center gap-2.5 transition-colors text-left ${isSelected
-                                    ? 'bg-blue-50 border-l-4 border-blue-600'
-                                    : 'hover:bg-gray-50 border-l-4 border-transparent'
+                            className={`w-full px-4 py-2.5 flex items-start gap-3 transition-colors text-left ${isSelected
+                                ? 'bg-blue-50 border-l-4 border-blue-600'
+                                : 'hover:bg-gray-50 border-l-4 border-transparent'
                                 }`}
                         >
-                            {/* 아이콘 - 작게 */}
-                            <div
-                                className={`flex-shrink-0 w-7 h-7 rounded-full ${config.color} flex items-center justify-center`}
-                            >
-                                <Icon className="w-3.5 h-3.5" />
-                            </div>
-
-                            {/* 내용 - 콤팩트 */}
                             <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 mb-0.5">
-                                    <span className="text-sm font-semibold text-gray-900 truncate">
-                                        {item.label}
-                                    </span>
-                                    <span className="text-[10px] text-gray-400 px-1.5 py-0.5 rounded bg-gray-100 flex-shrink-0">
-                                        {config.label}
-                                    </span>
+                                <div className="text-sm font-semibold text-gray-900 mb-1">
+                                    {item.label}
                                 </div>
                                 <p className="text-xs text-gray-600 truncate">
                                     {item.value}
@@ -224,9 +198,109 @@ export default function LibraryMacroDropdown({
                         </button>
                     );
                 })}
+
+                {/* 2. 카테고리 매칭 항목들 (그룹으로 표시) */}
+                {searchQuery && Object.entries(categoryGroups).map(([category, items], groupIdx) => {
+                    const startIndex = exactMatches.length +
+                        Object.entries(categoryGroups)
+                            .slice(0, groupIdx)
+                            .reduce((sum, [, grpItems]) => sum + grpItems.length, 0);
+
+                    return (
+                        <div key={`category-${category}`}>
+                            {/* 카테고리 헤더 */}
+                            <div className="px-4 py-2 bg-gray-50 border-y border-gray-100 flex items-center gap-2">
+                                <span className="text-xs font-semibold text-gray-600">
+                                    🏷️ {category}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                    {items.length}개
+                                </span>
+                            </div>
+
+                            {/* 카테고리 항목들 */}
+                            {items.map((item, idx) => {
+                                const itemIndex = startIndex + idx;
+                                const isSelected = itemIndex === selectedIndex;
+
+                                return (
+                                    <button
+                                        key={`cat-${item.category}-${item.key}`}
+                                        data-index={itemIndex}
+                                        onClick={() => onSelect?.(item.value)}
+                                        className={`w-full px-4 py-2.5 flex items-start gap-3 transition-colors text-left ${isSelected
+                                            ? 'bg-blue-50 border-l-4 border-blue-600'
+                                            : 'hover:bg-gray-50 border-l-4 border-transparent'
+                                            }`}
+                                    >
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium text-gray-900 mb-1">
+                                                {item.label}
+                                            </div>
+                                            <p className="text-xs text-gray-500 truncate">
+                                                {item.value}
+                                            </p>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    );
+                })}
+
+                {/* 3. 검색어 없을 때 전체 표시 (카테고리별 그룹화) */}
+                {!searchQuery && (() => {
+                    const grouped = allItems.reduce((acc, item) => {
+                        if (!acc[item.category]) {
+                            acc[item.category] = [];
+                        }
+                        acc[item.category].push(item);
+                        return acc;
+                    }, {});
+
+                    let globalIndex = 0;
+
+                    return Object.entries(grouped).map(([category, items]) => (
+                        <div key={`all-category-${category}`}>
+                            {/* 카테고리 헤더 */}
+                            <div className="px-4 py-2 bg-gray-50 border-y border-gray-100 flex items-center gap-2">
+                                <span className="text-xs font-semibold text-gray-600">
+                                    🏷️ {category}
+                                </span>
+                            </div>
+
+                            {/* 카테고리 항목들 */}
+                            {items.map((item) => {
+                                const itemIndex = globalIndex++;
+                                const isSelected = itemIndex === selectedIndex;
+
+                                return (
+                                    <button
+                                        key={`all-${item.category}-${item.key}`}
+                                        data-index={itemIndex}
+                                        onClick={() => onSelect?.(item.value)}
+                                        className={`w-full px-4 py-2.5 flex items-start gap-3 transition-colors text-left ${isSelected
+                                            ? 'bg-blue-50 border-l-4 border-blue-600'
+                                            : 'hover:bg-gray-50 border-l-4 border-transparent'
+                                            }`}
+                                    >
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium text-gray-900 mb-1">
+                                                {item.label}
+                                            </div>
+                                            <p className="text-xs text-gray-500 truncate">
+                                                {item.value}
+                                            </p>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    ));
+                })()}
             </div>
 
-            {/* 푸터 힌트 - PC에서만 표시 */}
+            {/* 푸터 힌트 - PC에서만 */}
             {!isMobile && (
                 <div className="px-3 py-1.5 bg-gray-50 border-t border-gray-200">
                     <div className="flex items-center justify-between text-[10px] text-gray-400">
