@@ -1,13 +1,15 @@
 // components/ConversationDetail.jsx
 // 애플 스타일 대화 상세 모달 - 클라이언트 중심 최적화 (tenantId 우선 사용)
+// ✨ 라이브러리 매크로 기능 추가: # 입력 시 라이브러리 항목 선택 가능
 
 import { useState, useEffect, useRef } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebaseClient';
 import AIComposerModal from './AIComposerModal';
+import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 추가
 
-export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId, planName = 'trial', isEmbedded = false }) {
+export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId, planName = 'trial', isEmbedded = false, libraryData }) {
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
     const initialLoadedRef = useRef(false); // ✅ 초기 로딩 완료 플래그 (클로저 문제 방지)
@@ -25,6 +27,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [uploading, setUploading] = useState(false);
     const filePickerRef = useRef(null);
     const textareaRef = useRef(null);
+
+    // ✅ 라이브러리 매크로 상태
+    const [showLibraryDropdown, setShowLibraryDropdown] = useState(false);
+    const [macroSearchQuery, setMacroSearchQuery] = useState('');
+    const [macroTriggerPosition, setMacroTriggerPosition] = useState(null);
+    const [cursorPosition, setCursorPosition] = useState(0);
 
     // ✅ tenantId를 상위에서 추출 (먼저 정의)
     const effectiveTenantId =
@@ -409,6 +417,74 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         el.style.height = newHeight + 'px';
     };
 
+    // ✅ # 트리거 감지 및 라이브러리 드롭다운 처리
+    const handleDraftChange = (e) => {
+        const value = e.target.value;
+        const cursorPos = e.target.selectionStart;
+
+        setDraft(value);
+        setCursorPosition(cursorPos);
+        autoResize(e.target);
+
+        // # 트리거 감지
+        const textBeforeCursor = value.substring(0, cursorPos);
+        const lastHashIndex = textBeforeCursor.lastIndexOf('#');
+
+        if (lastHashIndex !== -1) {
+            const textAfterHash = textBeforeCursor.substring(lastHashIndex + 1);
+
+            // # 이후에 공백이 없고, 라이브러리 데이터가 있으면 드롭다운 표시
+            if (!textAfterHash.includes(' ') && libraryData) {
+                setMacroSearchQuery(textAfterHash);
+                setShowLibraryDropdown(true);
+
+                // 드롭다운 위치 계산 (textarea 하단)
+                if (textareaRef.current) {
+                    const rect = textareaRef.current.getBoundingClientRect();
+                    setMacroTriggerPosition({
+                        bottom: window.innerHeight - rect.top + 8,
+                        left: rect.left,
+                    });
+                }
+            } else {
+                setShowLibraryDropdown(false);
+            }
+        } else {
+            setShowLibraryDropdown(false);
+        }
+    };
+
+    // ✅ 라이브러리 항목 선택 처리
+    const handleLibrarySelect = (value) => {
+        if (!textareaRef.current) return;
+
+        const textBeforeCursor = draft.substring(0, cursorPosition);
+        const textAfterCursor = draft.substring(cursorPosition);
+        const lastHashIndex = textBeforeCursor.lastIndexOf('#');
+
+        if (lastHashIndex !== -1) {
+            // # 부분을 선택한 값으로 교체
+            const newText =
+                draft.substring(0, lastHashIndex) +
+                value +
+                ' ' + // 공백 추가
+                textAfterCursor;
+
+            setDraft(newText);
+
+            // 커서 위치 조정
+            const newCursorPos = lastHashIndex + value.length + 1;
+            setTimeout(() => {
+                textareaRef.current.focus();
+                textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+                autoResize(textareaRef.current);
+            }, 0);
+        }
+
+        setShowLibraryDropdown(false);
+        setMacroSearchQuery('');
+    };
+
     const handleSend = async () => {
         if (sending || uploading) return;
 
@@ -520,6 +596,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
 
     const onKeyDown = (e) => {
+        // ✅ 드롭다운이 열려있으면 Enter는 드롭다운에서 처리
+        if (showLibraryDropdown) {
+            // LibraryMacroDropdown에서 처리하도록 함
+            return;
+        }
+
         // ✅ 모바일/작은 화면에서는 Enter를 줄바꿈으로, 데스크톱에서는 전송으로
         // 768px 미만을 모바일로 간주 (Tailwind의 md 브레이크포인트)
         const isMobile = window.innerWidth < 768;
@@ -782,7 +864,18 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     </div>
 
                     {/* 입력 영역 */}
-                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white">
+                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white relative">
+                        {/* ✅ 라이브러리 드롭다운 */}
+                        {showLibraryDropdown && libraryData && (
+                            <LibraryMacroDropdown
+                                libraryData={libraryData}
+                                searchQuery={macroSearchQuery}
+                                onSelect={handleLibrarySelect}
+                                position={macroTriggerPosition}
+                                onClose={() => setShowLibraryDropdown(false)}
+                            />
+                        )}
+
                         {/* 🔹 컨펌 초안 카드 */}
                         {hasPendingDraft && (
                             <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
@@ -902,13 +995,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             <textarea
                                 ref={textareaRef}
                                 value={draft}
-                                onChange={(e) => {
-                                    setDraft(e.target.value);
-                                    autoResize(e.target);
-                                }}
+                                onChange={handleDraftChange}
                                 onKeyDown={onKeyDown}
                                 onPaste={onPaste}
-                                placeholder="메시지를 입력하세요..."
+                                placeholder="메시지를 입력하세요... (# 입력하면 라이브러리 사용 가능)"
                                 disabled={sending || uploading}
                                 style={{
                                     minHeight: '42px',
@@ -1102,7 +1192,18 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         </div>
 
                         {/* 입력 영역 */}
-                        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl">
+                        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl relative">
+                            {/* ✅ 라이브러리 드롭다운 */}
+                            {showLibraryDropdown && libraryData && (
+                                <LibraryMacroDropdown
+                                    libraryData={libraryData}
+                                    searchQuery={macroSearchQuery}
+                                    onSelect={handleLibrarySelect}
+                                    position={macroTriggerPosition}
+                                    onClose={() => setShowLibraryDropdown(false)}
+                                />
+                            )}
+
                             {/* 🔹 컨펌 초안 카드 */}
                             {isConfirmMode && pendingDraftText && (
                                 <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
@@ -1231,13 +1332,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     value={draft} // ❌ sending 여부에 따라 바꾸지 않기
                                     onChange={(e) => {
                                         if (!uploading) {            // ❌ sending은 무시
-                                            setDraft(e.target.value);
-                                            autoResize(e.target);
+                                            handleDraftChange(e);
                                         }
                                     }}
                                     onKeyDown={onKeyDown}
                                     onPaste={onPaste}
-                                    placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
+                                    placeholder={uploading ? '파일 처리 중...' : '메시지 입력... (# 입력하면 라이브러리 사용 가능)'}
                                     disabled={uploading}             // ❌ sending으로 disable 안 함
                                     enterKeyHint="send"
                                     style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
