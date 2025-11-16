@@ -32,6 +32,7 @@ export default function MinimalHeader({
 }: MinimalHeaderProps) {
     const [showMobileMenu, setShowMobileMenu] = useState(false);
     const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const dropdownStateRef = useRef(false);
 
@@ -67,6 +68,52 @@ export default function MinimalHeader({
             document.removeEventListener('touchstart', handleClickOutside);
         };
     }, [showTenantDropdown]);
+
+    // ✅ 키보드 감지: input/textarea focus 시 하단 탭 숨기기
+    useEffect(() => {
+        const handleFocus = (e: FocusEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                setIsKeyboardVisible(true);
+            }
+        };
+
+        const handleBlur = (e: FocusEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                // 약간의 지연을 두어 키보드가 완전히 사라진 후 탭 표시
+                setTimeout(() => {
+                    setIsKeyboardVisible(false);
+                }, 300);
+            }
+        };
+
+        // Visual Viewport API로 키보드 감지 (더 정확함)
+        const handleViewportResize = () => {
+            if (typeof window !== 'undefined' && window.visualViewport) {
+                const viewport = window.visualViewport;
+                const windowHeight = window.innerHeight;
+                const viewportHeight = viewport.height;
+                // viewport 높이가 window 높이보다 작으면 키보드가 올라온 것
+                setIsKeyboardVisible(viewportHeight < windowHeight * 0.75);
+            }
+        };
+
+        document.addEventListener('focusin', handleFocus);
+        document.addEventListener('focusout', handleBlur);
+        
+        if (typeof window !== 'undefined' && window.visualViewport) {
+            window.visualViewport.addEventListener('resize', handleViewportResize);
+        }
+
+        return () => {
+            document.removeEventListener('focusin', handleFocus);
+            document.removeEventListener('focusout', handleBlur);
+            if (typeof window !== 'undefined' && window.visualViewport) {
+                window.visualViewport.removeEventListener('resize', handleViewportResize);
+            }
+        };
+    }, []);
 
     const tabs = [
         { key: 'conversations', label: '대화', icon: MessageSquare },
@@ -346,7 +393,11 @@ export default function MinimalHeader({
             </header>
 
             {/* 모바일 하단 탭 - 솜사탕 그라데이션 */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-100/90 via-yellow-100/90 to-sky-100/90 backdrop-blur-xl border-t border-white/50 safe-area-pb">
+            <nav 
+                className={`md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-r from-pink-100/90 via-yellow-100/90 to-sky-100/90 backdrop-blur-xl border-t border-white/50 safe-area-pb transition-transform duration-300 ${
+                    isKeyboardVisible ? 'translate-y-full' : 'translate-y-0'
+                }`}
+            >
                 <div className="flex items-center justify-around px-2 py-1.5">
                     {tabs.map(tab => {
                         const Icon = tab.icon;

@@ -488,9 +488,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             // # 이후에 공백이 없고, 라이브러리 데이터가 있으면 드롭다운 표시
             if (!textAfterHash.includes(' ') && libraryData) {
                 setMacroSearchQuery(textAfterHash);
-                setShowLibraryDropdown(true);
 
-                // ✅ 개선된 위치 계산
+                // ✅ 위치 계산을 먼저 완료한 후 드롭다운 표시 (깜빡임 방지)
                 if (textareaRef.current) {
                     const rect = textareaRef.current.getBoundingClientRect();
                     const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
@@ -499,6 +498,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         bottom: inputBottom + 8, // 입력창 바로 위 8px
                         left: rect.left,
                     });
+
+                    // 위치 계산 완료 후 드롭다운 표시
+                    setShowLibraryDropdown(true);
+                } else {
+                    setShowLibraryDropdown(false);
                 }
             } else {
                 setShowLibraryDropdown(false);
@@ -934,8 +938,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             zIndex: 10,
                         }}
                     >
-                        {/* ✅ 라이브러리 드롭다운 */}
-                        {showLibraryDropdown && libraryData && (
+                        {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 */}
+                        {showLibraryDropdown && libraryData && macroTriggerPosition && (
                             <LibraryMacroDropdown
                                 libraryData={libraryData}
                                 searchQuery={macroSearchQuery}
@@ -1067,7 +1071,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 onChange={handleDraftChange}
                                 onKeyDown={onKeyDown}
                                 onPaste={onPaste}
-                                placeholder="메시지를 입력하세요... (# 입력하면 라이브러리 사용 가능)"
+                                placeholder="메시지를 입력하세요..."
                                 disabled={sending || uploading}
                                 style={{
                                     minHeight: '42px',
@@ -1286,8 +1290,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 zIndex: 10,
                             }}
                         >
-                            {/* ✅ 라이브러리 드롭다운 */}
-                            {showLibraryDropdown && libraryData && (
+                            {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 */}
+                            {showLibraryDropdown && libraryData && macroTriggerPosition && (
                                 <LibraryMacroDropdown
                                     libraryData={libraryData}
                                     searchQuery={macroSearchQuery}
