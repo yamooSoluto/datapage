@@ -16,6 +16,7 @@ export default function ConversationsPage({ tenantId }) {
     const [showAIModal, setShowAIModal] = useState(false);
     const [globalMode, setGlobalMode] = useState('AUTO'); // 'AUTO' | 'CONFIRM'
     const [isUpdating, setIsUpdating] = useState(false);
+    const [libraryData, setLibraryData] = useState(null); // ✅ 라이브러리 데이터
 
     // 빠른 필터
     const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'today' | 'unanswered' | 'ai' | 'agent'
@@ -45,7 +46,34 @@ export default function ConversationsPage({ tenantId }) {
 
     useEffect(() => {
         fetchConversations();
+        fetchLibraryData();
     }, [tenantId]);
+
+    // ✅ 라이브러리 데이터 가져오기
+    const fetchLibraryData = async () => {
+        if (!tenantId) return;
+        try {
+            const res = await fetch(`/api/library/get?tenantId=${tenantId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setLibraryData(data.library || {
+                    links: {},
+                    passwords: {},
+                    rules: {},
+                    info: {},
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fetch library data:', error);
+            // 기본값 설정
+            setLibraryData({
+                links: {},
+                passwords: {},
+                rules: {},
+                info: {},
+            });
+        }
+    };
 
     const fetchConversations = async (options = {}) => {
         const { skipLoading = false } = options;
@@ -508,6 +536,7 @@ export default function ConversationsPage({ tenantId }) {
                                 onSend={handleSend}
                                 onOpenAICorrector={() => setShowAIModal(true)}
                                 isEmbedded={true}
+                                libraryData={libraryData}
                             />
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
@@ -530,6 +559,7 @@ export default function ConversationsPage({ tenantId }) {
                         onSend={handleSend}
                         onOpenAICorrector={() => setShowAIModal(true)}
                         isEmbedded={false}
+                        libraryData={libraryData}
                     />
                 </div>
             )}

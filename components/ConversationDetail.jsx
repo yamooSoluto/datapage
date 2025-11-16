@@ -19,6 +19,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
     const touchStartYRef = useRef(0); // 터치 시작 Y 위치
+    const firestorePermissionDeniedRef = useRef(false); // ✅ Firestore 권한 오류 플래그
 
     // 입력바 상태
     const [draft, setDraft] = useState('');
@@ -131,6 +132,29 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             return;
         }
 
+        // ✅ 권한 오류가 발생한 경우 Firestore 리스너를 사용하지 않고 API만 사용 (주기적 폴링)
+        if (firestorePermissionDeniedRef.current) {
+            console.log('[ConversationDetail] Firestore permission denied, using API polling');
+
+            // 초기 로드
+            fetchDetail().catch((e) => {
+                console.error('[ConversationDetail] Initial fetchDetail failed:', e);
+                setLoading(false);
+                initialLoadedRef.current = true;
+            });
+
+            // 주기적 폴링 (5초마다)
+            const pollingInterval = setInterval(() => {
+                fetchDetail({ skipLoading: true }).catch((e) => {
+                    console.error('[ConversationDetail] Polling fetchDetail failed:', e);
+                });
+            }, 5000);
+
+            return () => {
+                clearInterval(pollingInterval);
+            };
+        }
+
         const docId = `${effectiveTenantId}_${chatId}`;
         const docRef = doc(db, 'FAQ_realtime_cw', docId);
 
@@ -205,6 +229,34 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 });
             },
             (error) => {
+                // ✅ 권한 오류인지 확인
+                const isPermissionError = error?.code === 'permission-denied' ||
+                    error?.code === 'PERMISSION_DENIED' ||
+                    error?.message?.includes('permission') ||
+                    error?.message?.includes('Permission');
+
+                if (isPermissionError) {
+                    console.warn('[ConversationDetail] Firestore permission denied, switching to API-only mode:', error);
+                    firestorePermissionDeniedRef.current = true;
+
+                    // 리스너 해제
+                    unsubscribe();
+
+                    // API로 폴백
+                    if (!initialLoadedRef.current) {
+                        setLoading(true);
+                    }
+                    fetchDetail().catch((e) => {
+                        console.error('[ConversationDetail] Fallback fetchDetail failed:', e);
+                        if (!initialLoadedRef.current) {
+                            setLoading(false);
+                            initialLoadedRef.current = true;
+                        }
+                    });
+                    return;
+                }
+
+                // 다른 종류의 에러는 기존 로직대로 처리
                 console.error('[ConversationDetail] Firestore listener error:', error);
                 // 초기 로딩일 때만 로딩 상태 변경
                 if (!initialLoadedRef.current) {
@@ -1483,7 +1535,6 @@ function StatBlock({ label, value, Icon, valueClass = '' }) {
     );
 }
 
-// 메시지 버블 (user / ai / agent)
 // 메시지 버블 (user / ai / agent)
 function MessageBubble({ message, onImageClick }) {
     const isUser =
