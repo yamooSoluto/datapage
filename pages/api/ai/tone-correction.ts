@@ -111,7 +111,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const tenantSnap = await db.collection("tenants").doc(tenantId).get();
             if (tenantSnap.exists) {
                 tenantDoc = tenantSnap.data();
-                csTone = tenantDoc?.csTone || null;
+                // ✅ csTone 값 확인 (디버깅)
+                console.log("[tone-correction] Tenant data:", {
+                    tenantId,
+                    hasTenantDoc: !!tenantDoc,
+                    csToneRaw: tenantDoc?.csTone,
+                    csToneType: typeof tenantDoc?.csTone,
+                    csToneLength: tenantDoc?.csTone?.length,
+                    allKeys: Object.keys(tenantDoc || {}),
+                });
+
+                // ✅ csTone이 있으면 사용, 없으면 null (빈 문자열도 유지)
+                csTone = tenantDoc?.csTone !== undefined ? tenantDoc.csTone : null;
+
+                console.log("[tone-correction] Final csTone:", csTone);
+            } else {
+                console.warn("[tone-correction] Tenant document does not exist:", tenantId);
             }
         } catch (e) {
             console.error("[tone-correction] Failed to fetch tenant:", e);
