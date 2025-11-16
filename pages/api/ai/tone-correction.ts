@@ -44,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } = req.body || {};
 
         const actualChatId = conversationId || chatId;
-        
+
         // ✅ agentInstruction 또는 content 중 하나는 필수
         const finalContent = agentInstruction || content;
 
@@ -52,6 +52,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!tenantId || !actualChatId || !finalContent) {
             return res.status(400).json({ error: "tenantId, chatId, and (content or agentInstruction) required" });
         }
+
+        // ✅ enableAI 기본값: undefined/null 이면 "켜진 상태"로 간주
+        const effectiveEnableAI = enableAI === false ? false : true;
 
         // ✅ 동일 conversationId로 진행 중인 요청 확인
         const requestKey = `${tenantId}_${actualChatId}`;
@@ -87,16 +90,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             hasUserMessage: !!userMessage,
             mode,
             enableAI,
+            effectiveEnableAI,
             planName,
             source,
         });
 
-        // AI 보정이 비활성화면 원본 그대로 반환
-        if (!enableAI) {
+        // AI 보정이 명시적으로 꺼져 있을 때만 원본 그대로 반환
+        if (!effectiveEnableAI) {
             return res.status(200).json({
                 ok: true,
                 correctedText: finalContent,
-                source: 'original'
+                source: "original",
             });
         }
 
@@ -241,14 +245,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // ✅ 페이로드 전체 로그 (디버깅용)
         console.log("[tone-correction] Full payload:", JSON.stringify(payload, null, 2));
 
-        // ✅ 6. n8n webhook 호출 (비동기)
-        const response = await fetch(n8nUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-        });
+        // ✅ 6. n8n webhook 호출 (비동기) - 타임아웃 설정
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
+
+        let response;
+        try {
+            response = await fetch(n8nUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+        } catch (fetchError: any) {
+            clearTimeout(timeoutId);
+
+            // 타임아웃 에러 처리
+            if (fetchError.name === 'AbortError' || controller.signal.aborted) {
+                console.error("[tone-correction] n8n request timeout after 10s");
+
+                // 타임아웃이어도 비동기 요청이므로 200 반환 (n8n이 처리 중일 수 있음)
+                return res.status(200).json({
+                    ok: true,
+                    message: "AI correction request sent (timeout, but request may be processing)",
+                    conversationId: actualChatId,
+                    warning: "n8n request timeout, but workflow may still be running",
+                    pollUrl: `/api/ai/tone-poll?conversationId=${encodeURIComponent(actualChatId)}`,
+                });
+            }
+
+            // 다른 네트워크 에러
+            console.error("[tone-correction] n8n fetch error:", fetchError.message);
+            throw fetchError;
+        }
 
         if (!response.ok) {
             const errorText = await response.text().catch(() => "");

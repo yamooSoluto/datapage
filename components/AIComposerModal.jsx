@@ -88,6 +88,7 @@ export default function AIComposerModal({
                 agentInstruction: finalContent, // ✅ content → agentInstruction
                 mode: contentType === 'policy_based' ? 'mediated' : 'tone_correction', // ✅ mode 추가
                 source: 'web_portal',
+                enableAI: true, // ✅ AI 보정 활성화 필드 추가
                 planName: planName || 'trial',
                 voice: isBotMode ? 'bot' : 'agent', // ✅ 챗봇 모드 반영
                 contentType: contentType || 'tone_correction',
@@ -253,7 +254,7 @@ export default function AIComposerModal({
                                 </div>
                                 <button
                                     onClick={() => setIsBotMode(!isBotMode)}
-                                    className={`relative w-11 h-6 rounded-full transition-colors ${isBotMode ? 'bg-yellow-200' : 'bg-gray-300'
+                                    className={`relative w-11 h-6 rounded-full transition-colors ${isBotMode ? 'bg-yellow-500/90' : 'bg-gray-300'
                                         }`}
                                 >
                                     <div
@@ -482,13 +483,23 @@ export default function AIComposerModal({
                                                     onChange={(e) => {
                                                         const val = parseInt(e.target.value);
                                                         setToneFlags(prev => {
+                                                            // ✅ 길이감 관련 플래그만 제거 (어투, 특수옵션 플래그는 유지)
                                                             let updated = prev.filter(f =>
-                                                                f !== 'concise_core' && f !== 'expanded_text' && f !== 'auto_contextual'
+                                                                f !== 'concise_core' &&
+                                                                f !== 'expanded_text' &&
+                                                                f !== 'balanced_length' // 중간값용 별도 플래그
                                                             );
-                                                            if (val === 0) updated.push('concise_core');
-                                                            else if (val === 2) updated.push('expanded_text');
-                                                            else updated.push('auto_contextual');
 
+                                                            // 길이감 값 설정
+                                                            if (val === 0) {
+                                                                updated.push('concise_core');
+                                                            } else if (val === 2) {
+                                                                updated.push('expanded_text');
+                                                            } else {
+                                                                updated.push('balanced_length'); // 중간값
+                                                            }
+
+                                                            // detail_adjust는 항상 유지
                                                             if (!updated.includes('detail_adjust')) {
                                                                 updated.push('detail_adjust');
                                                             }
@@ -514,26 +525,28 @@ export default function AIComposerModal({
                                                     step="1"
                                                     value={
                                                         toneFlags.includes('firm') ? 0 :
-                                                            toneFlags.includes('auto_contextual') ? 1 : 2
+                                                            toneFlags.includes('balanced_tone') ? 1 : 2
                                                     }
                                                     onChange={(e) => {
                                                         const val = parseInt(e.target.value);
                                                         setToneFlags(prev => {
-                                                            // 어투 관련 플래그만 제거 (특수옵션 플래그는 유지)
+                                                            // ✅ 어투 관련 플래그만 제거 (길이감, 특수옵션 플래그는 유지)
                                                             let updated = prev.filter(f =>
                                                                 f !== 'firm' &&
-                                                                f !== 'auto_contextual' &&
+                                                                f !== 'balanced_tone' && // 중간값용 별도 플래그
                                                                 f !== 'friendly'
                                                             );
 
+                                                            // 어투 값 설정
                                                             if (val === 0) {
                                                                 updated.push('firm');
                                                             } else if (val === 1) {
-                                                                updated.push('auto_contextual');
+                                                                updated.push('balanced_tone'); // 중간값
                                                             } else {
                                                                 updated.push('friendly');
                                                             }
 
+                                                            // detail_adjust는 항상 유지
                                                             if (!updated.includes('detail_adjust')) {
                                                                 updated.push('detail_adjust');
                                                             }
