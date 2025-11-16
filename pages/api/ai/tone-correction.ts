@@ -223,8 +223,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             "https://soluto.app.n8n.cloud/webhook/tone-correction";
 
         // ✅ 5. 페이로드 구성 (GCP 함수 형식에 맞춤)
-        // ✅ csTone 값 결정: 요청에서 받거나 DB에서 가져온 값 (null도 유지)
-        const finalCsTone = requestCsTone !== undefined ? requestCsTone : csTone;
+        // ✅ csTone 값 결정: 요청에서 명시적으로 값이 있으면 사용, 없으면 DB에서 가져온 값 사용
+        // requestCsTone이 undefined가 아니고 null도 아니면 요청 값 사용, 그 외에는 DB 값 사용
+        const finalCsTone = (requestCsTone !== undefined && requestCsTone !== null) ? requestCsTone : csTone;
+
+        console.log("[tone-correction] csTone decision:", {
+            requestCsTone,
+            dbCsTone: csTone,
+            finalCsTone,
+        });
 
         const payload: any = {
             tenantId,

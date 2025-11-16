@@ -93,7 +93,7 @@ export default function AIComposerModal({
                 voice: isBotMode ? 'bot' : 'agent', // ✅ 챗봇 모드 반영
                 contentType: contentType || 'tone_correction',
                 toneFlags: toneFlags.length > 0 ? toneFlags.join(',') : '', // ✅ 문자열로 변환
-                csTone: null, // ✅ API에서 자동으로 채워짐
+                // ✅ csTone은 API에서 자동으로 채워지므로 필드 자체를 보내지 않음
                 previousMessages: [], // ✅ API에서 자동으로 채워짐
                 executionMode: 'production', // ✅ 필수 필드
             };
