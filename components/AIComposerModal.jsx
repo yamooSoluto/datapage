@@ -1,26 +1,33 @@
 // components/AIComposerModal.jsx
-// AI 보정 모달 - 고객 메시지 + 보정 + 전송 (완결형)
+// 초콤팩트 AI 보정 모달 - 가로 버튼 + 챗봇 모드 토글
 
 import { useState, useEffect } from 'react';
-import { X, Sparkles, Send, Wand2, User } from 'lucide-react';
+import { X, Sparkles, Send, Wand2, CheckCircle, Clock, Edit, Database, Palette, User, Bot } from 'lucide-react';
 
 export default function AIComposerModal({
     conversation,
     tenantId,
     planName = 'pro',
     onClose,
-    onSend, // 전송 콜백
-    initialText = '', // ✅ 컨펌 초안 수정용 초기 텍스트
+    onSend,
+    initialText = '',
 }) {
-    const [step, setStep] = useState('compose'); // 'compose' | 'processing' | 'result'
-    const [selectedPresets, setSelectedPresets] = useState([]);
-    const [directInput, setDirectInput] = useState('');
-    const [enableAI, setEnableAI] = useState(true);
+    const [step, setStep] = useState('compose');
 
-    // ✅ initialText가 변경되면 directInput에 설정
+    // ✅ 응답 타입: completed / waiting / custom
+    const [responseType, setResponseType] = useState(
+        initialText ? 'custom' : 'completed'
+    );
+    const [customInput, setCustomInput] = useState(initialText || '');
+
+    // ✅ 챗봇 모드 토글 (기본: 상담원)
+    const [isBotMode, setIsBotMode] = useState(false);
+
+    // ✅ initialText 변경 시 자동 설정
     useEffect(() => {
         if (initialText) {
-            setDirectInput(initialText);
+            setCustomInput(initialText);
+            setResponseType('custom');
         }
     }, [initialText]);
 
@@ -32,28 +39,12 @@ export default function AIComposerModal({
     const [processing, setProcessing] = useState(false);
     const [sending, setSending] = useState(false);
     const [correctedText, setCorrectedText] = useState('');
-    const [originalText, setOriginalText] = useState(''); // ✅ 원본 텍스트
-    const [customerMessage, setCustomerMessage] = useState(''); // ✅ 고객 메시지
-    const [recentMessages, setRecentMessages] = useState([]); // ✅ 최근 메시지들
     const [error, setError] = useState('');
 
-
-    const [presets] = useState([
-        { id: 1, text: '문의 주셔서 감사합니다.', category: '인사' },
-        { id: 2, text: '확인 후 안내드리겠습니다.', category: '확인' },
-        { id: 3, text: '양해 부탁드립니다.', category: '요청' },
-        { id: 4, text: '추가 문의사항이 있으시면 언제든 연락 주세요.', category: '마무리' },
-    ]);
-
-    const togglePreset = (preset) => {
-        setSelectedPresets(prev => {
-            const exists = prev.find(p => p.id === preset.id);
-            if (exists) {
-                return prev.filter(p => p.id !== preset.id);
-            } else {
-                return [...prev, preset];
-            }
-        });
+    // ✅ 템플릿
+    const templates = {
+        completed: '처리가 완료되었습니다. 확인 부탁드립니다.',
+        waiting: '확인 후 안내드리겠습니다. 잠시만 기다려주세요.',
     };
 
     const handleSubmit = async () => {
@@ -61,23 +52,20 @@ export default function AIComposerModal({
 
         let finalContent = '';
 
-        if (selectedPresets.length > 0) {
-            const sentences = selectedPresets.map(p => p.text.trim()).filter(Boolean);
-            finalContent = sentences.join('\n');
-        } else if (directInput.trim()) {
-            finalContent = directInput.trim();
-        } else {
-            setError('프리셋 메시지를 선택하거나 직접 입력해주세요.');
-            return;
+        // ✅ 선택된 응답 타입에 따라 내용 설정
+        if (responseType === 'completed') {
+            finalContent = templates.completed;
+        } else if (responseType === 'waiting') {
+            finalContent = templates.waiting;
+        } else if (responseType === 'custom') {
+            finalContent = customInput.trim();
+            if (!finalContent) {
+                setError('메시지를 입력해주세요.');
+                return;
+            }
         }
 
-        if (!enableAI) {
-            setCorrectedText(finalContent);
-            setStep('result');
-            return;
-        }
-
-        // ✅ AI 보정 요청 (비동기 방식 - conversationId로 폴링)
+        // ✅ AI 보정 요청
         setProcessing(true);
         setStep('processing');
 
@@ -89,405 +77,453 @@ export default function AIComposerModal({
                 enableAI: true,
                 planName,
                 source: 'web_portal',
+                voice: isBotMode ? 'bot' : 'agent', // ✅ 챗봇 모드 반영
                 ...(planName === 'business' ? {
-                    voice,
                     contentType,
                     toneFlags: toneFlags.join(','),
                 } : {}),
             };
 
-            // ✅ 1. n8n에 비동기 요청 전송
             const response = await fetch('/api/ai/tone-correction', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
 
+            const data = await response.json();
+
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'AI 보정 요청 실패');
+                throw new Error(data.error || 'AI 보정 요청 실패');
             }
 
-            await response.json();
+            // ✅ 폴링으로 결과 대기
+            const pollResult = async (conversationId, maxAttempts = 30) => {
+                for (let i = 0; i < maxAttempts; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
 
-            // ✅ 2. conversationId로 폴링 시작
-            const conversationId = conversation?.chatId || conversation?.id;
+                    const pollResponse = await fetch(
+                        `/api/ai/tone-correction/result?conversationId=${conversationId}&tenantId=${tenantId}`
+                    );
+                    const pollData = await pollResponse.json();
 
-            if (!conversationId) {
-                throw new Error('대화 ID를 찾을 수 없습니다.');
-            }
+                    if (pollData.status === 'completed') {
+                        return pollData.correctedText;
+                    }
 
-            const maxAttempts = 60; // ✅ 최대 60초 대기 (n8n 처리 시간 고려)
-            let attempts = 0;
-
-            const pollResult = async () => {
-                while (attempts < maxAttempts) {
-                    attempts++;
-
-                    try {
-                        // ✅ conversationId로 폴링
-                        const pollResponse = await fetch(
-                            `/api/ai/tone-poll?conversationId=${encodeURIComponent(conversationId)}`,
-                            { method: 'GET' }
-                        );
-
-                        if (!pollResponse.ok) {
-                            throw new Error('폴링 실패');
-                        }
-
-                        const pollData = await pollResponse.json();
-
-                        if (pollData.ready) {
-                            // ✅ 결과 받음 - 다양한 필드명 지원
-                            const extractedCorrectedText = pollData.correctedText ||
-                                pollData.text ||
-                                pollData.output ||
-                                pollData.response ||
-                                finalContent; // fallback
-
-                            if (!extractedCorrectedText || !extractedCorrectedText.trim()) {
-                                throw new Error('보정된 텍스트를 받지 못했습니다.');
-                            }
-
-                            // ✅ state 업데이트
-                            setCorrectedText(extractedCorrectedText);
-                            setOriginalText(finalContent);
-                            setCustomerMessage(pollData.customerMessage || conversation.lastMessage || '');
-
-                            // ✅ recentMessages가 배열인지 확인 후 저장
-                            const safeRecentMessages = Array.isArray(pollData.recentMessages)
-                                ? pollData.recentMessages
-                                : (Array.isArray(pollData.recent_messages)
-                                    ? pollData.recent_messages
-                                    : []);
-                            setRecentMessages(safeRecentMessages);
-
-                            // ✅ step 변경 전에 잠시 대기하여 state가 확실히 업데이트되도록 함
-                            await new Promise(resolve => setTimeout(resolve, 100));
-
-                            setStep('result');
-                            setProcessing(false);
-                            return;
-                        }
-
-                        // 1초 대기 후 재시도
-                        await new Promise(resolve => setTimeout(resolve, 1000));
-                    } catch (pollErr) {
-                        // 폴링 에러는 계속 재시도
-                        await new Promise(resolve => setTimeout(resolve, 1000));
+                    if (pollData.status === 'failed') {
+                        throw new Error(pollData.error || 'AI 보정 실패');
                     }
                 }
 
-                // 타임아웃
-                throw new Error(`AI 보정 시간이 초과되었습니다 (${maxAttempts}초). 결과가 나오면 자동으로 표시됩니다.`);
+                throw new Error('AI 보정 시간 초과');
             };
 
-            await pollResult();
+            const result = await pollResult(conversation.chatId);
+            setCorrectedText(result);
+            setStep('result');
 
         } catch (err) {
             console.error('[AIComposerModal] Error:', err);
-            setError(err.message || 'AI 보정 중 오류가 발생했습니다.');
+            setError(err.message);
             setStep('compose');
+        } finally {
             setProcessing(false);
         }
     };
 
-    // ✅ 전송 핸들러
-    const handleSend = () => {
-        const trimmedText = correctedText?.trim() || '';
+    const handleSendCorrected = async () => {
+        if (!correctedText.trim()) return;
 
-        console.log('[AIComposerModal] handleSend called:', {
-            correctedText,
-            correctedTextType: typeof correctedText,
-            correctedTextLength: correctedText?.length,
-            trimmedText,
-            trimmedTextLength: trimmedText.length,
-            isEmpty: !correctedText,
-            isEmptyAfterTrim: !trimmedText,
-            step,
-            conversation: {
-                chatId: conversation?.chatId,
-                id: conversation?.id,
-                tenant: conversation?.tenant,
-                tenantId: conversation?.tenantId,
-            },
-        });
-
-        // 내용이 진짜 비어있으면 막기
-        if (!trimmedText) {
-            console.warn('[AIComposerModal] Empty correctedText, blocking send.', {
-                correctedText,
-                trimmedText,
-                step,
-            });
-            setError('전송할 내용이 없습니다.');
-            return;
-        }
-
-        // 버튼 중복 클릭 방지 정도만
         setSending(true);
-        setError('');
-
         try {
-            console.log('[AIComposerModal] Fire-and-forget onSend:', {
-                text: trimmedText,
-                textLength: trimmedText.length,
-            });
-
-            // ✅ 1) onSend 호출 (비동기지만 "기다리지 않음")
-            const maybePromise = onSend?.(trimmedText);
-
-            if (maybePromise && typeof maybePromise.then === 'function') {
-                maybePromise.catch((err) => {
-                    console.error('[AIComposerModal] Send error (async):', err);
-                    // 여기에서 나중에 토스트나 전역 에러 핸들러 붙일 수 있음
-                });
-            }
-        } catch (err) {
-            // onSend 자체가 동기 에러를 던지는 경우만 여기서 잡힘
-            console.error('[AIComposerModal] Immediate send error:', err);
-        } finally {
-            // ✅ 2) UI는 바로 정리: 모달 닫기 + 상태 리셋
+            await onSend?.(correctedText);
             onClose();
-            // 모달이 이미 언마운트될 거라 사실 의미는 거의 없지만 안전용
-            setTimeout(() => setSending(false), 50);
+        } catch (err) {
+            console.error('[AIComposerModal] Send error:', err);
+            setError('전송에 실패했습니다.');
+        } finally {
+            setSending(false);
         }
     };
 
+    const handleEdit = () => {
+        setCustomInput(correctedText);
+        setResponseType('custom');
+        setStep('compose');
+    };
+
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 pt-16 pb-[calc(env(safe-area-inset-bottom)+5rem)] md:pt-16 md:pb-20">
-            <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[70vh] flex flex-col border border-gray-200">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+            <div
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden transition-all duration-300"
+                style={{
+                    maxHeight: step === 'compose' && responseType === 'custom' ? '85vh' : '420px'
+                }}
+            >
                 {/* 헤더 */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <div className="px-5 py-4 border-b-[0.5px] border-gray-300 flex items-center justify-between bg-white">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                            <Sparkles className="w-5 h-5 text-white" />
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center">
+                            <Sparkles className="w-4 h-4 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-semibold text-gray-900">AI 답변 보정</h2>
-                            <p className="text-xs text-gray-700">
-                                {conversation.userName || '익명'} • {planName} 플랜
+                            <h3 className="text-base font-semibold text-gray-900">AI 답변 보정</h3>
+                            <p className="text-xs text-gray-500">
+                                {step === 'compose' && '응답을 선택하세요'}
+                                {step === 'processing' && '보정 중...'}
+                                {step === 'result' && '보정 완료'}
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        disabled={processing || sending}
-                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4 text-gray-600" />
                     </button>
                 </div>
 
-                {/* 본문 */}
-                <div className="flex-1 overflow-y-auto px-6 py-4">
+                {/* 컨텐츠 */}
+                <div className="flex-1 overflow-y-auto p-5">
                     {step === 'compose' && (
-                        <>
-                            {error && (
-                                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-900">
-                                    ❌ {error}
+                        <div className="space-y-3">
+                            {/* 야무지니 토글 - 우측 상단 */}
+                            <div className="flex items-center justify-end gap-2">
+                                <div className="text-xs text-gray-500">
+                                    {isBotMode ? '야무지니가 답변해요' : '상담원이 답변해요'}
+                                </div>
+                                <button
+                                    onClick={() => setIsBotMode(!isBotMode)}
+                                    className={`relative w-11 h-6 rounded-full transition-colors ${isBotMode ? 'bg-blue-600' : 'bg-gray-300'
+                                        }`}
+                                >
+                                    <div
+                                        className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform flex items-center justify-center ${isBotMode ? 'translate-x-5' : 'translate-x-0.5'
+                                            }`}
+                                    >
+                                        {isBotMode ? (
+                                            <Bot className="w-3 h-3 text-blue-600" />
+                                        ) : (
+                                            <User className="w-3 h-3 text-gray-600" />
+                                        )}
+                                    </div>
+                                </button>
+                            </div>
+
+                            {/* Pill 버튼 */}
+                            <div className="flex justify-center gap-2">
+                                <button
+                                    onClick={() => setResponseType('completed')}
+                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all text-sm font-medium ${responseType === 'completed'
+                                        ? 'bg-green-500 text-white shadow-sm'
+                                        : 'bg-white text-gray-600 hover:bg-gray-50 border-[0.5px] border-gray-300'
+                                        }`}
+                                >
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    완료
+                                </button>
+
+                                <button
+                                    onClick={() => setResponseType('waiting')}
+                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all text-sm font-medium ${responseType === 'waiting'
+                                        ? 'bg-yellow-500 text-white shadow-sm'
+                                        : 'bg-white text-gray-600 hover:bg-gray-50 border-[0.5px] border-gray-300'
+                                        }`}
+                                >
+                                    <Clock className="w-3.5 h-3.5" />
+                                    대기
+                                </button>
+
+                                <button
+                                    onClick={() => setResponseType('custom')}
+                                    className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all text-sm font-medium ${responseType === 'custom'
+                                        ? 'bg-blue-500 text-white shadow-sm'
+                                        : 'bg-white text-gray-600 hover:bg-gray-50 border-[0.5px] border-gray-300'
+                                        }`}
+                                >
+                                    <Edit className="w-3.5 h-3.5" />
+                                    직접
+                                </button>
+                            </div>
+
+                            {/* 선택된 템플릿 미리보기 */}
+                            {(responseType === 'completed' || responseType === 'waiting') && (
+                                <div className="p-3 bg-gray-50 rounded-xl text-sm text-gray-600 text-center">
+                                    "{templates[responseType]}"
                                 </div>
                             )}
 
-                            {/* 프리셋 선택 */}
-                            <div className="mb-6">
-                                <label className="block text-sm font-semibold text-gray-900 mb-3">
-                                    💬 프리셋 메시지
-                                </label>
-                                <div className="grid grid-cols-1 gap-2">
-                                    {presets.map(preset => (
+                            {/* 직접 입력 시 textarea + 옵션들 */}
+                            {responseType === 'custom' && (
+                                <div className="space-y-3">
+                                    <textarea
+                                        value={customInput}
+                                        onChange={(e) => setCustomInput(e.target.value)}
+                                        placeholder="답변을 직접 입력하세요... (# 입력하면 라이브러리 사용 가능)"
+                                        rows={6}
+                                        autoFocus
+                                        className="w-full px-4 py-3 border-[0.5px] border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none resize-none text-sm"
+                                    />
+
+                                    {/* 세그먼트 컨트롤 - 단순 보정 / 규정 데이터 참고 */}
+                                    <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
                                         <button
-                                            key={preset.id}
-                                            onClick={() => togglePreset(preset)}
-                                            className={`text-left px-4 py-3 rounded-lg border-2 transition-all ${selectedPresets.find(p => p.id === preset.id)
-                                                ? 'border-blue-500 bg-blue-50'
-                                                : 'border-gray-200 hover:border-gray-300 bg-white'
+                                            onClick={() => setContentType('tone_correction')}
+                                            className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-all ${contentType === 'tone_correction'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
                                                 }`}
                                         >
-                                            <div className="flex items-start gap-3">
-                                                <div className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center ${selectedPresets.find(p => p.id === preset.id)
-                                                    ? 'border-blue-500 bg-blue-500'
-                                                    : 'border-gray-300'
-                                                    }`}>
-                                                    {selectedPresets.find(p => p.id === preset.id) && (
-                                                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                        </svg>
-                                                    )}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <span className="text-xs text-gray-700 font-medium">{preset.category}</span>
-                                                    <p className="text-sm text-gray-900 mt-0.5">{preset.text}</p>
-                                                </div>
-                                            </div>
+                                            단순 말투 보정
                                         </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* 직접 입력 */}
-                            <div className="mb-6">
-                                <label className="block text-sm font-semibold text-gray-900 mb-3">
-                                    ✍️ 직접 입력
-                                </label>
-                                <textarea
-                                    value={directInput}
-                                    onChange={(e) => setDirectInput(e.target.value)}
-                                    placeholder="답변 내용을 입력하세요..."
-                                    style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
-                                    className="w-full h-32 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                />
-                            </div>
-
-                            {/* AI 보정 옵션 */}
-                            <div className="p-4 bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200 rounded-xl">
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="checkbox"
-                                        id="enableAI"
-                                        checked={enableAI}
-                                        onChange={(e) => setEnableAI(e.target.checked)}
-                                        className="w-4 h-4 text-blue-600 rounded"
-                                    />
-                                    <label htmlFor="enableAI" className="text-sm font-semibold text-gray-900 cursor-pointer">
-                                        🎨 AI 톤 보정 사용
-                                    </label>
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                    {step === 'processing' && (
-                        <div className="flex flex-col items-center justify-center py-16">
-                            <div className="relative mb-6">
-                                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center animate-pulse">
-                                    <Wand2 className="w-10 h-10 text-white" />
-                                </div>
-                                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 animate-ping opacity-20"></div>
-                            </div>
-                            <p className="text-xl font-semibold text-gray-900 mb-2">AI가 답변을 보정하고 있습니다</p>
-                            <p className="text-sm text-gray-700">잠시만 기다려주세요...</p>
-                        </div>
-                    )}
-
-                    {step === 'result' && (
-                        <div className="space-y-4">
-                            {error && (
-                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-900">
-                                    ❌ {error}
-                                </div>
-                            )}
-
-                            {/* 성공 메시지 */}
-                            <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-                                <div className="flex items-center gap-2">
-                                    <Sparkles className="w-5 h-5 text-green-600" />
-                                    <span className="text-sm font-semibold text-green-900">✅ AI 보정 완료!</span>
-                                </div>
-                                <p className="text-xs text-green-900 mt-1">
-                                    고객 메시지를 확인하고 답변을 수정한 후 전송하세요.
-                                </p>
-                            </div>
-
-                            {/* ✅ 고객 메시지 표시 */}
-                            {customerMessage && (
-                                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <User className="w-4 h-4 text-blue-600" />
-                                        <span className="text-xs font-semibold text-blue-900">고객의 마지막 메시지</span>
+                                        <button
+                                            onClick={() => setContentType('policy_based')}
+                                            className={`flex-1 px-3 py-2 rounded-md text-xs font-medium transition-all ${contentType === 'policy_based'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            규정·데이터 참고
+                                        </button>
                                     </div>
-                                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{customerMessage}</p>
+
+                                    {/* 디테일 조정 토글 */}
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-medium text-gray-900">디테일 조정</span>
+                                        <button
+                                            onClick={() => {
+                                                if (toneFlags.includes('detail_adjust')) {
+                                                    setToneFlags([]);
+                                                } else {
+                                                    setToneFlags(['detail_adjust', 'auto_contextual']);
+                                                }
+                                            }}
+                                            className={`relative w-11 h-6 rounded-full transition-colors ${toneFlags.includes('detail_adjust') ? 'bg-blue-600' : 'bg-gray-300'
+                                                }`}
+                                        >
+                                            <div
+                                                className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform ${toneFlags.includes('detail_adjust') ? 'translate-x-5' : 'translate-x-0.5'
+                                                    }`}
+                                            />
+                                        </button>
+                                    </div>
+
+                                    {/* 슬라이더들 - 항상 표시, 비활성/활성 전환 */}
+                                    <div className={`space-y-4 transition-opacity ${toneFlags.includes('detail_adjust') ? 'opacity-100' : 'opacity-40 pointer-events-none'
+                                        }`}>
+                                        {/* 길이감 슬라이더 */}
+                                        <div>
+                                            <div className="text-xs font-semibold text-gray-700 mb-3">길이감</div>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="2"
+                                                step="1"
+                                                disabled={!toneFlags.includes('detail_adjust')}
+                                                value={
+                                                    toneFlags.includes('concise_core') ? 0 :
+                                                        toneFlags.includes('expanded_text') ? 2 : 1
+                                                }
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value);
+                                                    setToneFlags(prev => {
+                                                        let updated = prev.filter(f =>
+                                                            f !== 'concise_core' && f !== 'expanded_text' && f !== 'auto_contextual'
+                                                        );
+                                                        if (val === 0) updated.push('concise_core');
+                                                        else if (val === 2) updated.push('expanded_text');
+                                                        else updated.push('auto_contextual');
+
+                                                        if (!updated.includes('detail_adjust')) {
+                                                            updated.push('detail_adjust');
+                                                        }
+                                                        return updated;
+                                                    });
+                                                }}
+                                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                            />
+                                            <div className="flex justify-between items-center mt-2">
+                                                <span className="text-[11px] text-gray-400">간결</span>
+                                                <span className="text-[11px] text-gray-400">보통</span>
+                                                <span className="text-[11px] text-gray-400">풍부</span>
+                                            </div>
+                                        </div>
+
+                                        {/* 어투 슬라이더 */}
+                                        <div>
+                                            <div className="text-xs font-semibold text-gray-700 mb-3">어투</div>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="2"
+                                                step="1"
+                                                disabled={!toneFlags.includes('detail_adjust')}
+                                                value={
+                                                    toneFlags.includes('firm') || toneFlags.includes('no_emojis') ? 0 :
+                                                        toneFlags.includes('playful_humor') || toneFlags.includes('with_emojis') ? 2 : 1
+                                                }
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value);
+                                                    setToneFlags(prev => {
+                                                        let updated = prev.filter(f =>
+                                                            f !== 'firm' && f !== 'no_emojis' &&
+                                                            f !== 'playful_humor' && f !== 'with_emojis' &&
+                                                            f !== 'empathetic'
+                                                        );
+                                                        if (val === 0) {
+                                                            updated.push('firm', 'no_emojis');
+                                                        } else if (val === 2) {
+                                                            updated.push('playful_humor', 'with_emojis', 'empathetic');
+                                                        }
+
+                                                        if (!updated.includes('detail_adjust')) {
+                                                            updated.push('detail_adjust');
+                                                        }
+                                                        return updated;
+                                                    });
+                                                }}
+                                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                            />
+                                            <div className="flex justify-between items-center mt-2">
+                                                <span className="text-[11px] text-gray-400">공식적</span>
+                                                <span className="text-[11px] text-gray-400">균형</span>
+                                                <span className="text-[11px] text-gray-400">친근함</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
-                            {/* ✅ 최근 대화 컨텍스트 (접을 수 있는 섹션) */}
-                            {Array.isArray(recentMessages) && recentMessages.length > 0 && (
+                            {/* Business 플랜 옵션 - 접기 */}
+                            {planName === 'business' && (
                                 <details className="group">
-                                    <summary className="cursor-pointer text-sm font-semibold text-gray-900 hover:text-gray-950 flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                        <span>💬 최근 대화 보기</span>
-                                        <span className="text-xs text-gray-800">({recentMessages.length}개)</span>
+                                    <summary className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-100 cursor-pointer list-none flex items-center justify-between hover:bg-indigo-100 transition-colors">
+                                        <span className="text-sm font-semibold text-gray-700">💼 비즈니스 옵션</span>
+                                        <span className="text-gray-400 group-open:rotate-180 transition-transform text-xs">▼</span>
                                     </summary>
-                                    <div className="mt-3 space-y-2 pl-2 border-l-2 border-gray-200">
-                                        {recentMessages.slice(-5).map((msg, idx) => (
-                                            <div key={idx} className="flex items-start gap-2">
-                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${msg.sender === 'user' ? 'bg-blue-100' : 'bg-gray-100'
-                                                    }`}>
-                                                    {msg.sender === 'user' ? (
-                                                        <User className="w-3 h-3 text-blue-600" />
-                                                    ) : (
-                                                        <Sparkles className="w-3 h-3 text-gray-600" />
-                                                    )}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <p className="text-xs text-gray-800 mb-0.5 font-medium">
-                                                        {msg.sender === 'user' ? '고객' : 'AI'}
-                                                    </p>
-                                                    <p className="text-sm text-gray-900">{msg.text || ''}</p>
-                                                </div>
+                                    <div className="mt-3 p-3 bg-gray-50 rounded-xl space-y-2">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <select
+                                                value={contentType}
+                                                onChange={(e) => setContentType(e.target.value)}
+                                                className="px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                            >
+                                                <option value="tone_correction">톤 보정</option>
+                                                <option value="professional">전문적</option>
+                                                <option value="casual">캐주얼</option>
+                                            </select>
+
+                                            <div className="flex flex-wrap gap-1">
+                                                {['친절', '공감'].map(flag => (
+                                                    <button
+                                                        key={flag}
+                                                        onClick={() => {
+                                                            setToneFlags(prev =>
+                                                                prev.includes(flag)
+                                                                    ? prev.filter(f => f !== flag)
+                                                                    : [...prev, flag]
+                                                            );
+                                                        }}
+                                                        className={`px-2 py-1 rounded-full text-xs font-medium transition-all ${toneFlags.includes(flag)
+                                                            ? 'bg-blue-600 text-white'
+                                                            : 'bg-white text-gray-700 border border-gray-200'
+                                                            }`}
+                                                    >
+                                                        {flag}
+                                                    </button>
+                                                ))}
                                             </div>
-                                        ))}
+                                        </div>
                                     </div>
                                 </details>
                             )}
 
-                            {/* ✅ 보정된 답변 (편집 가능) */}
-                            <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                                <label className="block text-xs font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-purple-500" />
-                                    AI 보정된 답변 (편집 가능)
-                                </label>
-                                <textarea
-                                    value={correctedText}
-                                    onChange={(e) => setCorrectedText(e.target.value)}
-                                    style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
-                                    className="w-full h-48 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 font-medium resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="보정된 답변을 확인하고 필요시 수정하세요..."
-                                />
-                                <p className="text-xs text-gray-800 mt-2 font-medium">
-                                    💡 고객 메시지를 참고하여 답변을 수정할 수 있습니다.
-                                </p>
+                            {error && (
+                                <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {step === 'processing' && (
+                        <div className="flex flex-col items-center justify-center py-8">
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 animate-pulse flex items-center justify-center mb-4">
+                                <Wand2 className="w-8 h-8 text-white animate-bounce" />
+                            </div>
+                            <p className="text-sm font-semibold text-gray-900 mb-1">AI 보정 중</p>
+                            <p className="text-xs text-gray-500">잠시만 기다려주세요...</p>
+                        </div>
+                    )}
+
+                    {step === 'result' && (
+                        <div className="space-y-3">
+                            <div className="p-4 bg-white rounded-xl border-[0.5px] border-gray-300">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Sparkles className="w-4 h-4 text-purple-600" />
+                                    <h4 className="text-sm font-semibold text-gray-900">AI 보정 완료</h4>
+                                    {isBotMode && (
+                                        <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full">
+                                            🤖
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="bg-white rounded-xl p-3 text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                                    {correctedText}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleEdit}
+                                    className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
+                                >
+                                    수정
+                                </button>
+                                <button
+                                    onClick={handleSendCorrected}
+                                    disabled={sending}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    <Send className="w-4 h-4" />
+                                    {sending ? '전송 중...' : '전송'}
+                                </button>
                             </div>
                         </div>
                     )}
                 </div>
 
-                {/* 하단 버튼 */}
-                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
-                    <div className="flex items-center justify-end gap-3">
+                {/* 푸터 */}
+                {step === 'compose' && (
+                    <div className="px-5 py-3 border-t-[0.5px] border-gray-300 bg-white">
                         <button
-                            onClick={onClose}
-                            disabled={processing || sending}
-                            className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors font-medium disabled:opacity-50"
+                            onClick={handleSubmit}
+                            disabled={processing}
+                            className="w-full px-5 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
                         >
-                            취소
+                            <Sparkles className="w-4 h-4" />
+                            {processing ? 'AI 보정 중...' : 'AI 보정 받기'}
                         </button>
-
-                        {step === 'compose' && (
-                            <button
-                                onClick={handleSubmit}
-                                disabled={processing}
-                                className="px-6 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium shadow-lg"
-                            >
-                                <Sparkles className="w-5 h-5" />
-                                {enableAI ? 'AI 보정 요청' : '다음'}
-                            </button>
-                        )}
-
-                        {step === 'result' && (
-                            <button
-                                onClick={handleSend}
-                                disabled={sending}
-                                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 font-medium shadow-lg disabled:opacity-50"
-                            >
-                                {/* ❌ 스피너 & '전송 중...' 제거 */}
-                                <Send className="w-5 h-5" />
-                                전송하기
-                            </button>
-                        )}
-
                     </div>
-                </div>
+                )}
             </div>
+
+            <style jsx>{`
+                @keyframes slide-in-from-top {
+                    from {
+                        opacity: 0;
+                        transform: translateY(-10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+                
+                .animate-in {
+                    animation: slide-in-from-top 0.2s ease-out;
+                }
+            `}</style>
         </div>
     );
 }

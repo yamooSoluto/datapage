@@ -74,12 +74,14 @@ export default function StatsPage() {
   const fetchData = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const response = await fetch(`/api/stats/${tenantId}?view=${view}&limit=50`);
+      const response = await fetch(
+        `/api/stats/${tenantId}?view=${view}&limit=50&range=${dateRange}`
+      );
       if (!response.ok) throw new Error(`API returned ${response.status}`);
       const result = await response.json();
-      
+
       if (!result.chartData.dailyTrend) {
         const today = new Date();
         result.chartData.dailyTrend = Array.from({ length: 7 }, (_, i) => {
@@ -92,12 +94,12 @@ export default function StatsPage() {
           };
         });
       }
-      
+
       setData(result);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
       setError(err.message);
-      
+
       setData({
         stats: { total: 5, aiAutoRate: 80, avgResponseTime: 3, agentMessages: 0 },
         chartData: {
@@ -132,7 +134,7 @@ export default function StatsPage() {
         c.aiAutoChats, c.agentChats
       ])
     ].map(row => row.join(',')).join('\n');
-    
+
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -212,7 +214,7 @@ export default function StatsPage() {
               <div className="text-9xl mb-6">📊</div>
               <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent mb-4">아직 상담 데이터가 없습니다</h2>
               <p className="text-gray-600 mb-8 font-semibold leading-relaxed">
-                고객과의 첫 상담이 시작되면 여기에 통계가 표시됩니다.<br/>
+                고객과의 첫 상담이 시작되면 여기에 통계가 표시됩니다.<br />
                 CS 자동화 시스템이 대화를 분석하고 인사이트를 제공합니다.
               </p>
               <button onClick={fetchData} className="px-8 py-3 bg-gradient-to-r from-yellow-400 to-amber-400 text-gray-800 rounded-2xl hover:shadow-xl hover:shadow-yellow-400/40 hover:scale-105 transition-all font-bold">

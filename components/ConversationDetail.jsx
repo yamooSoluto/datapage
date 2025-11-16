@@ -1455,7 +1455,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     }}
                                     onKeyDown={onKeyDown}
                                     onPaste={onPaste}
-                                    placeholder={uploading ? '파일 처리 중...' : '메시지 입력... (# 입력하면 라이브러리 사용 가능)'}
+                                    placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
                                     disabled={uploading}             // ❌ sending으로 disable 안 함
                                     enterKeyHint="send"
                                     style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
