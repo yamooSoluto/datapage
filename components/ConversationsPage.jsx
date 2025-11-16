@@ -383,13 +383,13 @@ export default function ConversationsPage({ tenantId }) {
                                     <h1 className="text-xl font-semibold text-gray-900">
                                         대화 관리
                                     </h1>
-                                    <p className="mt-1 text-xs text-gray-500">
+                                    <p className="mt-1 text-xs text-gray-700 md:text-gray-500">
                                         오늘{' '}
-                                        <span className="font-semibold text-gray-800">
+                                        <span className="font-semibold text-gray-900 md:text-gray-800">
                                             {conversationStats.today}
                                         </span>
                                         건 · 미답변{' '}
-                                        <span className="font-semibold text-rose-500">
+                                        <span className="font-semibold text-rose-600 md:text-rose-500">
                                             {conversationStats.unanswered}
                                         </span>
                                         건
@@ -407,13 +407,13 @@ export default function ConversationsPage({ tenantId }) {
                             {/* 모드 카드 */}
                             <div className="mb-3 rounded-2xl border border-gray-100 bg-gradient-to-r from-yellow-50/70 via-white to-blue-50/60 px-3 py-2.5 flex items-center justify-between gap-3">
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 text-xs font-medium text-gray-800">
+                                    <div className="flex items-center gap-1.5 text-xs font-medium text-gray-900 md:text-gray-800">
                                         <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-100">
                                             <SparklesIcon className="w-3 h-3 text-yellow-600" />
                                         </span>
                                         <span className="truncate">{modeTitle}</span>
                                     </div>
-                                    <p className="mt-0.5 text-[11px] text-gray-500 leading-snug">
+                                    <p className="mt-0.5 text-[11px] text-gray-700 md:text-gray-500 leading-snug">
                                         {modeSubtitle}
                                     </p>
                                 </div>
@@ -494,10 +494,10 @@ export default function ConversationsPage({ tenantId }) {
 
                                 {/* 고급 필터 */}
                                 {showAdvancedFilters && (
-                                    <div className="mt-3 pt-2 border-t border-gray-200 space-y-2 text-[11px]">
-                                        <div className="grid grid-cols-2 gap-2">
+                                    <div className="mt-3 pt-2 border-t border-gray-200 space-y-2.5 md:space-y-2">
+                                        <div className="grid grid-cols-2 gap-2 md:gap-2.5">
                                             <div>
-                                                <label className="block font-semibold text-gray-700 mb-1">
+                                                <label className="block text-[10px] md:text-[11px] font-medium text-gray-600 md:text-gray-700 mb-1 md:mb-1.5">
                                                     채널
                                                 </label>
                                                 <select
@@ -510,7 +510,7 @@ export default function ConversationsPage({ tenantId }) {
                                                         setCurrentPage(1);
                                                     }}
                                                     style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
-                                                    className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                                    className="w-full px-2.5 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-200 rounded-lg md:rounded-xl bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                                                 >
                                                     <option value="all">전체 채널</option>
                                                     <option value="kakao">카카오톡</option>
@@ -520,7 +520,7 @@ export default function ConversationsPage({ tenantId }) {
                                             </div>
 
                                             <div>
-                                                <label className="block font-semibold text-gray-700 mb-1">
+                                                <label className="block text-[10px] md:text-[11px] font-medium text-gray-600 md:text-gray-700 mb-1 md:mb-1.5">
                                                     카테고리
                                                 </label>
                                                 <select
@@ -533,7 +533,7 @@ export default function ConversationsPage({ tenantId }) {
                                                         setCurrentPage(1);
                                                     }}
                                                     style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
-                                                    className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                                    className="w-full px-2.5 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-200 rounded-lg md:rounded-xl bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                                                 >
                                                     <option value="all">전체 카테고리</option>
                                                     {availableCategories.map((cat) => (
@@ -545,9 +545,9 @@ export default function ConversationsPage({ tenantId }) {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-2 gap-2 md:gap-2.5">
                                             <div>
-                                                <label className="block font-semibold text-gray-700 mb-1">
+                                                <label className="block text-[10px] md:text-[11px] font-medium text-gray-600 md:text-gray-700 mb-1 md:mb-1.5">
                                                     시작일
                                                 </label>
                                                 <input
@@ -561,12 +561,12 @@ export default function ConversationsPage({ tenantId }) {
                                                         setCurrentPage(1);
                                                     }}
                                                     style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
-                                                    className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                                    className="w-full px-2.5 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-200 rounded-lg md:rounded-xl bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                                                 />
                                             </div>
 
                                             <div>
-                                                <label className="block font-semibold text-gray-700 mb-1">
+                                                <label className="block text-[10px] md:text-[11px] font-medium text-gray-600 md:text-gray-700 mb-1 md:mb-1.5">
                                                     종료일
                                                 </label>
                                                 <input
@@ -580,14 +580,14 @@ export default function ConversationsPage({ tenantId }) {
                                                         setCurrentPage(1);
                                                     }}
                                                     style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
-                                                    className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:border-blue-500"
+                                                    className="w-full px-2.5 md:px-3 py-1.5 md:py-2 text-xs md:text-sm border border-gray-200 rounded-lg md:rounded-xl bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                                                 />
                                             </div>
                                         </div>
 
                                         <button
                                             onClick={resetFilters}
-                                            className="w-full mt-1 px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                                            className="w-full mt-1 px-3 py-1.5 md:py-2 bg-gray-100 md:bg-gray-200 text-gray-700 rounded-lg md:rounded-xl hover:bg-gray-200 md:hover:bg-gray-300 transition-colors text-xs md:text-sm font-medium"
                                         >
                                             필터 초기화
                                         </button>
@@ -724,6 +724,20 @@ export default function ConversationsPage({ tenantId }) {
         .scrollbar-hide {
           -ms-overflow-style: none;
           scrollbar-width: none;
+        }
+        /* 드롭다운 스타일 개선 */
+        select {
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 0.75rem center;
+          background-size: 0.75rem;
+          padding-right: 2rem;
+        }
+        @media (min-width: 768px) {
+          select {
+            background-size: 0.875rem;
+            padding-right: 2.25rem;
+          }
         }
       `}</style>
         </div>

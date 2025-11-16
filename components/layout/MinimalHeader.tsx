@@ -71,9 +71,12 @@ export default function MinimalHeader({
 
     // ✅ 키보드 감지: input/textarea focus 시 하단 탭 숨기기
     useEffect(() => {
+        let blurTimeout: NodeJS.Timeout;
+
         const handleFocus = (e: FocusEvent) => {
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                clearTimeout(blurTimeout);
                 setIsKeyboardVisible(true);
             }
         };
@@ -82,7 +85,7 @@ export default function MinimalHeader({
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
                 // 약간의 지연을 두어 키보드가 완전히 사라진 후 탭 표시
-                setTimeout(() => {
+                blurTimeout = setTimeout(() => {
                     setIsKeyboardVisible(false);
                 }, 300);
             }
@@ -95,20 +98,27 @@ export default function MinimalHeader({
                 const windowHeight = window.innerHeight;
                 const viewportHeight = viewport.height;
                 // viewport 높이가 window 높이보다 작으면 키보드가 올라온 것
-                setIsKeyboardVisible(viewportHeight < windowHeight * 0.75);
+                const keyboardVisible = viewportHeight < windowHeight * 0.75;
+                setIsKeyboardVisible(keyboardVisible);
             }
         };
 
-        document.addEventListener('focusin', handleFocus);
-        document.addEventListener('focusout', handleBlur);
+        // 초기 체크
+        if (typeof window !== 'undefined' && window.visualViewport) {
+            handleViewportResize();
+        }
+
+        document.addEventListener('focusin', handleFocus, true); // capture phase로 전역 감지
+        document.addEventListener('focusout', handleBlur, true);
         
         if (typeof window !== 'undefined' && window.visualViewport) {
             window.visualViewport.addEventListener('resize', handleViewportResize);
         }
 
         return () => {
-            document.removeEventListener('focusin', handleFocus);
-            document.removeEventListener('focusout', handleBlur);
+            clearTimeout(blurTimeout);
+            document.removeEventListener('focusin', handleFocus, true);
+            document.removeEventListener('focusout', handleBlur, true);
             if (typeof window !== 'undefined' && window.visualViewport) {
                 window.visualViewport.removeEventListener('resize', handleViewportResize);
             }

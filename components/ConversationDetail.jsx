@@ -491,24 +491,34 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                 // ✅ 위치 계산을 먼저 완료한 후 드롭다운 표시 (깜빡임 방지)
                 if (textareaRef.current) {
-                    const rect = textareaRef.current.getBoundingClientRect();
-                    const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
+                    // requestAnimationFrame으로 위치 계산 후 렌더링 보장
+                    requestAnimationFrame(() => {
+                        if (textareaRef.current) {
+                            const rect = textareaRef.current.getBoundingClientRect();
+                            const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
 
-                    setMacroTriggerPosition({
-                        bottom: inputBottom + 8, // 입력창 바로 위 8px
-                        left: rect.left,
+                            setMacroTriggerPosition({
+                                bottom: inputBottom + 8, // 입력창 바로 위 8px
+                                left: rect.left,
+                            });
+
+                            // 위치 계산 완료 후 드롭다운 표시
+                            requestAnimationFrame(() => {
+                                setShowLibraryDropdown(true);
+                            });
+                        }
                     });
-
-                    // 위치 계산 완료 후 드롭다운 표시
-                    setShowLibraryDropdown(true);
                 } else {
                     setShowLibraryDropdown(false);
+                    setMacroTriggerPosition(null);
                 }
             } else {
                 setShowLibraryDropdown(false);
+                setMacroTriggerPosition(null);
             }
         } else {
             setShowLibraryDropdown(false);
+            setMacroTriggerPosition(null);
         }
     };
 
@@ -1063,6 +1073,17 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 className="flex-shrink-0 p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Paperclip className="w-5 h-5" />
+                            </button>
+
+                            {/* ✅ AI 보정 버튼 */}
+                            <button
+                                onClick={() => setShowAIComposer(true)}
+                                disabled={sending || uploading}
+                                className="flex-shrink-0 p-2.5 rounded-lg bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                                aria-label="AI 보정"
+                                title="AI 톤 보정"
+                            >
+                                <Sparkles className="w-5 h-5 text-purple-600 group-hover:text-purple-700" />
                             </button>
 
                             <textarea
