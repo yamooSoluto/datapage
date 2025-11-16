@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             contentType,
             toneFlags,
             source = 'web_portal',
-            csTone, // ✅ GCP 함수 형식 필드 (선택적)
+            csTone: requestCsTone, // ✅ GCP 함수 형식 필드 (선택적) - 중복 선언 방지를 위해 별칭 사용
             previousMessages, // ✅ GCP 함수 형식 필드 (선택적)
             executionMode, // ✅ GCP 함수 형식 필드
         } = req.body || {};
@@ -212,7 +212,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             mode: mode || (contentType === 'policy_based' ? 'mediated' : 'tone_correction'), // ✅ 요청에서 받거나 자동 설정
             source: source || 'web_portal',
             planName: planName || "trial",
-            csTone: csTone !== undefined ? csTone : (tenantDoc?.csTone || null), // ✅ 요청에서 받거나 자동으로 채워진 값
+            csTone: requestCsTone !== undefined ? requestCsTone : csTone, // ✅ 요청에서 받거나 자동으로 채워진 값
             previousMessages: finalPreviousMessages, // ✅ 요청에서 받거나 자동으로 채워진 값
             ...aiOptions,
             // ✅ 웹포탈 콜백 URL (conversationId만 사용)
