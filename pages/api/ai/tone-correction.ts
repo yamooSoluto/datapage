@@ -208,6 +208,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             "https://soluto.app.n8n.cloud/webhook/tone-correction";
 
         // ✅ 5. 페이로드 구성 (GCP 함수 형식에 맞춤)
+        // ✅ csTone 값 결정: 요청에서 받거나 DB에서 가져온 값 (null도 유지)
+        const finalCsTone = requestCsTone !== undefined ? requestCsTone : csTone;
+
         const payload: any = {
             tenantId,
             conversationId: actualChatId,
@@ -216,7 +219,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             mode: mode || (contentType === 'policy_based' ? 'mediated' : 'tone_correction'), // ✅ 요청에서 받거나 자동 설정
             source: source || 'web_portal',
             planName: planName || "trial",
-            csTone: requestCsTone !== undefined ? requestCsTone : csTone, // ✅ 요청에서 받거나 자동으로 채워진 값
+            csTone: finalCsTone, // ✅ null이어도 명시적으로 포함 (GCP 함수가 기대함)
             previousMessages: finalPreviousMessages, // ✅ 요청에서 받거나 자동으로 채워진 값
             ...aiOptions,
             // ✅ 웹포탈 콜백 URL (conversationId만 사용)
@@ -224,7 +227,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             executionMode: executionMode || "production",
         };
 
-        // ✅ undefined 필드 제거 (명시적으로)
+        // ✅ undefined 필드 제거 (명시적으로) - null은 유지
         Object.keys(payload).forEach(key => {
             if (payload[key] === undefined) {
                 delete payload[key];
@@ -237,7 +240,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             conversationId: actualChatId,
             hasUserMessage: !!finalUserMessage,
             previousMessagesCount: finalPreviousMessages.length,
-            hasCsTone: !!payload.csTone,
+            csTone: payload.csTone, // ✅ null이어도 표시
+            hasCsTone: payload.csTone !== null && payload.csTone !== undefined,
             mode: payload.mode,
             hasAgentInstruction: !!payload.agentInstruction,
         });

@@ -208,6 +208,43 @@ export default function AIComposerModal({
         setStep('compose');
     };
 
+    // ✅ processing 단계일 때는 우하단 플로팅 인디케이터만 표시
+    if (step === 'processing') {
+        return (
+            <div className="fixed bottom-6 right-6 z-[200] animate-in">
+                <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 min-w-[280px] p-4 flex items-center gap-3">
+                    {/* 그라데이션 아이콘 컨테이너 */}
+                    <div className="relative flex-shrink-0" style={{ animation: 'floatBounce 2s ease-in-out infinite' }}>
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+                            <Wand2 className="w-6 h-6 text-white" />
+                        </div>
+                        {/* 파란 점 애니메이션 */}
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-ping" />
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full" />
+                    </div>
+
+                    {/* 텍스트 영역 */}
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900">🪄 AI 보정 중</p>
+                        <p className="text-xs text-gray-600 mt-0.5">답변을 다듬고 있어요...</p>
+                    </div>
+
+                    {/* 닫기 버튼 */}
+                    <button
+                        onClick={() => {
+                            setProcessing(false);
+                            setStep('compose');
+                        }}
+                        className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                    >
+                        <X className="w-3.5 h-3.5 text-gray-600" />
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // ✅ compose/result 단계일 때는 전체 모달 표시
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
             <div
@@ -230,7 +267,6 @@ export default function AIComposerModal({
                             <h3 className="text-base font-semibold text-gray-900">AI 답변 보정</h3>
                             <p className="text-xs text-gray-500">
                                 {step === 'compose' && '응답을 선택하세요'}
-                                {step === 'processing' && '보정 중...'}
                                 {step === 'result' && '보정 완료'}
                             </p>
                         </div>
@@ -664,16 +700,6 @@ export default function AIComposerModal({
                         </div>
                     )}
 
-                    {step === 'processing' && (
-                        <div className="flex flex-col items-center justify-center py-8">
-                            <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 animate-pulse flex items-center justify-center mb-4">
-                                <Wand2 className="w-8 h-8 text-white animate-bounce" />
-                            </div>
-                            <p className="text-sm font-semibold text-gray-900 mb-1">AI 보정 중</p>
-                            <p className="text-xs text-gray-500">잠시만 기다려주세요...</p>
-                        </div>
-                    )}
-
                     {step === 'result' && (
                         <div className="space-y-3">
                             <div className="p-4 bg-white rounded-xl border-[0.5px] border-gray-300">
@@ -735,6 +761,15 @@ export default function AIComposerModal({
                     to {
                         opacity: 1;
                         transform: translateY(0);
+                    }
+                }
+                
+                @keyframes floatBounce {
+                    0%, 100% {
+                        transform: translateY(0px);
+                    }
+                    50% {
+                        transform: translateY(-10px);
                     }
                 }
                 
