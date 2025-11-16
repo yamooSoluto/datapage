@@ -121,17 +121,52 @@ export default function AIComposerModal({
                 for (let i = 0; i < maxAttempts; i++) {
                     await new Promise(resolve => setTimeout(resolve, 1000));
 
-                    const pollResponse = await fetch(
-                        `/api/ai/tone-correction/result?conversationId=${conversationId}&tenantId=${tenantId}`
-                    );
-                    const pollData = await pollResponse.json();
+                    try {
+                        const pollResponse = await fetch(
+                            `/api/ai/tone-poll?conversationId=${encodeURIComponent(conversationId)}`
+                        );
 
-                    if (pollData.status === 'completed') {
-                        return pollData.correctedText;
-                    }
+                        // 404나 다른 에러 응답 처리
+                        if (!pollResponse.ok) {
+                            if (pollResponse.status === 404) {
+                                // 아직 결과 없음, 계속 폴링
+                                continue;
+                            }
+                            const errorText = await pollResponse.text().catch(() => '');
+                            // HTML 응답인 경우 (404 페이지 등)
+                            if (errorText.includes('<!DOCTYPE')) {
+                                console.warn('[AIComposerModal] Received HTML response, continuing to poll...');
+                                continue;
+                            }
+                            throw new Error(`Polling failed: ${pollResponse.status}`);
+                        }
 
-                    if (pollData.status === 'failed') {
-                        throw new Error(pollData.error || 'AI 보정 실패');
+                        const pollData = await pollResponse.json();
+
+                        // tone-poll은 ready: true/false 형식 사용
+                        if (pollData.ready === true && pollData.correctedText) {
+                            return pollData.correctedText;
+                        }
+
+                        // 아직 결과 없음, 계속 폴링
+                        if (pollData.ready === false) {
+                            continue;
+                        }
+
+                        // 에러가 있는 경우
+                        if (pollData.error) {
+                            throw new Error(pollData.error || 'AI 보정 실패');
+                        }
+                    } catch (err) {
+                        // 네트워크 에러나 JSON 파싱 에러는 무시하고 계속 폴링
+                        if (err.message && err.message.includes('JSON')) {
+                            console.warn('[AIComposerModal] JSON parse error, continuing to poll...');
+                            continue;
+                        }
+                        // 마지막 시도에서만 에러 throw
+                        if (i === maxAttempts - 1) {
+                            throw err;
+                        }
                     }
                 }
 
@@ -218,7 +253,7 @@ export default function AIComposerModal({
                                 </div>
                                 <button
                                     onClick={() => setIsBotMode(!isBotMode)}
-                                    className={`relative w-11 h-6 rounded-full transition-colors ${isBotMode ? 'bg-yellow-600' : 'bg-gray-300'
+                                    className={`relative w-11 h-6 rounded-full transition-colors ${isBotMode ? 'bg-yellow-200' : 'bg-gray-300'
                                         }`}
                                 >
                                     <div
