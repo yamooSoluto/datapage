@@ -1536,6 +1536,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     tenantId={effectiveTenantId}
                     planName={planName}
                     initialText={composerInitialText}
+                    libraryData={libraryData} // ✅ 라이브러리 데이터 전달
                     onClose={() => {
                         setShowAIComposer(false);
                         setComposerInitialText(""); // 닫을 때 초기화

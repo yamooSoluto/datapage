@@ -711,6 +711,7 @@ export default function ConversationsPage({ tenantId }) {
                     conversation={selectedConv}
                     tenantId={tenantId}
                     planName="business"
+                    libraryData={libraryData} // ✅ 라이브러리 데이터 전달
                     onClose={() => setShowAIModal(false)}
                     onSend={handleAISend}
                 />

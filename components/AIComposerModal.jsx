@@ -1,8 +1,9 @@
 // components/AIComposerModal.jsx
 // 초콤팩트 AI 보정 모달 - 가로 버튼 + 챗봇 모드 토글
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Sparkles, Send, Wand2, CheckCircle, Clock, Edit, Database, Palette, User, Bot } from 'lucide-react';
+import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 라이브러리 매크로 추가
 
 export default function AIComposerModal({
     conversation,
@@ -11,6 +12,7 @@ export default function AIComposerModal({
     onClose,
     onSend,
     initialText = '',
+    libraryData = null, // ✅ 라이브러리 데이터 추가
 }) {
     const [step, setStep] = useState('compose');
 
@@ -41,6 +43,13 @@ export default function AIComposerModal({
     const [sending, setSending] = useState(false);
     const [correctedText, setCorrectedText] = useState('');
     const [error, setError] = useState('');
+
+    // ✅ 라이브러리 매크로 상태
+    const [showLibraryDropdown, setShowLibraryDropdown] = useState(false);
+    const [macroSearchQuery, setMacroSearchQuery] = useState('');
+    const [macroTriggerPosition, setMacroTriggerPosition] = useState(null);
+    const [cursorPosition, setCursorPosition] = useState(0);
+    const textareaRef = useRef(null);
 
     // ✅ 템플릿
     const templates = {
@@ -264,14 +273,99 @@ export default function AIComposerModal({
                                 <div className="space-y-3" style={{
                                     animation: 'slideDown 0.3s ease-out'
                                 }}>
-                                    <textarea
-                                        value={customInput}
-                                        onChange={(e) => setCustomInput(e.target.value)}
-                                        placeholder="답변을 직접 입력하세요... (# 입력하면 라이브러리 사용 가능)"
-                                        rows={6}
-                                        autoFocus
-                                        className="w-full px-4 py-3 border-[0.5px] border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none resize-none text-sm"
-                                    />
+                                    <div className="relative">
+                                        <textarea
+                                            ref={textareaRef}
+                                            value={customInput}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                const cursorPos = e.target.selectionStart;
+                                                setCustomInput(value);
+                                                setCursorPosition(cursorPos);
+
+                                                // # 트리거 감지
+                                                const textBeforeCursor = value.substring(0, cursorPos);
+                                                const lastHashIndex = textBeforeCursor.lastIndexOf('#');
+
+                                                if (lastHashIndex !== -1) {
+                                                    const textAfterHash = textBeforeCursor.substring(lastHashIndex + 1);
+
+                                                    // # 이후에 공백이 없고, 라이브러리 데이터가 있으면 드롭다운 표시
+                                                    if (!textAfterHash.includes(' ') && libraryData) {
+                                                        setMacroSearchQuery(textAfterHash);
+
+                                                        // 위치 계산
+                                                        if (textareaRef.current) {
+                                                            const rect = textareaRef.current.getBoundingClientRect();
+                                                            const inputBottom = window.innerHeight - rect.top;
+
+                                                            setMacroTriggerPosition({
+                                                                bottom: inputBottom + 8,
+                                                                left: rect.left,
+                                                            });
+
+                                                            requestAnimationFrame(() => {
+                                                                setShowLibraryDropdown(true);
+                                                            });
+                                                        } else {
+                                                            setShowLibraryDropdown(false);
+                                                            setMacroTriggerPosition(null);
+                                                        }
+                                                    } else {
+                                                        setShowLibraryDropdown(false);
+                                                        setMacroTriggerPosition(null);
+                                                    }
+                                                } else {
+                                                    setShowLibraryDropdown(false);
+                                                    setMacroTriggerPosition(null);
+                                                }
+                                            }}
+                                            placeholder="답변을 직접 입력하세요... (# 입력하면 라이브러리 사용 가능)"
+                                            rows={6}
+                                            autoFocus
+                                            className="w-full px-4 py-3 border-[0.5px] border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none resize-none text-sm text-gray-900 placeholder-gray-400"
+                                        />
+
+                                        {/* ✅ 라이브러리 드롭다운 */}
+                                        {showLibraryDropdown && libraryData && macroTriggerPosition && (
+                                            <LibraryMacroDropdown
+                                                libraryData={libraryData}
+                                                searchQuery={macroSearchQuery}
+                                                onSelect={(value) => {
+                                                    if (!textareaRef.current) return;
+
+                                                    const textBeforeCursor = customInput.substring(0, cursorPosition);
+                                                    const textAfterCursor = customInput.substring(cursorPosition);
+                                                    const lastHashIndex = textBeforeCursor.lastIndexOf('#');
+
+                                                    if (lastHashIndex !== -1) {
+                                                        const newText =
+                                                            customInput.substring(0, lastHashIndex) +
+                                                            value +
+                                                            ' ' +
+                                                            textAfterCursor;
+
+                                                        setCustomInput(newText);
+
+                                                        const newCursorPos = lastHashIndex + value.length + 1;
+                                                        setTimeout(() => {
+                                                            textareaRef.current.focus();
+                                                            textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+                                                        }, 0);
+                                                    }
+
+                                                    setShowLibraryDropdown(false);
+                                                    setMacroSearchQuery('');
+                                                    setMacroTriggerPosition(null);
+                                                }}
+                                                position={macroTriggerPosition}
+                                                onClose={() => {
+                                                    setShowLibraryDropdown(false);
+                                                    setMacroTriggerPosition(null);
+                                                }}
+                                            />
+                                        )}
+                                    </div>
 
                                     {/* 세그먼트 컨트롤 - 단순 보정 / 규정 데이터 참고 */}
                                     <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
