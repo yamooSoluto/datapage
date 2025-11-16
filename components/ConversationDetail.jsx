@@ -90,12 +90,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
     }, [detail?.messages]);
 
-    // ✅ 모바일 키보드 대응: textarea focus 시 스크롤 조정
+    // ✅ 모바일 키보드 대응: textarea focus 시 스크롤 조정 및 하단 탭 숨기기
     useEffect(() => {
         if (!textareaRef.current) return;
 
         const textarea = textareaRef.current;
         const handleFocus = () => {
+            // 하단 탭 숨기기를 위해 커스텀 이벤트 발생 (MinimalHeader가 감지하도록)
+            const focusEvent = new FocusEvent('focusin', { bubbles: true, cancelable: true });
+            textarea.dispatchEvent(focusEvent);
+
             // 모바일에서 키보드가 나타날 때 입력창이 가려지지 않도록 스크롤
             setTimeout(() => {
                 if (textarea) {
@@ -109,6 +113,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         };
 
         const handleBlur = () => {
+            // 하단 탭 표시를 위해 커스텀 이벤트 발생
+            const blurEvent = new FocusEvent('focusout', { bubbles: true, cancelable: true });
+            textarea.dispatchEvent(blurEvent);
+
             // 키보드가 사라질 때 스크롤 위치 조정 (필요시)
             setTimeout(() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -489,24 +497,19 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             if (!textAfterHash.includes(' ') && libraryData) {
                 setMacroSearchQuery(textAfterHash);
 
-                // ✅ 위치 계산을 한 번에 완료하여 깜빡임 방지
+                // ✅ 위치 계산을 먼저 완료한 후 드롭다운 표시 (깜빡임 방지)
                 if (textareaRef.current) {
-                    // 동기적으로 위치 계산
+                    // 위치를 먼저 계산하고 상태를 한 번에 업데이트하여 깜빡임 방지
                     const rect = textareaRef.current.getBoundingClientRect();
                     const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
 
-                    // 모바일에서 키보드가 올라온 경우 하단 탭 높이 고려
-                    const isMobile = window.innerWidth < 768;
-                    const bottomTabHeight = isMobile ? 64 : 0; // 하단 탭 높이
-
-                    const calculatedPosition = {
+                    // 위치와 표시 상태를 동시에 업데이트
+                    setMacroTriggerPosition({
                         bottom: inputBottom + 8, // 입력창 바로 위 8px
                         left: rect.left,
-                    };
+                    });
 
-                    // 위치와 드롭다운 상태를 동시에 설정하여 깜빡임 방지
-                    setMacroTriggerPosition(calculatedPosition);
-                    // 다음 프레임에서 드롭다운 표시 (위치가 먼저 설정되도록)
+                    // 다음 프레임에서 드롭다운 표시 (위치 계산이 완료된 후)
                     requestAnimationFrame(() => {
                         setShowLibraryDropdown(true);
                     });
@@ -549,14 +552,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
                 autoResize(textareaRef.current);
             }, 0);
-        }
-
-        // 드롭다운 닫기 전에 키보드 이벤트 발생 (하단 탭 다시 표시)
-        if (typeof window !== 'undefined') {
-            const event = new CustomEvent('keyboard-visibility-change', {
-                detail: { visible: false }
-            });
-            window.dispatchEvent(event);
         }
 
         setShowLibraryDropdown(false);
@@ -859,9 +854,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             })()}
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
-                                <p className="text-xs text-gray-500">
-                                    {conversation.channel || 'unknown'} • {chatId || 'N/A'}
-                                </p>
+                                {/* 요약을 여기로 이동 */}
+                                {detail?.conversation?.summary ? (
+                                    <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+                                        💡 {detail.conversation.summary}
+                                    </p>
+                                ) : (
+                                    <p className="text-xs text-gray-500">
+                                        {conversation.channel || 'unknown'}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -869,7 +871,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             {/* AI 보정 버튼 */}
                             {(planName === 'pro' || planName === 'business') && (
                                 <button
-                                    onClick={() => setShowAIComposer(true)}
+                                    onClick={() => {
+                                        setComposerInitialText(draft); // ✅ 현재 입력값 전달
+                                        setShowAIComposer(true);
+                                    }}
                                     className="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all flex items-center gap-2 text-sm font-medium"
                                 >
                                     <Sparkles className="w-4 h-4" />
@@ -950,7 +955,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                     {/* 입력 영역 - 키보드 위 고정 */}
                     <div
-                        className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white relative"
+                        className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white relative"
                         style={{
                             // 모바일에서 키보드 위에 고정
                             position: 'sticky',
@@ -958,14 +963,17 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             zIndex: 10,
                         }}
                     >
-                        {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 */}
+                        {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 (깜빡임 방지) */}
                         {showLibraryDropdown && libraryData && macroTriggerPosition && (
                             <LibraryMacroDropdown
                                 libraryData={libraryData}
                                 searchQuery={macroSearchQuery}
                                 onSelect={handleLibrarySelect}
                                 position={macroTriggerPosition}
-                                onClose={() => setShowLibraryDropdown(false)}
+                                onClose={() => {
+                                    setShowLibraryDropdown(false);
+                                    setMacroTriggerPosition(null);
+                                }}
                             />
                         )}
 
@@ -1000,15 +1008,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     >
                                         ✏️ 수정 후 전송
                                     </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 요약 정보 */}
-                        {detail?.conversation?.summary && (
-                            <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                                <div className="text-sm text-blue-900">
-                                    <span className="font-semibold">💡 요약:</span> {detail.conversation.summary}
                                 </div>
                             </div>
                         )}
@@ -1087,7 +1086,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                             {/* ✅ AI 보정 버튼 */}
                             <button
-                                onClick={() => setShowAIComposer(true)}
+                                onClick={() => { setComposerInitialText(draft); setShowAIComposer(true); }}
                                 disabled={sending || uploading}
                                 className="flex-shrink-0 p-2.5 rounded-lg bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                                 aria-label="AI 보정"
@@ -1215,9 +1214,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 })()}
                                 <div>
                                     <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
-                                    <p className="text-xs text-gray-500">
-                                        {conversation.channel || 'unknown'} • {chatId || 'N/A'}
-                                    </p>
+                                    {/* 요약을 여기로 이동 */}
+                                    {detail?.conversation?.summary ? (
+                                        <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+                                            💡 {detail.conversation.summary}
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-gray-500">
+                                            {conversation.channel || 'unknown'}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -1225,7 +1231,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 {/* AI 보정 버튼 */}
                                 {(planName === 'pro' || planName === 'business') && (
                                     <button
-                                        onClick={() => setShowAIComposer(true)}
+                                        onClick={() => { setComposerInitialText(draft); setShowAIComposer(true); }}
                                         className="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all flex items-center gap-2 text-sm font-medium"
                                     >
                                         <Sparkles className="w-4 h-4" />
@@ -1321,14 +1327,17 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 zIndex: 10,
                             }}
                         >
-                            {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 */}
+                            {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 (깜빡임 방지) */}
                             {showLibraryDropdown && libraryData && macroTriggerPosition && (
                                 <LibraryMacroDropdown
                                     libraryData={libraryData}
                                     searchQuery={macroSearchQuery}
                                     onSelect={handleLibrarySelect}
                                     position={macroTriggerPosition}
-                                    onClose={() => setShowLibraryDropdown(false)}
+                                    onClose={() => {
+                                        setShowLibraryDropdown(false);
+                                        setMacroTriggerPosition(null);
+                                    }}
                                 />
                             )}
 
@@ -1363,15 +1372,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                         >
                                             ✏️ 수정 후 전송
                                         </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* ✅ 요약 정보 - 입력창 위로 이동 + 스타일 개선 */}
-                            {detail?.conversation?.summary && (
-                                <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                                    <div className="text-sm text-blue-900">
-                                        <span className="font-semibold">💡 요약:</span> {detail.conversation.summary}
                                     </div>
                                 </div>
                             )}
@@ -1446,7 +1446,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                                 {/* ✅ AI 보정 버튼 - AIComposerModal 연결 */}
                                 <button
-                                    onClick={() => setShowAIComposer(true)}
+                                    onClick={() => { setComposerInitialText(draft); setShowAIComposer(true); }}
                                     disabled={sending || uploading}
                                     className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                                     aria-label="AI 보정"

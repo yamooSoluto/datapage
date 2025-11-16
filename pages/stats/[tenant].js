@@ -82,6 +82,11 @@ export default function StatsPage() {
       if (!response.ok) throw new Error(`API returned ${response.status}`);
       const result = await response.json();
 
+      // chartData가 없을 경우를 대비한 안전한 초기화
+      if (!result.chartData) {
+        result.chartData = {};
+      }
+
       if (!result.chartData.dailyTrend) {
         const today = new Date();
         result.chartData.dailyTrend = Array.from({ length: 7 }, (_, i) => {
@@ -125,7 +130,7 @@ export default function StatsPage() {
   };
 
   const exportToExcel = () => {
-    if (!data || !data.conversations) return;
+    if (!data || !data.conversations || data.conversations.length === 0) return;
     const csv = [
       ['회원명', '채널', '주제', '시간', 'AI 응답', '상담원 응답'],
       ...data.conversations.map(c => [
@@ -196,7 +201,21 @@ export default function StatsPage() {
     );
   }
 
-  if (data && data.stats.total === 0) {
+  // data가 아직 없거나, chartData가 안 내려와도 안전하게 쓰기 위한 디폴트들
+  const stats = data?.stats || {
+    total: 0,
+    aiAutoRate: 0,
+    avgResponseTime: 0,
+    agentMessages: 0,
+  };
+  const safeChartData = data?.chartData || {};
+  const mediumData = safeChartData.mediumData || [];
+  const aiVsAgentData = safeChartData.aiVsAgentData || [];
+  const dailyTrend = safeChartData.dailyTrend || [];
+  const tagData = safeChartData.tagData || [];
+  const conversations = data?.conversations || [];
+
+  if (data && stats.total === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-pink-50 via-yellow-50 to-cyan-50 p-6 relative overflow-hidden">
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -266,18 +285,18 @@ export default function StatsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard title="총 상담 수" value={data.stats.total} icon={MessageSquare} color={COLORS.primary} subtitle="전체 대화" />
-          <StatCard title="AI 자동응답률" value={`${data.stats.aiAutoRate}%`} icon={Zap} color={COLORS.success} subtitle="자동 처리 비율" />
-          <StatCard title="평균 응답시간" value={`${data.stats.avgResponseTime}초`} icon={TrendingUp} color={COLORS.info} subtitle="첫 응답 기준" />
-          <StatCard title="상담원 개입" value={data.stats.agentMessages} icon={Users} color={COLORS.warning} subtitle="수동 처리" />
+          <StatCard title="총 상담 수" value={stats.total} icon={MessageSquare} color={COLORS.primary} subtitle="전체 대화" />
+          <StatCard title="AI 자동응답률" value={`${stats.aiAutoRate}%`} icon={Zap} color={COLORS.success} subtitle="자동 처리 비율" />
+          <StatCard title="평균 응답시간" value={`${stats.avgResponseTime}초`} icon={TrendingUp} color={COLORS.info} subtitle="첫 응답 기준" />
+          <StatCard title="상담원 개입" value={stats.agentMessages} icon={Users} color={COLORS.warning} subtitle="수동 처리" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 shadow-lg shadow-gray-200/20 hover:shadow-xl transition-all">
             <h3 className="text-lg font-bold text-gray-800 mb-4">유입 경로별 상담</h3>
-            {data.chartData.mediumData.length > 0 ? (
+            {mediumData.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={data.chartData.mediumData}>
+                <BarChart data={mediumData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
@@ -292,32 +311,36 @@ export default function StatsPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-60 flex items-center justify-center"><div className="text-center"><div className="text-gray-300 text-6xl mb-3">📊</div><p className="text-gray-400 text-sm font-semibold">데이터가 없습니다</p></div></div>
+              <div className="h-60 flex items-center justify-center text-sm text-gray-400">
+                아직 기간 내 상담 데이터가 없어요.
+              </div>
             )}
           </div>
 
           <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 shadow-lg shadow-gray-200/20 hover:shadow-xl transition-all">
             <h3 className="text-lg font-bold text-gray-800 mb-4">응답 유형 분포</h3>
-            {data.chartData.aiVsAgentData.length > 0 ? (
+            {aiVsAgentData.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
                 <PieChart>
-                  <Pie data={data.chartData.aiVsAgentData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value">
-                    {data.chartData.aiVsAgentData.map((entry, index) => <Cell key={`cell-${index}`} fill={CHART_COLORS[index]} />)}
+                  <Pie data={aiVsAgentData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value">
+                    {aiVsAgentData.map((entry, index) => <Cell key={`cell-${index}`} fill={CHART_COLORS[index]} />)}
                   </Pie>
                   <Tooltip content={<CustomTooltip />} />
                   <Legend verticalAlign="bottom" height={36} formatter={(value) => <span className="text-sm text-gray-700 font-semibold">{value}</span>} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-60 flex items-center justify-center"><div className="text-center"><div className="text-gray-300 text-6xl mb-3">📈</div><p className="text-gray-400 text-sm font-semibold">데이터가 없습니다</p></div></div>
+              <div className="h-60 flex items-center justify-center text-sm text-gray-400">
+                아직 AI / 상담원 처리 데이터가 없습니다.
+              </div>
             )}
           </div>
 
           <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 shadow-lg shadow-gray-200/20 hover:shadow-xl transition-all lg:col-span-2">
             <h3 className="text-lg font-bold text-gray-800 mb-4">일별 상담 추이</h3>
-            {data.chartData.dailyTrend && data.chartData.dailyTrend.length > 0 ? (
+            {dailyTrend.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={data.chartData.dailyTrend}>
+                <LineChart data={dailyTrend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} />
@@ -328,16 +351,18 @@ export default function StatsPage() {
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-60 flex items-center justify-center"><div className="text-center"><div className="text-gray-300 text-6xl mb-3">📉</div><p className="text-gray-400 text-sm font-semibold">일별 데이터가 없습니다</p></div></div>
+              <div className="h-64 flex items-center justify-center text-sm text-gray-400">
+                아직 선택한 기간에 상담 기록이 없어요.
+              </div>
             )}
           </div>
 
           <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 shadow-lg shadow-gray-200/20 hover:shadow-xl transition-all lg:col-span-2">
             <h3 className="text-lg font-bold text-gray-800 mb-4">주요 상담 주제</h3>
-            {data.chartData.tagData.length > 0 ? (
+            {tagData.length > 0 ? (
               <div className="space-y-4">
-                {data.chartData.tagData.map((tag, index) => {
-                  const maxCount = Math.max(...data.chartData.tagData.map(t => t.count));
+                {tagData.map((tag, index) => {
+                  const maxCount = Math.max(...tagData.map(t => t.count));
                   const percentage = (tag.count / maxCount) * 100;
                   return (
                     <div key={index}>
@@ -360,7 +385,7 @@ export default function StatsPage() {
 
         <div className="bg-white/60 backdrop-blur-xl rounded-3xl p-6 shadow-lg shadow-gray-200/20 hover:shadow-xl transition-all">
           <h3 className="text-lg font-bold text-gray-800 mb-4">최근 상담 내역</h3>
-          {data.conversations.length > 0 ? (
+          {conversations.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -373,7 +398,7 @@ export default function StatsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.conversations.map((conv, index) => (
+                  {conversations.map((conv, index) => (
                     <tr key={index} className="border-b border-white/20 hover:bg-white/40 transition-colors">
                       <td className="py-3 px-4 text-sm font-semibold text-gray-900">{conv.userName}</td>
                       <td className="py-3 px-4">

@@ -77,7 +77,18 @@ export default function MinimalHeader({
             const target = e.target as HTMLElement;
             if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
                 clearTimeout(blurTimeout);
+                // 즉시 키보드 표시 상태로 변경
                 setIsKeyboardVisible(true);
+                // Visual Viewport도 확인하여 이중 체크
+                if (typeof window !== 'undefined' && window.visualViewport) {
+                    setTimeout(() => {
+                        const viewport = window.visualViewport!;
+                        const windowHeight = window.innerHeight;
+                        const viewportHeight = viewport.height;
+                        const keyboardVisible = viewportHeight < windowHeight * 0.85;
+                        setIsKeyboardVisible(keyboardVisible);
+                    }, 100);
+                }
             }
         };
 
@@ -97,15 +108,10 @@ export default function MinimalHeader({
                 const viewport = window.visualViewport;
                 const windowHeight = window.innerHeight;
                 const viewportHeight = viewport.height;
-                // viewport 높이가 window 높이보다 작으면 키보드가 올라온 것
-                const keyboardVisible = viewportHeight < windowHeight * 0.75;
+                // viewport 높이가 window 높이보다 작으면 키보드가 올라온 것 (threshold를 더 낮춤)
+                const keyboardVisible = viewportHeight < windowHeight * 0.85;
                 setIsKeyboardVisible(keyboardVisible);
             }
-        };
-
-        // ✅ 커스텀 이벤트로 라이브러리 드롭다운 표시 시에도 키보드 감지
-        const handleKeyboardVisibilityChange = (e: CustomEvent) => {
-            setIsKeyboardVisible(e.detail.visible);
         };
 
         // 초기 체크
@@ -115,7 +121,6 @@ export default function MinimalHeader({
 
         document.addEventListener('focusin', handleFocus, true); // capture phase로 전역 감지
         document.addEventListener('focusout', handleBlur, true);
-        window.addEventListener('keyboard-visibility-change', handleKeyboardVisibilityChange as EventListener);
         
         if (typeof window !== 'undefined' && window.visualViewport) {
             window.visualViewport.addEventListener('resize', handleViewportResize);
@@ -125,7 +130,6 @@ export default function MinimalHeader({
             clearTimeout(blurTimeout);
             document.removeEventListener('focusin', handleFocus, true);
             document.removeEventListener('focusout', handleBlur, true);
-            window.removeEventListener('keyboard-visibility-change', handleKeyboardVisibilityChange as EventListener);
             if (typeof window !== 'undefined' && window.visualViewport) {
                 window.visualViewport.removeEventListener('resize', handleViewportResize);
             }
