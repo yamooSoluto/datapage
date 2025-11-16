@@ -203,9 +203,8 @@ export default function AIComposerModal({
     };
 
     const handleEdit = () => {
-        setCustomInput(correctedText);
-        setResponseType('custom');
-        setStep('compose');
+        // ✅ edit 단계로 이동 (간단한 편집 화면)
+        setStep('edit');
     };
 
     // ✅ processing 단계일 때는 우하단 플로팅 인디케이터만 표시
@@ -250,11 +249,15 @@ export default function AIComposerModal({
             <div
                 className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
                 style={{
-                    maxHeight: step === 'compose' && responseType === 'custom' && toneFlags.includes('detail_adjust')
-                        ? '85vh'
-                        : step === 'compose' && responseType === 'custom'
-                            ? '580px'
-                            : '420px'
+                    maxHeight: step === 'edit'
+                        ? '600px'
+                        : step === 'compose' && responseType === 'custom' && toneFlags.includes('detail_adjust')
+                            ? '85vh'
+                            : step === 'compose' && responseType === 'custom'
+                                ? '580px'
+                                : step === 'result'
+                                    ? '500px'
+                                    : '420px'
                 }}
             >
                 {/* 헤더 */}
@@ -268,6 +271,7 @@ export default function AIComposerModal({
                             <p className="text-xs text-gray-500">
                                 {step === 'compose' && '응답을 선택하세요'}
                                 {step === 'result' && '보정 완료'}
+                                {step === 'edit' && '내용 수정'}
                             </p>
                         </div>
                     </div>
@@ -486,7 +490,8 @@ export default function AIComposerModal({
                                                 if (toneFlags.includes('detail_adjust')) {
                                                     setToneFlags([]);
                                                 } else {
-                                                    setToneFlags(['detail_adjust', 'auto_contextual']);
+                                                    // ✅ 초기값: 중간값으로 설정 (balanced_length, balanced_tone)
+                                                    setToneFlags(['detail_adjust', 'balanced_length', 'balanced_tone']);
                                                 }
                                             }}
                                             className={`relative w-11 h-6 rounded-full transition-colors ${toneFlags.includes('detail_adjust') ? 'bg-blue-600' : 'bg-gray-300'
@@ -561,7 +566,7 @@ export default function AIComposerModal({
                                                     step="1"
                                                     value={
                                                         toneFlags.includes('firm') ? 0 :
-                                                            toneFlags.includes('balanced_tone') ? 1 : 2
+                                                            toneFlags.includes('friendly') ? 2 : 1 // ✅ 기본값: 중간 (balanced_tone)
                                                     }
                                                     onChange={(e) => {
                                                         const val = parseInt(e.target.value);
@@ -727,6 +732,42 @@ export default function AIComposerModal({
                                 <button
                                     onClick={handleSendCorrected}
                                     disabled={sending}
+                                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    <Send className="w-4 h-4" />
+                                    {sending ? '전송 중...' : '전송'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ✅ edit 단계: 간단한 편집 화면 */}
+                    {step === 'edit' && (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm font-semibold text-gray-900 mb-2 block">
+                                    내용 수정
+                                </label>
+                                <textarea
+                                    value={correctedText}
+                                    onChange={(e) => setCorrectedText(e.target.value)}
+                                    placeholder="답변을 수정하세요..."
+                                    rows={10}
+                                    className="w-full px-4 py-3 border-[0.5px] border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none resize-none text-sm text-gray-900 placeholder-gray-400"
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setStep('result')}
+                                    className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
+                                >
+                                    취소
+                                </button>
+                                <button
+                                    onClick={handleSendCorrected}
+                                    disabled={sending || !correctedText.trim()}
                                     className="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                                 >
                                     <Send className="w-4 h-4" />
