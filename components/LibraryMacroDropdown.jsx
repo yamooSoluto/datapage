@@ -15,6 +15,14 @@ import { Hash } from 'lucide-react';
  * @param {Object} props.position - { bottom, left } 드롭다운 위치
  * @param {Function} props.onClose - 드롭다운 닫기
  */
+// 한글 카테고리 매핑
+const CATEGORY_LABELS = {
+    links: '링크',
+    passwords: '비밀번호',
+    rules: '규정',
+    info: '공통정보',
+};
+
 export default function LibraryMacroDropdown({
     libraryData,
     searchQuery = '',
@@ -38,7 +46,8 @@ export default function LibraryMacroDropdown({
     const allItems = Object.entries(libraryData || {}).flatMap(([category, items]) =>
         Object.entries(items || {}).map(([key, item]) => ({
             category,
-            categoryLabel: category,
+            categoryLabel: CATEGORY_LABELS[category] || category, // 한글 매핑
+            categoryKey: category, // 영문 key 유지
             key,
             label: item.label,
             value: item.value,
@@ -55,7 +64,7 @@ export default function LibraryMacroDropdown({
         allItems.forEach((item) => {
             const labelMatch = item.label.toLowerCase().includes(query);
             const valueMatch = item.value.toLowerCase().includes(query);
-            const categoryMatch = item.categoryLabel.toLowerCase().includes(query);
+            const categoryMatch = item.categoryLabel.toLowerCase().includes(query); // 한글로 검색
 
             if (labelMatch || valueMatch) {
                 exactMatches.push(item);
@@ -143,11 +152,12 @@ export default function LibraryMacroDropdown({
             ref={dropdownRef}
             className="fixed z-[100] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
             style={{
-                bottom: isMobile ? '80px' : position?.bottom || 'auto',
-                left: isMobile ? '16px' : position?.left || 0,
+                // ✅ 개선된 위치 계산
+                bottom: position?.bottom || (isMobile ? '72px' : 'auto'),
+                left: isMobile ? '16px' : (position?.left || 0),
                 right: isMobile ? '16px' : 'auto',
                 width: isMobile ? 'auto' : '360px',
-                maxHeight: isMobile ? '240px' : '320px',
+                maxHeight: isMobile ? '180px' : '320px', // 모바일 더 작게
             }}
         >
             {/* 헤더 */}
@@ -211,7 +221,7 @@ export default function LibraryMacroDropdown({
                             {/* 카테고리 헤더 */}
                             <div className="px-4 py-2 bg-gray-50 border-y border-gray-100 flex items-center gap-2">
                                 <span className="text-xs font-semibold text-gray-600">
-                                    🏷️ {category}
+                                    🏷️ {items[0]?.categoryLabel || category}
                                 </span>
                                 <span className="text-xs text-gray-400">
                                     {items.length}개
@@ -265,7 +275,7 @@ export default function LibraryMacroDropdown({
                             {/* 카테고리 헤더 */}
                             <div className="px-4 py-2 bg-gray-50 border-y border-gray-100 flex items-center gap-2">
                                 <span className="text-xs font-semibold text-gray-600">
-                                    🏷️ {category}
+                                    🏷️ {items[0]?.categoryLabel || category}
                                 </span>
                             </div>
 

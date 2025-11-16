@@ -490,11 +490,13 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 setMacroSearchQuery(textAfterHash);
                 setShowLibraryDropdown(true);
 
-                // 드롭다운 위치 계산 (textarea 하단)
+                // ✅ 개선된 위치 계산
                 if (textareaRef.current) {
                     const rect = textareaRef.current.getBoundingClientRect();
+                    const inputBottom = window.innerHeight - rect.top; // 입력창 아래부터 화면 상단까지 거리
+
                     setMacroTriggerPosition({
-                        bottom: window.innerHeight - rect.top + 8,
+                        bottom: inputBottom + 8, // 입력창 바로 위 8px
                         left: rect.left,
                     });
                 }
@@ -773,7 +775,13 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         <>
             {/* 임베디드 모드: 모달 없이 전체 화면 사용 */}
             {isEmbedded ? (
-                <div className="flex flex-col h-full w-full bg-white overflow-hidden">
+                <div
+                    className="flex flex-col w-full bg-white overflow-hidden"
+                    style={{
+                        height: '100dvh', // 동적 viewport (모바일 주소창 고려)
+                        height: '-webkit-fill-available', // Safari 대응
+                    }}
+                >
                     {/* 헤더 */}
                     <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 flex-shrink-0 bg-white">
                         <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
@@ -854,7 +862,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         style={{
                             WebkitOverflowScrolling: 'touch',
                             touchAction: 'pan-y',
-                            overscrollBehavior: 'contain'
+                            overscrollBehavior: 'contain',
+                            minHeight: 0, // flex-1이 제대로 작동하도록
                         }}
                         onTouchStart={(e) => {
                             // 터치 시작 위치 저장
@@ -915,8 +924,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         )}
                     </div>
 
-                    {/* 입력 영역 */}
-                    <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white relative">
+                    {/* 입력 영역 - 키보드 위 고정 */}
+                    <div
+                        className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white relative"
+                        style={{
+                            // 모바일에서 키보드 위에 고정
+                            position: 'sticky',
+                            bottom: 0,
+                            zIndex: 10,
+                        }}
+                    >
                         {/* ✅ 라이브러리 드롭다운 */}
                         {showLibraryDropdown && libraryData && (
                             <LibraryMacroDropdown
@@ -1082,6 +1099,21 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     {/* 모바일 키보드 대응 스타일 */}
                     <style jsx>{`
                         @media (max-width: 768px) {
+                            /* iOS Safari 주소창 대응 */
+                            .conversation-container {
+                                height: 100dvh;
+                                height: -webkit-fill-available;
+                            }
+                            
+                            /* 입력창 항상 보이게 */
+                            .input-area {
+                                position: sticky;
+                                bottom: 0;
+                                background: white;
+                                z-index: 10;
+                            }
+                            
+                            /* 폰트 크기 16px 이상 (iOS 자동 확대 방지) */
                             input, textarea, select {
                                 font-size: 16px !important;
                                 -webkit-text-size-adjust: 100%;
@@ -1182,7 +1214,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             style={{
                                 WebkitOverflowScrolling: 'touch',
                                 touchAction: 'pan-y',
-                                overscrollBehavior: 'contain'
+                                overscrollBehavior: 'contain',
+                                minHeight: 0, // flex-1이 제대로 작동하도록
                             }}
                             onTouchStart={(e) => {
                                 // 터치 시작 위치 저장
@@ -1243,8 +1276,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             )}
                         </div>
 
-                        {/* 입력 영역 */}
-                        <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl relative">
+                        {/* 입력 영역 - 키보드 위 고정 */}
+                        <div
+                            className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl relative"
+                            style={{
+                                // 모바일에서 키보드 위에 고정
+                                position: 'sticky',
+                                bottom: 0,
+                                zIndex: 10,
+                            }}
+                        >
                             {/* ✅ 라이브러리 드롭다운 */}
                             {showLibraryDropdown && libraryData && (
                                 <LibraryMacroDropdown
