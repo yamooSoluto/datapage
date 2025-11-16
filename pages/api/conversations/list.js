@@ -245,6 +245,11 @@ export default async function handler(req, res) {
 
                 lastMessageText: v.summary || lastMsg?.text?.slice(0, 80) || (allPics.length > 0 ? `(이미지 ${allPics.length}개)` : ""),
                 summary: v.summary || null,
+                task: v.task || null,
+
+                // 🔹 컨펌 관련 필드 추가
+                draftStatus: v.draft_status || null,
+                hasPendingDraft: v.draft_status === "pending_approval",
 
                 hasImages: allPics.length > 0,
                 imageCount: allPics.length,

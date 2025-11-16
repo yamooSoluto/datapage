@@ -13,6 +13,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const initialLoadedRef = useRef(false); // ✅ 초기 로딩 완료 플래그 (클로저 문제 방지)
     const [imagePreview, setImagePreview] = useState(null);
     const [showAIComposer, setShowAIComposer] = useState(false); // ✅ AI 보정 모달 상태
+    const [composerInitialText, setComposerInitialText] = useState(""); // ✅ 컨펌 초안 수정용
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
     const touchStartYRef = useRef(0); // 터치 시작 Y 위치
@@ -181,6 +182,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             channel: data.channel || 'unknown',
                             status: data.status || 'waiting',
                             modeSnapshot: data.modeSnapshot || 'AUTO',
+                            draftStatus: data.draft_status || null,
+                            aiDraft: data.ai_draft || null,
+                            confirmThreadTs: data.confirm_thread_ts || null,
+                            confirmThreadChannel: data.confirm_thread_channel || null,
                             lastMessageAt: data.lastMessageAt?.toDate?.()?.toISOString() || data.lastMessageAt,
                             cwConversationId: data.cw_conversation_id || null,
                             summary: typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null,
@@ -561,6 +566,75 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     };
 
+    // ✅ 컨펌 초안 관련 상태 계산
+    const conversationData = detail?.conversation;
+    const isConfirmMode = conversationData?.modeSnapshot === "CONFIRM";
+    const hasPendingDraft = isConfirmMode && conversationData?.draftStatus === "pending_approval" && !!conversationData?.aiDraft;
+    const pendingDraftText = hasPendingDraft ? conversationData.aiDraft : "";
+    const confirmThreadTs = conversationData?.confirmThreadTs || null;
+    const confirmThreadChannel = conversationData?.confirmThreadChannel || null;
+
+    // ✅ 포탈에서 메시지 전송하는 공통 함수
+    const sendFinalViaPortal = async (text, options = {}) => {
+        if (!conversationData?.chatId || !effectiveTenantId) return;
+
+        try {
+            const res = await fetch("/api/conversations/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    tenantId: effectiveTenantId,
+                    chatId: conversationData.chatId,
+                    content: text,
+                    attachments: [],
+                    // 🔹 컨펌용 공통 옵션
+                    ...options,
+                }),
+            });
+
+            const data = await res.json();
+            if (!data.ok && !res.ok) {
+                throw new Error(data.error || `전송 실패: ${res.status}`);
+            }
+
+            // 성공 시 detail 리프레시
+            fetchDetail({ skipLoading: true }).catch((e) => {
+                console.error('[ConversationDetail] Failed to refresh after send:', e);
+            });
+        } catch (error) {
+            console.error('[ConversationDetail] Send message error:', error);
+            alert(`메시지 전송에 실패했습니다: ${error.message}`);
+            throw error;
+        }
+    };
+
+    // ✅ 그대로 전송 핸들러
+    const handleSendDraftAsIs = async () => {
+        if (!hasPendingDraft) return;
+        const text = conversationData.aiDraft;
+
+        await sendFinalViaPortal(text, {
+            via: "ai",
+            sent_as: "ai",
+            mode: "confirm_approved",   // 👈 postSendConfirmation용 라벨
+            confirmMode: true,
+            confirmBypass: true,        // 👈 ★ 이게 핵심: 컨펌게이트 통과
+            slackCleanup: {
+                shouldCleanupCard: true,
+                shouldPostFeedback: true,
+                confirmThreadTs: confirmThreadTs,
+                channelId: confirmThreadChannel,
+            },
+        });
+    };
+
+    // ✅ 수정 후 전송 핸들러
+    const handleEditDraft = () => {
+        if (!hasPendingDraft) return;
+        setComposerInitialText(conversationData.aiDraft);
+        setShowAIComposer(true);
+    };
+
     return (
         <>
             {/* 임베디드 모드: 모달 없이 전체 화면 사용 */}
@@ -709,6 +783,41 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                     {/* 입력 영역 */}
                     <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white">
+                        {/* 🔹 컨펌 초안 카드 */}
+                        {hasPendingDraft && (
+                            <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs font-semibold text-yellow-700">
+                                        🟡 컨펌 모드 · 답변 승인 대기 중
+                                    </span>
+                                    <span className="text-[11px] text-yellow-500">
+                                        포탈에서 승인 / 수정 후 전송할 수 있어요
+                                    </span>
+                                </div>
+
+                                <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
+                                    {pendingDraftText}
+                                </p>
+
+                                <div className="flex justify-end gap-2 mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleSendDraftAsIs}
+                                        className="px-3 py-1.5 text-xs rounded-lg bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors"
+                                    >
+                                        ✅ 그대로 전송
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleEditDraft}
+                                        className="px-3 py-1.5 text-xs rounded-lg border border-yellow-300 text-yellow-700 bg-white hover:bg-yellow-50 transition-colors"
+                                    >
+                                        ✏️ 수정 후 전송
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* 요약 정보 */}
                         {detail?.conversation?.summary && (
                             <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
@@ -994,6 +1103,41 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                         {/* 입력 영역 */}
                         <div className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl">
+                            {/* 🔹 컨펌 초안 카드 */}
+                            {isConfirmMode && pendingDraftText && (
+                                <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs font-semibold text-yellow-700">
+                                            🟡 컨펌 모드 · 답변 승인 대기 중
+                                        </span>
+                                        <span className="text-[11px] text-yellow-500">
+                                            포탈에서 승인 / 수정 후 전송할 수 있어요
+                                        </span>
+                                    </div>
+
+                                    <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
+                                        {pendingDraftText}
+                                    </p>
+
+                                    <div className="flex justify-end gap-2 mt-3">
+                                        <button
+                                            type="button"
+                                            onClick={handleSendDraftAsIs}
+                                            className="px-3 py-1.5 text-xs rounded-lg bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors"
+                                        >
+                                            ✅ 그대로 전송
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleEditDraft}
+                                            className="px-3 py-1.5 text-xs rounded-lg border border-yellow-300 text-yellow-700 bg-white hover:bg-yellow-50 transition-colors"
+                                        >
+                                            ✏️ 수정 후 전송
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* ✅ 요약 정보 - 입력창 위로 이동 + 스타일 개선 */}
                             {detail?.conversation?.summary && (
                                 <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
@@ -1163,7 +1307,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     conversation={conversation}
                     tenantId={effectiveTenantId}
                     planName={planName}
-                    onClose={() => setShowAIComposer(false)}
+                    initialText={composerInitialText}
+                    onClose={() => {
+                        setShowAIComposer(false);
+                        setComposerInitialText(""); // 닫을 때 초기화
+                    }}
                     onSend={async (text) => {
                         const trimmed = (text || '').trim();
 
@@ -1172,13 +1320,31 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             throw new Error('전송할 내용이 없습니다.');
                         }
 
-                        // 🔗 ConversationsPage.handleSend가 기대하는 형태로 변환해서 전달
-                        await onSend?.({
-                            text: trimmed,
-                            attachments: [],              // AI 보정으로 보낼 때는 첨부 없음
-                            tenantId: effectiveTenantId,  // 위에서 계산한 tenant
-                            chatId,                       // 위에서 계산한 chatId
-                        });
+                        // 🔹 컨펌 초안 수정 시에는 sendFinalViaPortal 사용
+                        if (isConfirmMode && composerInitialText) {
+                            await sendFinalViaPortal(trimmed, {
+                                via: "ai",
+                                sent_as: "ai",
+                                mode: "confirm_edited",
+                                confirmMode: true,
+                                confirmBypass: true,
+                                slackCleanup: {
+                                    shouldCleanupCard: true,
+                                    shouldPostFeedback: true,
+                                    confirmThreadTs: confirmThreadTs,
+                                    channelId: confirmThreadChannel,
+                                },
+                            });
+                            setComposerInitialText(""); // 전송 후 초기화
+                        } else {
+                            // 🔗 일반 AI 보정: ConversationsPage.handleSend가 기대하는 형태로 변환해서 전달
+                            await onSend?.({
+                                text: trimmed,
+                                attachments: [],              // AI 보정으로 보낼 때는 첨부 없음
+                                tenantId: effectiveTenantId,  // 위에서 계산한 tenant
+                                chatId,                       // 위에서 계산한 chatId
+                            });
+                        }
 
                         // ✅ 상세는 조용히 리프레시 (skipLoading: true)
                         fetchDetail({ skipLoading: true }).catch(e => {

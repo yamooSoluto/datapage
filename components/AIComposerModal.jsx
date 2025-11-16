@@ -1,7 +1,7 @@
 // components/AIComposerModal.jsx
 // AI 보정 모달 - 고객 메시지 + 보정 + 전송 (완결형)
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Sparkles, Send, Wand2, User } from 'lucide-react';
 
 export default function AIComposerModal({
@@ -10,11 +10,19 @@ export default function AIComposerModal({
     planName = 'pro',
     onClose,
     onSend, // 전송 콜백
+    initialText = '', // ✅ 컨펌 초안 수정용 초기 텍스트
 }) {
     const [step, setStep] = useState('compose'); // 'compose' | 'processing' | 'result'
     const [selectedPresets, setSelectedPresets] = useState([]);
     const [directInput, setDirectInput] = useState('');
     const [enableAI, setEnableAI] = useState(true);
+
+    // ✅ initialText가 변경되면 directInput에 설정
+    useEffect(() => {
+        if (initialText) {
+            setDirectInput(initialText);
+        }
+    }, [initialText]);
 
     // Business 플랜 옵션
     const [voice, setVoice] = useState('agent');

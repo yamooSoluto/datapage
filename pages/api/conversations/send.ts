@@ -42,7 +42,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // ✅ 디버깅: 요청 본문 요약 (큰 파일의 경우 전체 로그는 생략)
         console.log("[send.ts] Request body keys:", req.body ? Object.keys(req.body) : []);
 
-        const { tenantId, chatId, content, attachments } = req.body || {};
+        const {
+            tenantId,
+            chatId,
+            content,
+            attachments,
+            // 🔹 포탈에서 오는 선택 옵션들
+            mode: modeOverride,
+            via: viaOverride,
+            sent_as: sentAsOverride,
+            confirmMode: confirmModeOverride,
+            confirmBypass,
+            mediatedSource: mediatedSourceOverride,
+            slackCleanup,
+        } = req.body || {};
 
         console.log("[send.ts] Parsed values:", {
             tenantId,
@@ -134,12 +147,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             conversationId: String(chatId),
             content: String(content || ''), // ✅ 빈 문자열도 허용
             attachments: processedAttachments,
-            via: "agent",
-            sent_as: "agent",
+            via: viaOverride || "agent",
+            sent_as: sentAsOverride || "agent",
             tenantId: String(tenantId),
-            mode: "agent_comment",
-            confirmMode: false,
-            mediatedSource: "agent_comment",
+            mode: modeOverride || "agent_comment",
+            confirmMode: !!confirmModeOverride,
+            mediatedSource: mediatedSourceOverride || null,
+            // 🔹 그대로 GCP로 전달
+            confirmBypass: !!confirmBypass,
+            slackCleanup: slackCleanup || null,
         };
 
         console.log("[send.ts] Sending to:", url);
