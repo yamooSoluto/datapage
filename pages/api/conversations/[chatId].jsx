@@ -7,7 +7,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db } from '@/lib/firebase-client';
 import { auth, getCurrentClaims } from '@/lib/firebase-auth';
-import ConversationDetail from '@/components/ConversationDetail';
+import ConversationDetail from '@/components/ConversationDetail'; // ✅ 추가
 
 export default function ConversationDirectLink() {
     const router = useRouter();
@@ -22,6 +22,7 @@ export default function ConversationDirectLink() {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (!user) {
+                // 로그인 안 됨 → 리다이렉트
                 const returnUrl = encodeURIComponent(`/conversations/${chatId}`);
                 router.push(`/login?redirect=${returnUrl}`);
                 return;
@@ -107,6 +108,7 @@ export default function ConversationDirectLink() {
         loadConversation();
     }, [router.isReady, chatId, tenantId]);
 
+    // ✅ 로딩 UI
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -121,6 +123,7 @@ export default function ConversationDirectLink() {
         );
     }
 
+    // ✅ 에러 UI
     if (error) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -139,6 +142,7 @@ export default function ConversationDirectLink() {
         );
     }
 
+    // ✅ ConversationDetail 컴포넌트 사용
     if (!conversation) {
         return null;
     }
@@ -153,4 +157,3 @@ export default function ConversationDirectLink() {
         </div>
     );
 }
-
