@@ -1,21 +1,7 @@
 // pages/api/tenants/policy.js
 export const config = { runtime: 'nodejs' };
 
-import admin from 'firebase-admin';
-
-if (!admin.apps.length) {
-    const pk = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n').replace(/^["']|["']$/g, '');
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: pk,
-        }),
-    });
-    console.log('✅ Firebase Admin initialized (policy API)');
-}
-
-const db = admin.firestore();
+import admin, { db } from '@/lib/firebase-admin';
 const VALID = new Set(['AUTO', 'CONFIRM', 'AGENT']);
 
 export default async function handler(req, res) {

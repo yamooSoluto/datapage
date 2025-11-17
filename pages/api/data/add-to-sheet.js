@@ -4,21 +4,8 @@
 // 기능: Google Sheets의 "FAQ_Master" 시트에 질문/답변 추가 (테넌트 구분)
 // 호출: Slack → n8n → API
 
-import admin from 'firebase-admin';
+import admin, { db } from '@/lib/firebase-admin';
 import { google } from 'googleapis';
-
-// Firebase Admin 초기화
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
-}
-
-const db = admin.firestore();
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

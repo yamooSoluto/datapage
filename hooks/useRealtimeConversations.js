@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { collection, query, where, orderBy, limit as fbLimit, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebaseClient';
+import { db } from '../lib/firebase-client';
 
 /**
  * 실시간 대화 리스트 훅

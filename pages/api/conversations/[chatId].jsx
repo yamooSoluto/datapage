@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { db } from '@/lib/firebaseClient';
+import { db } from '@/lib/firebase-client';
 import { auth, getCurrentClaims } from '@/lib/firebase-auth';
 
 export default function ConversationDetail() {

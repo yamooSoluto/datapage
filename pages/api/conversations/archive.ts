@@ -2,19 +2,7 @@
 // 대화를 보관/보류/중요 표시
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import admin from 'firebase-admin';
-
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-        }),
-    });
-}
-
-const db = admin.firestore();
+import admin, { db } from '@/lib/firebase-admin';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') {

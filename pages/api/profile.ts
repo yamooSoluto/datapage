@@ -1,18 +1,6 @@
 // pages/api/profile.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import * as admin from "firebase-admin";
-
-if (!admin.apps.length) {
-    // 환경변수: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        } as any),
-    });
-}
-const db = admin.firestore();
+import { db } from "@/lib/firebase-admin";
 
 /** 문자열 콤마입력을 배열로 정규화 */
 const splitComma = (v?: string) =>

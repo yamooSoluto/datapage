@@ -4,43 +4,7 @@
 // ════════════════════════════════════════
 
 import jwt from 'jsonwebtoken';
-import admin from 'firebase-admin';
-
-// Firebase Admin 초기화
-if (!admin.apps.length) {
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-  // ✅ Private Key 처리 (여러 포맷 대응)
-  let formattedKey = privateKey;
-  if (privateKey) {
-    // 1. 이미 실제 개행문자가 있는 경우 그대로 사용
-    if (privateKey.includes('\n')) {
-      formattedKey = privateKey;
-    }
-    // 2. \\n 이스케이프 문자열인 경우 실제 개행으로 변환
-    else if (privateKey.includes('\\n')) {
-      formattedKey = privateKey.replace(/\\n/g, '\n');
-    }
-    // 3. 따옴표로 감싸진 경우 제거
-    formattedKey = formattedKey.replace(/^["']|["']$/g, '');
-  }
-
-  try {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: formattedKey,
-      }),
-    });
-    console.log('✅ Firebase Admin initialized');
-  } catch (initError) {
-    console.error('❌ Firebase Admin initialization failed:', initError.message);
-    throw initError;
-  }
-}
-
-const db = admin.firestore();
+import { db } from '@/lib/firebase-admin';
 
 export default async function handler(req, res) {
   const { tenant } = req.query;

@@ -2,7 +2,7 @@
 // 세션 검증 + Firebase Custom Token 발급
 
 import jwt from 'jsonwebtoken';
-import admin from 'firebase-admin';
+import admin, { db } from '@/lib/firebase-admin';
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -13,8 +13,6 @@ if (!admin.apps.length) {
     }),
   });
 }
-
-const db = admin.firestore();
 
 // ─────────────────────────────
 // Firebase Auth 유저 + Custom Claims + Custom Token 생성 헬퍼

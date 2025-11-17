@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { collection, query, where, orderBy, onSnapshot, doc } from 'firebase/firestore';
-import { db } from '../lib/firebaseClient';
+import { db } from '../lib/firebase-client';
 import ConversationCard from './ConversationCard';
 import ConversationDetail from './ConversationDetail';
 import AIComposerModal from './AIComposerModal';

@@ -3,38 +3,7 @@
 // 테넌트 정보 업데이트 API (SettingsPage용)
 // ════════════════════════════════════════
 
-import admin from 'firebase-admin';
-
-// Firebase Admin 초기화
-if (!admin.apps.length) {
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
-
-    let formattedKey = privateKey;
-    if (privateKey) {
-        if (privateKey.includes('\n')) {
-            formattedKey = privateKey;
-        } else if (privateKey.includes('\\n')) {
-            formattedKey = privateKey.replace(/\\n/g, '\n');
-        }
-        formattedKey = formattedKey.replace(/^["']|["']$/g, '');
-    }
-
-    try {
-        admin.initializeApp({
-            credential: admin.credential.cert({
-                projectId: process.env.FIREBASE_PROJECT_ID,
-                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                privateKey: formattedKey,
-            }),
-        });
-        console.log('✅ Firebase Admin initialized');
-    } catch (initError) {
-        console.error('❌ Firebase Admin initialization failed:', initError.message);
-        throw initError;
-    }
-}
-
-const db = admin.firestore();
+import admin, { db } from '@/lib/firebase-admin';
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {

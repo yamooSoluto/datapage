@@ -1,18 +1,6 @@
 // pages/api/ai/tone-correction.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import admin from "firebase-admin";
-
-// Firebase 초기화
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
-    });
-}
-const db = admin.firestore();
+import { db } from "@/lib/firebase-admin";
 
 // ✅ 진행 중인 요청 추적 (같은 conversationId로 동시 요청 방지)
 const pendingRequests: Map<string, { timestamp: number }> = new Map();

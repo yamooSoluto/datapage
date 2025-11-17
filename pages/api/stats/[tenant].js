@@ -3,18 +3,7 @@
 // ✅ index.js 호환 보장
 export const config = { regions: ['icn1'] };
 
-import admin from "firebase-admin";
-
-// ✅ ConversationsPage와 동일한 초기화 방식
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
-    });
-}
+import admin, { db } from "@/lib/firebase-admin";
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {
@@ -35,8 +24,6 @@ export default async function handler(req, res) {
     console.log(`📊 통계 조회 시작: ${actualTenant}, range: ${range}`);
 
     try {
-        const db = admin.firestore();
-
         // 날짜 범위 계산
         const days = parseInt(String(range).replace('d', '')) || 7;
         const endDate = new Date();

@@ -1,17 +1,6 @@
 // pages/api/n8n/request-correction.ts
 import type { NextApiRequest, NextApiResponse } from "next";
-import * as admin from "firebase-admin";
-
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
-    });
-}
-const db = admin.firestore();
+import { db } from "@/lib/firebase-admin";
 
 const N8N_CORRECTION_HOOK = process.env.N8N_CORRECTION_WEBHOOK || process.env.N8N_MAIN_WEBHOOK || "";
 

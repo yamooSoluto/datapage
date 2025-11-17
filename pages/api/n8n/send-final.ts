@@ -2,19 +2,7 @@
 // 통합 최종 전송 엔드포인트 (n8n/슬랙/포탈 공용)
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import * as admin from "firebase-admin";
-
-// ── Firebase Admin 초기화 ───────────────────────────
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: (process.env.FIREBASE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-        }),
-    });
-}
-const db = admin.firestore();
+import admin, { db } from "@/lib/firebase-admin";
 
 // ── ENV ─────────────────────────────────────────────
 const CHATWOOT_BASE = process.env.CHATWOOT_BASE_URL || "";
