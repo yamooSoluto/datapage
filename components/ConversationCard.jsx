@@ -38,6 +38,12 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
         return colors[category] || 'bg-gray-100/60 text-gray-600';
     };
 
+    // ✅ 먼저 계산: 승인 대기 상태 확인 (getAvatarStyle에서 사용)
+    const relativeTime = getRelativeTime(conversation.lastMessageAt);
+    const normalizedStatus = (conversation.status || '').toLowerCase();
+    const isPendingApproval =
+        conversation.draftStatus === 'pending_approval' && normalizedStatus !== 'completed';
+
     // ✅ 업무 타입별 썸네일 스타일
     const getAvatarStyle = () => {
         // ✅ 승인 대기 최우선 - 주황색 펄스 애니메이션
@@ -96,11 +102,7 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
         };
     };
 
-    const relativeTime = getRelativeTime(conversation.lastMessageAt);
     const avatarStyle = getAvatarStyle();
-    const normalizedStatus = (conversation.status || '').toLowerCase();
-    const isPendingApproval =
-        conversation.draftStatus === 'pending_approval' && normalizedStatus !== 'completed';
 
     return (
         <div
