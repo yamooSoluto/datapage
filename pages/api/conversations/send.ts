@@ -190,6 +190,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         const result = await r.json().catch(() => ({}));
         console.log("[send.ts] Success:", result);
+
+        // ✅ 전송 성공 시 슬랙 카드 축소 (confirmBypass가 true인 경우)
+        if (confirmBypass) {
+            try {
+                const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.yamoo.ai.kr';
+                const minimizeResponse = await fetch(`${baseUrl}/api/slack/minimize-card`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tenantId: String(tenantId),
+                        chatId: String(chatId),
+                        minimizedBy: sentAsOverride === 'agent' ? 'agent' : 'confirm',
+                        reason: modeOverride === 'confirm_approved' ? 'AI 답변 승인' :
+                            modeOverride === 'confirm_edited' ? 'AI 답변 수정 후 전송' :
+                                '상담원 답변',
+                    }),
+                });
+
+                const minimizeResult = await minimizeResponse.json();
+                console.log('[send.ts] Slack card minimized:', minimizeResult);
+            } catch (minimizeError: any) {
+                console.error('[send.ts] Failed to minimize slack card:', minimizeError);
+                // 카드 축소 실패해도 메시지 전송은 성공
+            }
+        }
+
         return res.status(200).json({ ok: true, ...result });
     } catch (e: any) {
         console.error("[send.ts] Error:", e);

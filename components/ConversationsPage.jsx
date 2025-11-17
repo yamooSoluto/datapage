@@ -137,6 +137,7 @@ const buildConversationFromRealtimeDoc = (docData, docId, tenantId) => {
         firstThumbnailUrl: imageMeta.firstThumbnailUrl,
         hasPendingDraft,
         draftStatus: docData.draft_status || null,
+        draftCreatedAt: toISOStringSafe(docData.draft_created_at) || null,
         category: categories[0] || null,
         categories,
         hasSlackCard: !!docData.hasSlackCard,
@@ -326,6 +327,30 @@ export default function ConversationsPage({ tenantId }) {
         const lastMessageText =
             summary || (imageMeta.hasImages ? `(이미지 ${imageMeta.imageCount}개)` : '');
 
+        // ✅ 로그: 승인 대기 상태 변경 추적
+        console.log('[applyRealtimeConversationPatch] Updating conversation:', {
+            chatId,
+            status: docData.status,
+            draft_status: docData.draft_status,
+            hasPendingDraft,
+            hasAiDraft: !!docData.ai_draft,
+        });
+
+        // ✅ 메시지 카운트 실시간 계산
+        const messages = Array.isArray(docData.messages) ? docData.messages : [];
+        let userCount = 0, aiCount = 0, agentCount = 0;
+        messages.forEach(msg => {
+            if (msg.sender === 'user') userCount++;
+            else if (msg.sender === 'ai') aiCount++;
+            else if (msg.sender === 'agent') agentCount++;
+        });
+        const messageCount = {
+            user: userCount,
+            ai: aiCount,
+            agent: agentCount,
+            total: userCount + aiCount + agentCount
+        };
+
         setConversations((prev) => {
             if (!Array.isArray(prev)) {
                 const created = buildConversationFromRealtimeDoc(docData, docId, tenantId);
@@ -346,6 +371,7 @@ export default function ConversationsPage({ tenantId }) {
                     categories: categories.length ? categories : conv.categories,
                     hasPendingDraft,
                     draftStatus: docData.draft_status ?? conv.draftStatus,
+                    draftCreatedAt: toISOStringSafe(docData.draft_created_at) || conv.draftCreatedAt,
                     modeSnapshot: modeSnapshot || conv.modeSnapshot,
                     hasImages: imageMeta.hasImages ?? conv.hasImages,
                     imageCount: typeof imageMeta.imageCount === 'number' ? imageMeta.imageCount : conv.imageCount,
@@ -353,6 +379,7 @@ export default function ConversationsPage({ tenantId }) {
                     firstThumbnailUrl: imageMeta.firstThumbnailUrl || conv.firstThumbnailUrl,
                     hasAIResponse: docData.hasAIResponse ?? docData.has_ai_response ?? conv.hasAIResponse,
                     hasAgentResponse: docData.hasAgentResponse ?? docData.has_agent_response ?? conv.hasAgentResponse,
+                    messageCount, // ✅ 실시간 업데이트
                 };
             });
 
@@ -378,6 +405,7 @@ export default function ConversationsPage({ tenantId }) {
                 categories: categories.length ? categories : prev.categories,
                 hasPendingDraft,
                 draftStatus: docData.draft_status ?? prev.draftStatus,
+                draftCreatedAt: toISOStringSafe(docData.draft_created_at) || prev.draftCreatedAt,
                 modeSnapshot: modeSnapshot || prev.modeSnapshot,
             };
         });
@@ -430,8 +458,10 @@ export default function ConversationsPage({ tenantId }) {
                         hasChanges = true;
                     });
 
+                    // ✅ 최적화: triggerSilentRefresh 제거
+                    // 실시간 업데이트가 즉시 반영되므로 추가 API 호출 불필요
                     if (hasChanges) {
-                        triggerSilentRefresh();
+                        console.log('[ConversationsPage] Realtime changes applied:', snapshot.docChanges().length);
                     }
                 },
                 (error) => {
@@ -498,71 +528,9 @@ export default function ConversationsPage({ tenantId }) {
         };
     }, [tenantId, fetchGlobalMode]);
 
-    // ✅ stats_conversations 실시간 감지 (카드 집계 자동 반영)
-    useEffect(() => {
-        if (!tenantId) return;
-
-        // 기존 리스너 정리
-        if (statsListenersRef.current.length) {
-            statsListenersRef.current.forEach((unsub) => {
-                try {
-                    unsub?.();
-                } catch (e) {
-                    console.warn('[ConversationsPage] Failed to cleanup stats listener:', e);
-                }
-            });
-            statsListenersRef.current = [];
-        }
-
-        const queryFields = ['tenant_id', 'tenantId'];
-        statsInitialPendingRef.current = 0;
-
-        const attachListener = (field) => {
-            try {
-                const q = query(collection(db, 'stats_conversations'), where(field, '==', tenantId));
-                return onSnapshot(
-                    q,
-                    () => {
-                        if (statsInitialPendingRef.current > 0) {
-                            statsInitialPendingRef.current = Math.max(0, statsInitialPendingRef.current - 1);
-                            return;
-                        }
-                        triggerSilentRefresh();
-                    },
-                    (error) => {
-                        console.error(`[ConversationsPage] stats_conversations listener error (${field}):`, error);
-                    }
-                );
-            } catch (error) {
-                console.error(`[ConversationsPage] Failed to setup stats listener (${field}):`, error);
-                // 쿼리 생성 실패 (예: 해당 필드가 없거나 인덱스 없음)
-                return null;
-            }
-        };
-
-        const unsubscribers = [];
-        queryFields.forEach((field) => {
-            const unsub = attachListener(field);
-            if (unsub) {
-                unsubscribers.push(unsub);
-                statsInitialPendingRef.current += 1;
-            }
-        });
-
-        statsListenersRef.current = unsubscribers;
-
-        return () => {
-            unsubscribers.forEach((unsub) => {
-                try {
-                    unsub?.();
-                } catch (e) {
-                    console.warn('[ConversationsPage] Failed to cleanup stats listener:', e);
-                }
-            });
-            statsListenersRef.current = [];
-            statsInitialPendingRef.current = 0;
-        };
-    }, [tenantId, triggerSilentRefresh]);
+    // ✅ stats_conversations 리스너 제거 (최적화)
+    // 이유: FAQ 리스너에서 변경사항을 즉시 처리하므로 별도 리스너 불필요
+    // stats는 필요할 때만 API로 조회하거나 FAQ 업데이트 시 함께 처리
 
     // ✅ 상단에서 한눈에 보는 간단 통계
     const conversationStats = useMemo(() => {
@@ -762,6 +730,34 @@ export default function ConversationsPage({ tenantId }) {
             chatId: selectedConv.chatId,
         });
     };
+
+    const handlePendingDraftCleared = useCallback(({ chatId }) => {
+        if (!chatId) return;
+
+        setConversations(prev => {
+            if (!Array.isArray(prev)) return prev;
+            return prev.map(conv => {
+                if (conv.chatId !== chatId) return conv;
+                return {
+                    ...conv,
+                    hasPendingDraft: false,
+                    draftStatus: null,
+                    draftCreatedAt: null,
+                };
+            });
+        });
+
+        setSelectedConv(prev => {
+            if (!prev) return prev;
+            if (prev.chatId !== chatId) return prev;
+            return {
+                ...prev,
+                hasPendingDraft: false,
+                draftStatus: null,
+                draftCreatedAt: null,
+            };
+        });
+    }, []);
 
     const handleModeToggle = async () => {
         const nextMode = globalMode === 'AUTO' ? 'CONFIRM' : 'AUTO';
@@ -1129,6 +1125,7 @@ export default function ConversationsPage({ tenantId }) {
                                 onClose={() => setSelectedConv(null)}
                                 onSend={handleSend}
                                 onOpenAICorrector={() => setShowAIModal(true)}
+                                onPendingDraftCleared={handlePendingDraftCleared}
                                 isEmbedded={true}
                                 libraryData={libraryData}
                             />
@@ -1154,6 +1151,7 @@ export default function ConversationsPage({ tenantId }) {
                         onClose={() => setSelectedConv(null)}
                         onSend={handleSend}
                         onOpenAICorrector={() => setShowAIModal(true)}
+                        onPendingDraftCleared={handlePendingDraftCleared}
                         isEmbedded={false}
                         libraryData={libraryData}
                     />

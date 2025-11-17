@@ -40,6 +40,15 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
 
     // ✅ 업무 타입별 썸네일 스타일
     const getAvatarStyle = () => {
+        // ✅ 승인 대기 최우선 - 주황색 펄스 애니메이션
+        if (isPendingApproval) {
+            return {
+                bg: 'bg-gradient-to-br from-orange-400 to-orange-500',
+                text: 'text-white',
+                pulse: true, // 펄스 애니메이션 플래그
+            };
+        }
+
         if (!conversation.hasSlackCard && !conversation.taskType) {
             // 슬랙 카드 정보 없음 - 기본 스타일
             return {
@@ -106,9 +115,15 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
             `}
         >
             <div className="flex items-center gap-3">
-                {/* ✅ 아바타 - 업무 타입별 색상 */}
-                <div className="flex-shrink-0">
-                    <div className={`w-10 h-10 rounded-full ${avatarStyle.bg} flex items-center justify-center`}>
+                {/* ✅ 아바타 - 업무 타입별 색상 + 승인 대기 시 펄스 */}
+                <div className="flex-shrink-0 relative">
+                    {/* 펄스 애니메이션 레이어 (승인 대기 시) */}
+                    {avatarStyle.pulse && (
+                        <div className="absolute inset-0 bg-orange-400 rounded-full animate-ping opacity-75"></div>
+                    )}
+
+                    {/* 아바타 원 */}
+                    <div className={`relative w-10 h-10 rounded-full ${avatarStyle.bg} flex items-center justify-center ${avatarStyle.pulse ? 'shadow-lg' : ''}`}>
                         <span className={`${avatarStyle.text} text-sm font-semibold`}>
                             {conversation.userNameInitial || conversation.userName?.charAt(0) || '?'}
                         </span>
@@ -123,8 +138,9 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
                             {conversation.userName || '익명'}
                         </h3>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {/* ✅ 승인 대기 - 강력하게 강조 */}
                             {isPendingApproval && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold bg-yellow-100 text-yellow-700 border border-yellow-200">
+                                <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-gradient-to-r from-orange-100 to-amber-100 text-orange-700 border border-orange-300 shadow-sm animate-pulse">
                                     승인 대기
                                 </span>
                             )}

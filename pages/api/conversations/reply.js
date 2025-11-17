@@ -35,13 +35,36 @@ export default async function handler(req, res) {
         }
 
         // 정상 응답
-        return res.status(200).json({
+        const response = {
             ok: true,
             message: {
                 msgId: result?.messageId || `agent_${Date.now()}`,
                 text,
             },
-        });
+        };
+
+        // ✅ 상담원 답변 후 슬랙 카드 축소
+        try {
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || 'https://app.yamoo.ai.kr';
+            const minimizeResponse = await fetch(`${baseUrl}/api/slack/minimize-card`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenantId: tenant,
+                    chatId: chatId,
+                    minimizedBy: 'agent',
+                    reason: '상담원 답변',
+                }),
+            });
+
+            const minimizeResult = await minimizeResponse.json();
+            console.log('[conversations/reply] Slack card minimized:', minimizeResult);
+        } catch (minimizeError) {
+            console.error('[conversations/reply] Failed to minimize slack card:', minimizeError);
+            // 카드 축소 실패해도 답변 전송은 성공
+        }
+
+        return res.status(200).json(response);
     } catch (e) {
         console.error("[conversations/reply] error:", e?.message || e);
         return res.status(500).json({

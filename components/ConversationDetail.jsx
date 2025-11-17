@@ -9,7 +9,7 @@ import { db } from '../lib/firebaseClient';
 import AIComposerModal from './AIComposerModal';
 import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 추가
 
-export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, tenantId, planName = 'trial', isEmbedded = false, libraryData }) {
+export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, onPendingDraftCleared, tenantId, planName = 'trial', isEmbedded = false, libraryData }) {
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
     const initialLoadedRef = useRef(false); // ✅ 초기 로딩 완료 플래그 (클로저 문제 방지)
@@ -727,11 +727,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     // ✅ 컨펌 초안 관련 상태 계산
     const conversationData = detail?.conversation;
+    const draftCreatedAt =
+        conversationData?.draftCreatedAt ||
+        conversation?.draftCreatedAt ||
+        null;
     const isConfirmMode = conversationData?.modeSnapshot === "CONFIRM";
     const hasPendingDraft = isConfirmMode && conversationData?.draftStatus === "pending_approval" && !!conversationData?.aiDraft;
     const pendingDraftText = hasPendingDraft ? conversationData.aiDraft : "";
     const pendingDraftKey = hasPendingDraft
-        ? `${conversationData?.chatId || conversation?.chatId || 'unknown'}_${conversationData?.draftStatus}_${conversationData?.aiDraft}`
+        ? `${conversationData?.chatId || conversation?.chatId || 'unknown'}_${conversationData?.draftStatus}_${conversationData?.aiDraft}_${draftCreatedAt || ''}`
         : null;
     const messages = Array.isArray(detail?.messages) ? detail.messages : [];
     const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -742,6 +746,21 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const showPendingDraftCard = hasPendingDraft && !pendingDraftDismissed && !hasExternalAnswer;
     const confirmThreadTs = conversationData?.confirmThreadTs || null;
     const confirmThreadChannel = conversationData?.confirmThreadChannel || null;
+
+    // ✅ 승인 대기 상태가 Firestore에서 해제되면 자동으로 UI 업데이트
+    useEffect(() => {
+        // hasPendingDraft가 false가 되면 (슬랙/포탈에서 전송 완료)
+        if (!hasPendingDraft && pendingDraftDismissed) {
+            setPendingDraftDismissed(false);
+            console.log('[ConversationDetail] Pending draft cleared - status:', conversationData?.draftStatus);
+        }
+
+        // status가 completed가 되어도 초기화
+        if (normalizedStatus === 'completed' && pendingDraftDismissed) {
+            setPendingDraftDismissed(false);
+            console.log('[ConversationDetail] Conversation completed - clearing draft dismissed state');
+        }
+    }, [hasPendingDraft, pendingDraftDismissed, normalizedStatus, conversationData?.draftStatus]);
 
     useEffect(() => {
         if (pendingDraftKey) {
@@ -758,6 +777,14 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ 포탈에서 메시지 전송하는 공통 함수
     const sendFinalViaPortal = async (text, options = {}) => {
         if (!conversationData?.chatId || !effectiveTenantId) return;
+
+        // ✅ 중복 전송 방지
+        if (sending) {
+            console.log('[sendFinalViaPortal] Already sending, ignoring duplicate request');
+            return;
+        }
+
+        setSending(true); // ✅ 로딩 시작
 
         try {
             const res = await fetch("/api/conversations/send", {
@@ -778,20 +805,45 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 throw new Error(data.error || `전송 실패: ${res.status}`);
             }
 
-            // 성공 시 detail 리프레시
+            // ✅ 전송 성공 시 즉시 UI 업데이트
+            setDetail(prev => {
+                if (!prev?.conversation) return prev;
+                return {
+                    ...prev,
+                    conversation: {
+                        ...prev.conversation,
+                        aiDraft: null,
+                        draftStatus: 'approved',
+                        draftCreatedAt: null,
+                    },
+                };
+            });
+
+            setPendingDraftDismissed(true);
+
+            // ✅ 상위 컴포넌트에 알림
+            onPendingDraftCleared?.({
+                chatId: conversationData?.chatId || conversation?.chatId || null,
+                tenantId: effectiveTenantId,
+            });
+
+            // success 후 detail 리프레시
             fetchDetail({ skipLoading: true }).catch((e) => {
                 console.error('[ConversationDetail] Failed to refresh after send:', e);
             });
+
         } catch (error) {
             console.error('[ConversationDetail] Send message error:', error);
             alert(`메시지 전송에 실패했습니다: ${error.message}`);
             throw error;
+        } finally {
+            setSending(false); // ✅ 로딩 종료
         }
     };
 
     // ✅ 그대로 전송 핸들러
     const handleSendDraftAsIs = async () => {
-        if (!hasPendingDraft) return;
+        if (!hasPendingDraft || sending) return; // ✅ 중복 방지
         const text = conversationData.aiDraft;
 
         await sendFinalViaPortal(text, {
@@ -807,6 +859,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 channelId: confirmThreadChannel,
             },
         });
+
+        // ✅ sendFinalViaPortal에서 이미 처리하므로 여기서는 불필요
     };
 
     // ✅ 수정 후 전송 핸들러
@@ -1593,37 +1647,46 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             throw new Error('전송할 내용이 없습니다.');
                         }
 
-                        // 🔹 컨펌 초안 수정 시에는 sendFinalViaPortal 사용
-                        if (isConfirmMode && composerInitialText) {
-                            await sendFinalViaPortal(trimmed, {
-                                via: "ai",
-                                sent_as: "ai",
-                                mode: "confirm_edited",
-                                confirmMode: true,
-                                confirmBypass: true,
-                                slackCleanup: {
-                                    shouldCleanupCard: true,
-                                    shouldPostFeedback: true,
-                                    confirmThreadTs: confirmThreadTs,
-                                    channelId: confirmThreadChannel,
-                                },
-                            });
-                            setComposerInitialText(""); // 전송 후 초기화
-                        } else {
-                            // 🔗 일반 AI 보정: ConversationsPage.handleSend가 기대하는 형태로 변환해서 전달
-                            await onSend?.({
-                                text: trimmed,
-                                attachments: [],              // AI 보정으로 보낼 때는 첨부 없음
-                                tenantId: effectiveTenantId,  // 위에서 계산한 tenant
-                                chatId,                       // 위에서 계산한 chatId
-                            });
-                        }
-                        setComposerMode('ai');
+                        try {
+                            // 🔹 컨펌 초안 수정 시에는 sendFinalViaPortal 사용
+                            if (isConfirmMode && composerInitialText) {
+                                await sendFinalViaPortal(trimmed, {
+                                    via: "ai",
+                                    sent_as: "ai",
+                                    mode: "confirm_edited",
+                                    confirmMode: true,
+                                    confirmBypass: true,
+                                    slackCleanup: {
+                                        shouldCleanupCard: true,
+                                        shouldPostFeedback: true,
+                                        confirmThreadTs: confirmThreadTs,
+                                        channelId: confirmThreadChannel,
+                                    },
+                                });
+                                setComposerInitialText(""); // 전송 후 초기화
+                            } else {
+                                // 🔗 일반 AI 보정: ConversationsPage.handleSend가 기대하는 형태로 변환해서 전달
+                                await onSend?.({
+                                    text: trimmed,
+                                    attachments: [],              // AI 보정으로 보낼 때는 첨부 없음
+                                    tenantId: effectiveTenantId,  // 위에서 계산한 tenant
+                                    chatId,                       // 위에서 계산한 chatId
+                                });
+                            }
 
-                        // ✅ 상세는 조용히 리프레시 (skipLoading: true)
-                        fetchDetail({ skipLoading: true }).catch(e => {
-                            console.error('[ConversationDetail] Failed to refresh after AI send:', e);
-                        });
+                            // ✅ 전송 성공 시 즉시 모달 닫기
+                            setShowAIComposer(false);
+                            setComposerMode('ai');
+                            setComposerInitialText("");
+
+                            // ✅ 상세는 조용히 리프레시 (skipLoading: true)
+                            fetchDetail({ skipLoading: true }).catch(e => {
+                                console.error('[ConversationDetail] Failed to refresh after AI send:', e);
+                            });
+                        } catch (error) {
+                            // 에러는 AIComposerModal에서 처리
+                            throw error;
+                        }
                     }}
                 />
             )}

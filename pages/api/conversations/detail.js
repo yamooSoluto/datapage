@@ -179,6 +179,7 @@ export default async function handler(req, res) {
                 confirmThreadTs: d.confirm_thread_ts || null,
                 confirmThreadChannel: d.confirm_thread_channel || null,
                 lastMessageAt: safeIso(d.lastMessageAt),
+                draftCreatedAt: safeIso(d.draft_created_at),
                 cwConversationId: d.cw_conversation_id || null,
                 summary: summary || null,
                 task: d.task || null,
