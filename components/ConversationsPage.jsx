@@ -245,9 +245,8 @@ export default function ConversationsPage({ tenantId }) {
     }, [tenantId]);
 
     useEffect(() => {
-        fetchConversations();
         fetchLibraryData();
-    }, [tenantId, fetchConversations]);
+    }, [tenantId]);
 
     const triggerSilentRefresh = useCallback(() => {
         if (silentRefreshTimerRef.current) return;
@@ -425,6 +424,7 @@ export default function ConversationsPage({ tenantId }) {
         if (!tenantId) return;
 
         console.log('[ConversationsPage] Setting up Firestore realtime listener for tenant:', tenantId);
+        setLoading(true);
 
         if (firestoreUnsubscribeRef.current) {
             console.log('[ConversationsPage] Cleaning up previous FAQ listener');
@@ -446,7 +446,29 @@ export default function ConversationsPage({ tenantId }) {
                 (snapshot) => {
                     if (isInitialLoadRef.current) {
                         isInitialLoadRef.current = false;
-                        console.log('[ConversationsPage] FAQ realtime listener ready');
+                        console.log('[ConversationsPage] Initial snapshot received:', snapshot.size);
+
+                        const initialConversations = [];
+                        const chatIdMap = new Map();
+
+                        snapshot.docs.forEach((doc) => {
+                            const docData = doc.data();
+                            const chatIdKey = docData?.chat_id || doc.id;
+                            if (chatIdKey && chatIdMap.has(chatIdKey)) {
+                                return;
+                            }
+
+                            const conv = buildConversationFromRealtimeDoc(docData, doc.id, tenantId);
+                            if (conv) {
+                                if (chatIdKey) {
+                                    chatIdMap.set(chatIdKey, conv);
+                                }
+                                initialConversations.push(conv);
+                            }
+                        });
+
+                        setConversations(initialConversations);
+                        setLoading(false);
                         return;
                     }
 
@@ -473,12 +495,20 @@ export default function ConversationsPage({ tenantId }) {
                 },
                 (error) => {
                     console.error('[ConversationsPage] Firestore listener error:', error);
+                    setLoading(false);
+                    fetchConversations().catch((fallbackError) => {
+                        console.error('[ConversationsPage] Fallback fetch failed:', fallbackError);
+                    });
                 }
             );
 
             firestoreUnsubscribeRef.current = unsubscribe;
         } catch (error) {
             console.error('[ConversationsPage] Failed to setup FAQ listener:', error);
+            setLoading(false);
+            fetchConversations().catch((fallbackError) => {
+                console.error('[ConversationsPage] Fallback fetch failed:', fallbackError);
+            });
         }
 
         return () => {
@@ -489,7 +519,7 @@ export default function ConversationsPage({ tenantId }) {
             }
             isInitialLoadRef.current = true;
         };
-    }, [tenantId, triggerSilentRefresh, applyRealtimeConversationPatch, removeConversationByChatId]);
+    }, [tenantId, applyRealtimeConversationPatch, removeConversationByChatId, fetchConversations]);
 
     // ✅ Conversation_Mode 실시간 반영 (컨펌 모드 토글 상태)
     useEffect(() => {
