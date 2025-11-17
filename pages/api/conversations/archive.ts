@@ -1,5 +1,5 @@
 // pages/api/conversations/archive.ts
-// 대화를 보관/보류/중요 표시
+// 대화를 보류/중요/완료 표시 (status와 별개)
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import admin, { db } from '@/lib/firebase-admin';
@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const {
             tenantId,
             chatId,
-            archiveStatus, // 'keep' | 'hold' | 'important' | null
+            archiveStatus, // 'hold' | 'important' | 'completed' | null
             note,
         } = req.body;
 
@@ -24,13 +24,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         // 유효한 archiveStatus 값 확인
-        const validStatuses = ['keep', 'hold', 'important', null];
+        const validStatuses = ['hold', 'important', 'completed', null];
         if (!validStatuses.includes(archiveStatus)) {
             return res.status(400).json({
-                error: 'Invalid archiveStatus. Must be: keep, hold, important, or null'
+                error: 'Invalid archiveStatus. Must be: hold, important, completed, or null'
             });
         }
-        const normalizedStatus = archiveStatus === 'keep' ? null : archiveStatus;
 
         // 1. FAQ_realtime_cw 업데이트
         const convRef = db.collection('FAQ_realtime_cw').doc(`${tenantId}_${chatId}`);
@@ -40,65 +39,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(404).json({ error: 'Conversation not found' });
         }
 
-        const convData = convDoc.data() || {};
-        const currentStatus = convData.status || 'waiting';
-        const wasOnHold = currentStatus === 'hold';
-        const storedPrevStatus = convData.status_before_hold || null;
-        const currentImportant = typeof convData.important === 'boolean'
-            ? convData.important
-            : convData.archive_status === 'important';
-
-        const updates: Record<string, any> = {
+        // 업데이트할 데이터 준비
+        const updateData: any = {
+            archive_status: archiveStatus, // hold/important/completed/null
+            archived_at: archiveStatus ? admin.firestore.FieldValue.serverTimestamp() : null,
             archive_note: note || null,
         };
 
-        let nextStatus = currentStatus;
-        let nextImportant = currentImportant;
-        let nextArchiveStatus: 'hold' | 'important' | null = normalizedStatus;
-
-        if (normalizedStatus === 'hold') {
-            const prevStatusToStore = wasOnHold
-                ? (storedPrevStatus || 'waiting')
-                : currentStatus;
-
-            updates.archive_status = 'hold';
-            updates.archived_at = admin.firestore.FieldValue.serverTimestamp();
-            updates.status = 'hold';
-            updates.important = false;
-            updates.status_before_hold = prevStatusToStore;
-
-            nextStatus = 'hold';
-            nextImportant = false;
-            nextArchiveStatus = 'hold';
-        } else if (normalizedStatus === 'important') {
-            updates.archive_status = 'important';
-            updates.archived_at = admin.firestore.FieldValue.serverTimestamp();
-            updates.important = true;
-            nextImportant = true;
-            nextArchiveStatus = 'important';
-
-            if (wasOnHold) {
-                const restoredStatus = storedPrevStatus || 'waiting';
-                updates.status = restoredStatus;
-                updates.status_before_hold = admin.firestore.FieldValue.delete();
-                nextStatus = restoredStatus;
-            }
-        } else {
-            updates.archive_status = null;
-            updates.archived_at = null;
-            updates.important = false;
-            updates.status_before_hold = admin.firestore.FieldValue.delete();
-            nextArchiveStatus = null;
-            nextImportant = false;
-
-            if (wasOnHold) {
-                const restoredStatus = storedPrevStatus || 'waiting';
-                updates.status = restoredStatus;
-                nextStatus = restoredStatus;
-            }
+        // important는 별도 boolean 필드로도 관리 (기존 로직 유지)
+        if (archiveStatus === 'important') {
+            updateData.important = true;
+        } else if (archiveStatus === null) {
+            updateData.important = false;
         }
 
-        await convRef.update(updates);
+        await convRef.update(updateData);
 
         // 2. 슬랙 카드 업데이트 (있으면)
         const threadDoc = await db.collection('slack_threads')
@@ -119,7 +74,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                         body: JSON.stringify({
                             tenantId,
                             chatId,
-                            archiveStatus: nextArchiveStatus,
+                            archiveStatus,
                         }),
                     });
 
@@ -128,9 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
                     return res.status(200).json({
                         ok: true,
-                        archiveStatus: nextArchiveStatus,
-                        status: nextStatus,
-                        important: nextImportant,
+                        archiveStatus,
                         slackUpdated: updateResult.ok,
                     });
                 } catch (error: any) {
@@ -142,9 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         return res.status(200).json({
             ok: true,
-            archiveStatus: nextArchiveStatus,
-            status: nextStatus,
-            important: nextImportant,
+            archiveStatus,
             slackUpdated: false,
         });
     } catch (error: any) {

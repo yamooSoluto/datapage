@@ -1416,7 +1416,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                         {/* ✅ 상태 관리 버튼 (보류/중요/완료) */}
                         <ConversationActions
-                            conversation={detail || conversation}
+                            conversation={detail?.conversation || conversation}
                             tenantId={effectiveTenantId}
                             onStatusChange={handleStatusChange}
                         />

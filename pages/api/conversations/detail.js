@@ -3,7 +3,7 @@ export const config = { regions: ['icn1'] };
 
 import admin, { db } from "@/lib/firebase-admin";
 
-// 플랜별 제한 (원래 로직 유지)
+// 플랜별 제한
 const PLAN_LIMITS = {
     trial: { days: 30, maxDocs: null },
     starter: { days: 30, maxDocs: null },
@@ -16,9 +16,8 @@ const DEFAULT_LIMIT = { days: 30, maxDocs: null };
 const safeIso = (t) => (t?.toDate?.()?.toISOString?.() ? t.toDate().toISOString() : null);
 const millis = (v) => (typeof v?.toMillis === 'function' ? v.toMillis() : (Number(v) || new Date(v).getTime() || 0));
 
-// stats_conversations 기반 업무 여부 판별 헬퍼
+// stats_conversations 기반 업무 여부 판별
 function getTaskFlagsFromStats(stats) {
-    // stats 없으면 전부 false/null
     if (!stats) {
         return {
             everWork: false,
@@ -30,14 +29,11 @@ function getTaskFlagsFromStats(stats) {
     const routeCreate = stats.route_create || 0;
     const lastSlackRoute = stats.last_slack_route || null;
     let everWork = false;
-    // 1) 명시적인 업무 route 카운트가 있으면 무조건 true
     if (routeUpdate > 0 || routeUpgrade > 0 || routeCreate > 0) {
         everWork = true;
     } else if (lastSlackRoute) {
-        // 2) 카운트는 없지만 문자열 기반으로 한 번 더 체크
         const s = String(lastSlackRoute || "").toLowerCase();
         const re = /\b(create|update|upgrade)\b/i;
-        // shadow_* 는 업무로 보지 않음
         if (!s.includes("shadow") && re.test(s)) {
             everWork = true;
         }
@@ -48,9 +44,31 @@ function getTaskFlagsFromStats(stats) {
     };
 }
 
+// ✅ 사용자가 선택한 archive 상태 계산 (status와 별개!)
+function getCurrentArchiveStatus(d) {
+    const archiveStatus = (d.archive_status || '').toLowerCase();
+
+    // completed 상태
+    if (archiveStatus === 'completed') {
+        return 'completed';
+    }
+
+    // hold 상태
+    if (archiveStatus === 'hold') {
+        return 'hold';
+    }
+
+    // important 상태 (boolean 필드 또는 archive_status)
+    if (d.important === true || archiveStatus === 'important') {
+        return 'important';
+    }
+
+    // 기본은 active (보류/중요/완료가 아닌 일반 상태)
+    return 'active';
+}
+
 export default async function handler(req, res) {
     try {
-        // ✅ CDN 캐싱
         res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=60');
 
         const { tenant, chatId } = req.query;
@@ -71,7 +89,7 @@ export default async function handler(req, res) {
         const stableId = `${tenant}_${chatId}`;
         let convDoc = await db.collection("FAQ_realtime_cw").doc(stableId).get();
 
-        // 같은 chat_id 문서들(레거시 포함)
+        // 같은 chat_id 문서들
         let q = db.collection("FAQ_realtime_cw")
             .where("tenant_id", "==", tenant)
             .where("chat_id", "==", chatId)
@@ -145,13 +163,14 @@ export default async function handler(req, res) {
         const slackData = slackDoc.exists ? slackDoc.data() : null;
         const stats = statsDoc.exists ? statsDoc.data() : null;
 
-        // ✅ stats_conversations 기반 isTaskEver / lastSlackRoute
         const { everWork: isTaskEver, lastSlackRoute } = getTaskFlagsFromStats(stats);
 
-        // summary 우선
         const summary = typeof d.summary === "string" && d.summary.trim()
             ? d.summary.trim()
             : "";
+
+        // ✅ 사용자 선택 archive 상태 계산
+        const currentArchiveStatus = getCurrentArchiveStatus(d);
 
         return res.json({
             conversation: {
@@ -161,15 +180,10 @@ export default async function handler(req, res) {
                 userName: d.user_name || "익명",
                 brandName: d.brandName || null,
                 channel,
-                status: d.status || "waiting",
-                important: Boolean(
-                    typeof d.important === 'boolean'
-                        ? d.important
-                        : d.archive_status === 'important'
-                ),
-                archiveStatus: d.archive_status || null,
-                archiveNote: d.archive_note || null,
-                archivedAt: safeIso(d.archived_at),
+                status: d.status || "waiting", // ✅ Chatwoot 상태 (waiting/resolved 등)
+                archiveStatus: d.archive_status || null, // ✅ 사용자 선택 상태 (hold/important/completed)
+                currentArchiveStatus, // ✅ 계산된 현재 상태 (active/hold/important/completed)
+                important: d.important || false,
                 modeSnapshot: d.modeSnapshot || "AUTO",
                 draftStatus: d.draft_status || null,
                 aiDraft: d.ai_draft || null,
@@ -177,12 +191,14 @@ export default async function handler(req, res) {
                 confirmThreadChannel: d.confirm_thread_channel || null,
                 lastMessageAt: safeIso(d.lastMessageAt),
                 draftCreatedAt: safeIso(d.draft_created_at),
+                archivedAt: safeIso(d.archived_at),
+                archiveNote: d.archive_note || null,
                 cwConversationId: d.cw_conversation_id || null,
                 summary: summary || null,
                 task: d.task || null,
                 category: d.category || null,
                 categories: d.category ? d.category.split('|').map(c => c.trim()) : [],
-                isTaskEver, // ← 히스토리 기반 업무 여부
+                isTaskEver,
                 lastSlackRoute: lastSlackRoute || null,
             },
             messages,

@@ -127,11 +127,6 @@ const buildConversationFromRealtimeDoc = (docData, docId, tenantId) => {
         brandName: docData.brand_name || docData.brandName || null,
         channel: docData.channel || 'unknown',
         status: docData.status || 'waiting',
-        important: Boolean(
-            typeof docData.important === 'boolean'
-                ? docData.important
-                : docData.archive_status === 'important'
-        ),
         modeSnapshot: docData.modeSnapshot || docData.mode_snapshot || 'AUTO',
         lastMessageAt,
         lastMessageText,
@@ -172,7 +167,7 @@ export default function ConversationsPage({ tenantId }) {
     const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'today' | 'unanswered' | 'ai' | 'agent'
 
     // ✅ 상태 필터 추가
-    const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'hold' | 'important' | 'completed'
+    const [archiveFilter, setArchiveFilter] = useState('all'); // 'all' | 'hold' | 'important'
 
     const [filters, setFilters] = useState({
         channel: 'all',
@@ -637,31 +632,9 @@ export default function ConversationsPage({ tenantId }) {
         // 빠른 필터 적용
         result = applyQuickFilter(result);
 
-        // ✅ 상태 필터 (활성/보류/중요/완료)
-        switch (statusFilter) {
-            case 'hold':
-                result = result.filter(
-                    (c) => (c.status || '').toLowerCase() === 'hold'
-                );
-                break;
-            case 'important':
-                result = result.filter((c) => !!c.important);
-                break;
-            case 'completed':
-                result = result.filter(
-                    (c) => (c.status || '').toLowerCase() === 'completed'
-                );
-                break;
-            default:
-                result = result.filter((c) => {
-                    const normalizedStatus = (c.status || '').toLowerCase();
-                    return (
-                        normalizedStatus !== 'hold' &&
-                        normalizedStatus !== 'completed' &&
-                        !c.important
-                    );
-                });
-                break;
+        // ✅ 상태 필터 (보류/중요)
+        if (archiveFilter !== 'all') {
+            result = result.filter((c) => c.archive_status === archiveFilter);
         }
 
         // 채널 필터
@@ -701,30 +674,15 @@ export default function ConversationsPage({ tenantId }) {
         return result.sort(
             (a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt)
         );
-    }, [conversations, filters, searchQuery, quickFilter, statusFilter]);
+    }, [conversations, filters, searchQuery, quickFilter, archiveFilter]);
 
     // ✅ 상태별 카운트
-    const statusCounts = useMemo(() => {
-        const totals = {
-            active: 0,
-            hold: 0,
-            important: 0,
-            completed: 0,
+    const archiveCounts = useMemo(() => {
+        return {
+            all: conversations.length,
+            hold: conversations.filter(c => c.archive_status === 'hold').length,
+            important: conversations.filter(c => c.archive_status === 'important').length,
         };
-
-        conversations.forEach((c) => {
-            const status = (c.status || '').toLowerCase();
-            const isHold = status === 'hold';
-            const isCompleted = status === 'completed';
-            const isImportant = !!c.important;
-
-            if (isHold) totals.hold += 1;
-            if (isCompleted) totals.completed += 1;
-            if (isImportant) totals.important += 1;
-            if (!isHold && !isCompleted && !isImportant) totals.active += 1;
-        });
-
-        return totals;
     }, [conversations]);
 
     const totalPages = Math.ceil(filteredConversations.length / itemsPerPage);
@@ -973,10 +931,10 @@ export default function ConversationsPage({ tenantId }) {
                             {/* ✅ 상태 필터 (보류/중요) */}
                             <ConversationFilters
                                 onFilterChange={(filter) => {
-                                    setStatusFilter(filter);
+                                    setArchiveFilter(filter);
                                     setCurrentPage(1);
                                 }}
-                                counts={statusCounts}
+                                counts={archiveCounts}
                             />
 
                             {/* 검색 + 필터 카드 */}
