@@ -13,8 +13,10 @@ export default function AIComposerModal({
     onSend,
     initialText = '',
     libraryData = null, // ✅ 라이브러리 데이터 추가
+    mode = 'ai', // 'ai' | 'confirm-edit'
 }) {
-    const [step, setStep] = useState('compose');
+    const isEditOnly = mode === 'confirm-edit';
+    const [step, setStep] = useState(isEditOnly ? 'edit' : 'compose');
 
     // ✅ initialText가 있으면 custom, 없으면 completed
     const [responseType, setResponseType] = useState(
@@ -34,6 +36,13 @@ export default function AIComposerModal({
         }
     }, [initialText]);
 
+    useEffect(() => {
+        if (isEditOnly) {
+            setStep('edit');
+            setCorrectedText(initialText || '');
+        }
+    }, [isEditOnly, initialText]);
+
     // Business 플랜 옵션
     const [voice, setVoice] = useState('agent');
     const [contentType, setContentType] = useState('tone_correction');
@@ -41,7 +50,7 @@ export default function AIComposerModal({
 
     const [processing, setProcessing] = useState(false);
     const [sending, setSending] = useState(false);
-    const [correctedText, setCorrectedText] = useState('');
+    const [correctedText, setCorrectedText] = useState(initialText || '');
     const [error, setError] = useState('');
 
     // ✅ 라이브러리 매크로 상태

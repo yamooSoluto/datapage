@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebaseClient';
 import AIComposerModal from './AIComposerModal';
 import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 추가
@@ -16,6 +16,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [imagePreview, setImagePreview] = useState(null);
     const [showAIComposer, setShowAIComposer] = useState(false); // ✅ AI 보정 모달 상태
     const [composerInitialText, setComposerInitialText] = useState(""); // ✅ 컨펌 초안 수정용
+    const [composerMode, setComposerMode] = useState('ai'); // 'ai' | 'confirm-edit'
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
     const touchStartYRef = useRef(0); // 터치 시작 Y 위치
@@ -81,6 +82,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     // ✅ AI 보정 모달
     const [showAICorrector, setShowAICorrector] = useState(false);
+    const [pendingDraftDismissed, setPendingDraftDismissed] = useState(false);
 
     // 초기 로딩은 onSnapshot useEffect에서 처리
 
@@ -144,14 +146,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         if (firestorePermissionDeniedRef.current) {
             console.log('[ConversationDetail] Firestore permission denied, using API polling');
 
-            // 초기 로드
             fetchDetail().catch((e) => {
                 console.error('[ConversationDetail] Initial fetchDetail failed:', e);
                 setLoading(false);
                 initialLoadedRef.current = true;
             });
 
-            // 주기적 폴링 (5초마다)
             const pollingInterval = setInterval(() => {
                 fetchDetail({ skipLoading: true }).catch((e) => {
                     console.error('[ConversationDetail] Polling fetchDetail failed:', e);
@@ -163,22 +163,24 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             };
         }
 
-        const docId = `${effectiveTenantId}_${chatId}`;
-        const docRef = doc(db, 'FAQ_realtime_cw', docId);
+        const q = query(
+            collection(db, 'FAQ_realtime_cw'),
+            where('tenant_id', '==', effectiveTenantId),
+            where('chat_id', '==', String(chatId)),
+            orderBy('lastMessageAt', 'desc'),
+            limit(1)
+        );
 
-        console.log('[ConversationDetail] Setting up Firestore listener for:', docId);
+        console.log('[ConversationDetail] Setting up Firestore listener for chat:', effectiveTenantId, chatId);
 
-        // 초기 로딩 시작 (chatId가 변경되면 초기화)
         setLoading(true);
         initialLoadedRef.current = false;
 
-        // 실시간 리스너 등록 (초기 데이터도 자동으로 받아옴)
         const unsubscribe = onSnapshot(
-            docRef,
+            q,
             (snapshot) => {
-                if (!snapshot.exists()) {
-                    console.warn('[ConversationDetail] Document does not exist:', docId);
-                    // 초기 로딩일 때만 로딩 상태 변경
+                if (snapshot.empty) {
+                    console.warn('[ConversationDetail] No docs for chat:', chatId);
                     if (!initialLoadedRef.current) {
                         setLoading(false);
                         initialLoadedRef.current = true;
@@ -187,9 +189,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     return;
                 }
 
-                const data = snapshot.data();
+                const docSnap = snapshot.docs[0];
+                const data = docSnap.data();
 
-                // ✅ 서버 메시지 정규화 및 옵티미스틱 메시지 병합
                 const serverMessages = normalizeServerMessages(data.messages);
 
                 setDetail(prev => {
@@ -199,7 +201,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                     const mergedMessages = mergeOptimisticMessages(serverMessages, optimisticMessages);
 
-                    // ✅ 초기 로딩일 때만 로딩 상태 변경 (이후 업데이트는 조용히)
                     const isInitialLoad = !initialLoadedRef.current;
                     if (isInitialLoad) {
                         setLoading(false);
@@ -207,6 +208,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     }
 
                     console.log('[ConversationDetail] Firestore update received:', {
+                        docId: docSnap.id,
                         messagesCount: mergedMessages.length,
                         lastMessage: mergedMessages[mergedMessages.length - 1]?.text?.substring(0, 50),
                         isInitialLoad,
@@ -214,11 +216,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                     return {
                         conversation: {
-                            id: snapshot.id,
+                            id: docSnap.id,
                             chatId: data.chat_id || chatId,
                             userId: data.user_id,
                             userName: data.user_name || '익명',
-                            brandName: data.brandName || null,
+                            brandName: data.brandName || data.brand_name || null,
                             channel: data.channel || 'unknown',
                             status: data.status || 'waiting',
                             modeSnapshot: data.modeSnapshot || 'AUTO',
@@ -237,7 +239,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 });
             },
             (error) => {
-                // ✅ 권한 오류인지 확인
                 const isPermissionError = error?.code === 'permission-denied' ||
                     error?.code === 'PERMISSION_DENIED' ||
                     error?.message?.includes('permission') ||
@@ -246,11 +247,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 if (isPermissionError) {
                     console.warn('[ConversationDetail] Firestore permission denied, switching to API-only mode:', error);
                     firestorePermissionDeniedRef.current = true;
-
-                    // 리스너 해제
                     unsubscribe();
-
-                    // API로 폴백
                     if (!initialLoadedRef.current) {
                         setLoading(true);
                     }
@@ -264,25 +261,21 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     return;
                 }
 
-                // 다른 종류의 에러는 기존 로직대로 처리
                 console.error('[ConversationDetail] Firestore listener error:', error);
-                // 초기 로딩일 때만 로딩 상태 변경
                 if (!initialLoadedRef.current) {
                     setLoading(false);
                     initialLoadedRef.current = true;
                 }
-                // 에러 발생 시 기존 fetchDetail로 폴백
                 fetchDetail({ skipLoading: true }).catch((e) => {
                     console.error('[ConversationDetail] Fallback fetchDetail failed:', e);
                 });
             }
         );
 
-        // 클린업: 모달이 닫히거나 chatId가 변경되면 리스너 해제
         return () => {
             console.log('[ConversationDetail] Cleaning up Firestore listener');
             unsubscribe();
-            initialLoadedRef.current = false; // 리스너 해제 시 플래그도 초기화
+            initialLoadedRef.current = false;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [chatId, effectiveTenantId]);
@@ -726,13 +719,41 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     };
 
+    const openAIComposer = (text = '', mode = 'ai') => {
+        setComposerInitialText(text);
+        setComposerMode(mode);
+        setShowAIComposer(true);
+    };
+
     // ✅ 컨펌 초안 관련 상태 계산
     const conversationData = detail?.conversation;
     const isConfirmMode = conversationData?.modeSnapshot === "CONFIRM";
     const hasPendingDraft = isConfirmMode && conversationData?.draftStatus === "pending_approval" && !!conversationData?.aiDraft;
     const pendingDraftText = hasPendingDraft ? conversationData.aiDraft : "";
+    const pendingDraftKey = hasPendingDraft
+        ? `${conversationData?.chatId || conversation?.chatId || 'unknown'}_${conversationData?.draftStatus}_${conversationData?.aiDraft}`
+        : null;
+    const messages = Array.isArray(detail?.messages) ? detail.messages : [];
+    const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+    const lastSender = lastMessage?.sender || null;
+    const lastSenderIsAgent = lastSender === 'admin' || lastSender === 'agent';
+    const normalizedStatus = (conversationData?.status || conversation?.status || '').toLowerCase();
+    const hasExternalAnswer = normalizedStatus === 'completed' || lastSenderIsAgent;
+    const showPendingDraftCard = hasPendingDraft && !pendingDraftDismissed && !hasExternalAnswer;
     const confirmThreadTs = conversationData?.confirmThreadTs || null;
     const confirmThreadChannel = conversationData?.confirmThreadChannel || null;
+
+    useEffect(() => {
+        if (pendingDraftKey) {
+            setPendingDraftDismissed(false);
+        }
+    }, [pendingDraftKey]);
+
+    useEffect(() => {
+        if (hasPendingDraft && hasExternalAnswer) {
+            setPendingDraftDismissed(true);
+        }
+    }, [hasPendingDraft, hasExternalAnswer]);
 
     // ✅ 포탈에서 메시지 전송하는 공통 함수
     const sendFinalViaPortal = async (text, options = {}) => {
@@ -791,8 +812,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ 수정 후 전송 핸들러
     const handleEditDraft = () => {
         if (!hasPendingDraft) return;
-        setComposerInitialText(conversationData.aiDraft);
-        setShowAIComposer(true);
+        openAIComposer(conversationData.aiDraft, 'confirm-edit');
     };
 
     return (
@@ -876,10 +896,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             {/* AI 보정 버튼 */}
                             {(planName === 'pro' || planName === 'business') && (
                                 <button
-                                    onClick={() => {
-                                        setComposerInitialText(draft); // ✅ 현재 입력값 전달
-                                        setShowAIComposer(true);
-                                    }}
+                                    onClick={() => openAIComposer(draft)}
                                     className="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all flex items-center gap-2 text-sm font-medium"
                                 >
                                     <Sparkles className="w-4 h-4" />
@@ -983,15 +1000,25 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         )}
 
                         {/* 🔹 컨펌 초안 카드 */}
-                        {hasPendingDraft && (
+                        {showPendingDraftCard && (
                             <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs font-semibold text-yellow-700">
-                                        🟡 컨펌 모드 · 답변 승인 대기 중
-                                    </span>
-                                    <span className="text-[11px] text-yellow-500">
-                                        포탈에서 승인 / 수정 후 전송할 수 있어요
-                                    </span>
+                                <div className="flex items-start justify-between mb-1 gap-3">
+                                    <div>
+                                        <span className="text-xs font-semibold text-yellow-700 block">
+                                            🟡 컨펌 모드 · 답변 승인 대기 중
+                                        </span>
+                                        <span className="text-[11px] text-yellow-500">
+                                            포탈에서 승인 / 수정 후 전송할 수 있어요
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPendingDraftDismissed(true)}
+                                        className="p-1 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"
+                                        aria-label="승인 안내 닫기"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
                                 </div>
 
                                 <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
@@ -1091,7 +1118,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                             {/* ✅ AI 보정 버튼 */}
                             <button
-                                onClick={() => { setComposerInitialText(draft); setShowAIComposer(true); }}
+                                onClick={() => openAIComposer(draft)}
                                 disabled={sending || uploading}
                                 className="flex-shrink-0 p-2.5 rounded-lg bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                                 aria-label="AI 보정"
@@ -1236,7 +1263,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 {/* AI 보정 버튼 */}
                                 {(planName === 'pro' || planName === 'business') && (
                                     <button
-                                        onClick={() => { setComposerInitialText(draft); setShowAIComposer(true); }}
+                                        onClick={() => openAIComposer(draft)}
                                         className="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all flex items-center gap-2 text-sm font-medium"
                                     >
                                         <Sparkles className="w-4 h-4" />
@@ -1347,15 +1374,25 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             )}
 
                             {/* 🔹 컨펌 초안 카드 */}
-                            {isConfirmMode && pendingDraftText && (
+                            {showPendingDraftCard && (
                                 <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <span className="text-xs font-semibold text-yellow-700">
-                                            🟡 컨펌 모드 · 답변 승인 대기 중
-                                        </span>
-                                        <span className="text-[11px] text-yellow-500">
-                                            포탈에서 승인 / 수정 후 전송할 수 있어요
-                                        </span>
+                                    <div className="flex items-start justify-between mb-1 gap-3">
+                                        <div>
+                                            <span className="text-xs font-semibold text-yellow-700 block">
+                                                🟡 컨펌 모드 · 답변 승인 대기 중
+                                            </span>
+                                            <span className="text-[11px] text-yellow-500">
+                                                포탈에서 승인 / 수정 후 전송할 수 있어요
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPendingDraftDismissed(true)}
+                                            className="p-1 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"
+                                            aria-label="승인 안내 닫기"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
                                     </div>
 
                                     <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
@@ -1451,7 +1488,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                                 {/* ✅ AI 보정 버튼 - AIComposerModal 연결 */}
                                 <button
-                                    onClick={() => { setComposerInitialText(draft); setShowAIComposer(true); }}
+                                    onClick={() => openAIComposer(draft)}
                                     disabled={sending || uploading}
                                     className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                                     aria-label="AI 보정"
@@ -1542,9 +1579,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     planName={planName}
                     initialText={composerInitialText}
                     libraryData={libraryData} // ✅ 라이브러리 데이터 전달
+                    mode={composerMode}
                     onClose={() => {
                         setShowAIComposer(false);
                         setComposerInitialText(""); // 닫을 때 초기화
+                        setComposerMode('ai');
                     }}
                     onSend={async (text) => {
                         const trimmed = (text || '').trim();
@@ -1579,6 +1618,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 chatId,                       // 위에서 계산한 chatId
                             });
                         }
+                        setComposerMode('ai');
 
                         // ✅ 상세는 조용히 리프레시 (skipLoading: true)
                         fetchDetail({ skipLoading: true }).catch(e => {

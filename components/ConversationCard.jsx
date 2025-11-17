@@ -89,6 +89,9 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
 
     const relativeTime = getRelativeTime(conversation.lastMessageAt);
     const avatarStyle = getAvatarStyle();
+    const normalizedStatus = (conversation.status || '').toLowerCase();
+    const isPendingApproval =
+        conversation.draftStatus === 'pending_approval' && normalizedStatus !== 'completed';
 
     return (
         <div
@@ -120,6 +123,11 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
                             {conversation.userName || '익명'}
                         </h3>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {isPendingApproval && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold bg-yellow-100 text-yellow-700 border border-yellow-200">
+                                    승인 대기
+                                </span>
+                            )}
                             {/* ✅ 카테고리 - 오른쪽 상단, 더 작게 */}
                             {conversation.categories && conversation.categories.length > 0 && (
                                 <>
