@@ -2,12 +2,13 @@
 // 애플 스타일 대화 상세 모달 - 클라이언트 중심 최적화 (tenantId 우선 사용)
 // ✨ 라이브러리 매크로 기능 추가: # 입력 시 라이브러리 항목 선택 가능
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase-client';
 import AIComposerModal from './AIComposerModal';
 import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 추가
+import ConversationActions from './ConversationActions'; // ✅ 상태 관리 버튼
 
 export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, onPendingDraftCleared, tenantId, planName = 'trial', isEmbedded = false, libraryData }) {
     const [detail, setDetail] = useState(null);
@@ -52,6 +53,83 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ 로컬 스토리지 키 (effectiveTenantId와 chatId 사용)
     const draftKey = chatId ? `draft_${effectiveTenantId}_${chatId}` : null;
 
+    // ✅ 그림자 카드 감지
+    const isShadowCard = useMemo(() => {
+        if (!conversation && !detail) return false;
+
+        const routing = detail?.routing || detail?.conversation?.routing || conversation?.routing;
+        const rawRoute =
+            routing?.route ||
+            detail?.conversation?.route ||
+            conversation?.route ||
+            detail?.slack?.cardType ||
+            conversation?.slackCardType ||
+            routing;
+        const normalizedRoute = typeof rawRoute === 'string' ? rawRoute.toLowerCase() : '';
+        const isShadowRoute =
+            normalizedRoute === 'shadow_create' ||
+            normalizedRoute === 'shadow_update' ||
+            normalizedRoute === 'skip';
+
+        const modeSnapshot =
+            routing?.modeSnapshot ||
+            detail?.modeSnapshot ||
+            detail?.conversation?.modeSnapshot ||
+            conversation?.modeSnapshot;
+        const normalizedMode =
+            typeof modeSnapshot === 'string' ? modeSnapshot.toUpperCase() : modeSnapshot;
+        const isAutoMode = normalizedMode === 'AUTO' || !normalizedMode;
+
+        const hasSlackCard =
+            typeof conversation?.hasSlackCard === 'boolean'
+                ? conversation.hasSlackCard
+                : !!detail?.hasSlackCard ||
+                !!detail?.conversation?.hasSlackCard ||
+                !!detail?.slack;
+
+        const status =
+            detail?.status ||
+            detail?.conversation?.status ||
+            conversation?.status;
+        const normalizedStatus =
+            typeof status === 'string' ? status.toLowerCase() : status;
+        const isProcessed = normalizedStatus !== 'waiting' && normalizedStatus !== 'pending';
+
+        return Boolean(isShadowRoute && isAutoMode && hasSlackCard && isProcessed);
+    }, [detail, conversation]);
+
+    // ✅ 조용히 Slack 카드만 삭제 (알림/UI 없음)
+    useEffect(() => {
+        if (!isShadowCard || loading || !effectiveTenantId || !chatId) return;
+
+        console.log('[ConversationDetail] Shadow card detected, deleting Slack card silently');
+
+        const deleteSlackCard = async () => {
+            try {
+                const res = await fetch('/api/slack/delete-card', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tenantId: effectiveTenantId,
+                        chatId,
+                        reason: 'shadow_card_viewed',
+                    }),
+                });
+
+                if (!res.ok) {
+                    const errorBody = await res.json().catch(() => ({}));
+                    throw new Error(errorBody?.error || `Failed to delete Slack card (${res.status})`);
+                }
+
+                console.log('[ConversationDetail] Slack card deleted silently');
+            } catch (error) {
+                console.error('[ConversationDetail] Silent deletion error:', error);
+            }
+        };
+
+        deleteSlackCard();
+    }, [isShadowCard, loading, effectiveTenantId, chatId]);
+
     // ✅ 컴포넌트 마운트 시 저장된 draft 복원
     useEffect(() => {
         if (!draftKey) return;
@@ -83,6 +161,16 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ AI 보정 모달
     const [showAICorrector, setShowAICorrector] = useState(false);
     const [pendingDraftDismissed, setPendingDraftDismissed] = useState(false);
+
+    // ✅ 상태 변경 핸들러
+    const handleStatusChange = (newStatus) => {
+        console.log('[ConversationDetail] Status changed:', newStatus);
+
+        if (newStatus === 'completed') {
+            // 완료 시 모달 닫기
+            onClose?.();
+        }
+    };
 
     // 초기 로딩은 onSnapshot useEffect에서 처리
 
@@ -1402,6 +1490,13 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 </div>
                             )}
                         </div>
+
+                        {/* ✅ 상태 관리 버튼 (보류/중요/완료) */}
+                        <ConversationActions
+                            conversation={detail || conversation}
+                            tenantId={effectiveTenantId}
+                            onStatusChange={handleStatusChange}
+                        />
 
                         {/* 입력 영역 - 키보드 위 고정 */}
                         <div

@@ -23,6 +23,7 @@ import ConversationCard from './ConversationCard';
 import ConversationDetail from './ConversationDetail';
 import AIComposerModal from './AIComposerModal';
 import { GlobalModeToggle } from './GlobalModeToggle';
+import ConversationFilters from './ConversationFilters'; // ✅ 필터 추가
 
 const toISOStringSafe = (value) => {
     if (!value) return null;
@@ -147,6 +148,9 @@ const buildConversationFromRealtimeDoc = (docData, docId, tenantId) => {
         hasAIResponse: docData.hasAIResponse || docData.has_ai_response || false,
         hasAgentResponse: docData.hasAgentResponse || docData.has_agent_response || false,
         messageCount: docData.messageCount || { user: 0, ai: 0, agent: 0, total: 0 },
+        archive_status: docData.archive_status || null, // ✅ 상태 추가
+        archive_note: docData.archive_note || null,
+        archived_at: toISOStringSafe(docData.archived_at) || null,
     };
 };
 
@@ -161,6 +165,9 @@ export default function ConversationsPage({ tenantId }) {
 
     // 빠른 필터
     const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'today' | 'unanswered' | 'ai' | 'agent'
+
+    // ✅ 상태 필터 추가
+    const [archiveFilter, setArchiveFilter] = useState('all'); // 'all' | 'hold' | 'important'
 
     const [filters, setFilters] = useState({
         channel: 'all',
@@ -595,6 +602,11 @@ export default function ConversationsPage({ tenantId }) {
         // 빠른 필터 적용
         result = applyQuickFilter(result);
 
+        // ✅ 상태 필터 (보류/중요)
+        if (archiveFilter !== 'all') {
+            result = result.filter((c) => c.archive_status === archiveFilter);
+        }
+
         // 채널 필터
         if (filters.channel !== 'all') {
             result = result.filter((c) => c.channel === filters.channel);
@@ -632,7 +644,16 @@ export default function ConversationsPage({ tenantId }) {
         return result.sort(
             (a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt)
         );
-    }, [conversations, filters, searchQuery, quickFilter]);
+    }, [conversations, filters, searchQuery, quickFilter, archiveFilter]);
+
+    // ✅ 상태별 카운트
+    const archiveCounts = useMemo(() => {
+        return {
+            all: conversations.length,
+            hold: conversations.filter(c => c.archive_status === 'hold').length,
+            important: conversations.filter(c => c.archive_status === 'important').length,
+        };
+    }, [conversations]);
 
     const totalPages = Math.ceil(filteredConversations.length / itemsPerPage);
     const paginatedConversations = filteredConversations.slice(
@@ -876,6 +897,15 @@ export default function ConversationsPage({ tenantId }) {
                                     />
                                 </div>
                             </div>
+
+                            {/* ✅ 상태 필터 (보류/중요) */}
+                            <ConversationFilters
+                                onFilterChange={(filter) => {
+                                    setArchiveFilter(filter);
+                                    setCurrentPage(1);
+                                }}
+                                counts={archiveCounts}
+                            />
 
                             {/* 검색 + 필터 카드 */}
                             <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5">
