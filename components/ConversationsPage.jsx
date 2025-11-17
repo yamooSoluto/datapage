@@ -1,7 +1,7 @@
 // components/ConversationsPage.jsx
 // CRM 메인 페이지 - 웹: 2-column 레이아웃 / 모바일: 모달 방식
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     Search,
     ChevronLeft,
@@ -17,10 +17,137 @@ import {
     AlertCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { collection, query, where, orderBy, onSnapshot, doc } from 'firebase/firestore';
+import { db } from '../lib/firebaseClient';
 import ConversationCard from './ConversationCard';
 import ConversationDetail from './ConversationDetail';
 import AIComposerModal from './AIComposerModal';
 import { GlobalModeToggle } from './GlobalModeToggle';
+
+const toISOStringSafe = (value) => {
+    if (!value) return null;
+    if (typeof value.toDate === 'function') {
+        try {
+            return value.toDate().toISOString();
+        } catch (_) { }
+    }
+    if (typeof value.seconds === 'number') {
+        return new Date(value.seconds * 1000).toISOString();
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+const splitCategories = (value) => {
+    if (!value || typeof value !== 'string') return [];
+    return value
+        .split('|')
+        .map((c) => c.trim())
+        .filter(Boolean);
+};
+
+const extractUserInitial = (name) => {
+    if (!name || typeof name !== 'string') return '?';
+    const trimmed = name.trim();
+    if (!trimmed) return '?';
+    const parts = trimmed.split(/\s+/);
+    if (parts.length > 1) return parts[1]?.[0] || parts[0]?.[0] || '?';
+    const mid = Math.floor(trimmed.length / 2);
+    return trimmed[mid] || trimmed[0] || '?';
+};
+
+const extractLastMessageSnippet = (docData) => {
+    if (typeof docData?.summary === 'string' && docData.summary.trim()) {
+        return docData.summary.trim();
+    }
+    const messages = Array.isArray(docData?.messages) ? docData.messages : [];
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const text = (messages[i]?.text || '').trim();
+        if (text) return text.slice(0, 140);
+    }
+    return '';
+};
+
+const collectImageMeta = (docData) => {
+    const messages = Array.isArray(docData?.messages) ? docData.messages : [];
+    const pics = [];
+    messages.forEach((m) => {
+        if (Array.isArray(m?.pics)) {
+            m.pics.forEach((pic) => {
+                if (typeof pic === 'string') {
+                    pics.push(pic);
+                } else if (pic?.url) {
+                    pics.push(pic.url);
+                }
+            });
+        }
+    });
+    return {
+        hasImages: pics.length > 0,
+        imageCount: pics.length,
+        firstImageUrl: pics[0] || null,
+        firstThumbnailUrl: pics[0] || null,
+    };
+};
+
+const isCompletedStatus = (status) =>
+    String(status || '')
+        .trim()
+        .toLowerCase() === 'completed';
+
+const deriveChatIdFromDoc = (docId, docData) => {
+    if (docData?.chat_id || docData?.chatId) return docData.chat_id || docData.chatId;
+    if (typeof docId === 'string' && docId.includes('_')) {
+        return docId.split('_').slice(1).join('_');
+    }
+    return docId || null;
+};
+
+const buildConversationFromRealtimeDoc = (docData, docId, tenantId) => {
+    if (!docData) return null;
+    const chatId = deriveChatIdFromDoc(docId, docData);
+    if (!chatId) return null;
+    const lastMessageAt = toISOStringSafe(docData.lastMessageAt) || new Date().toISOString();
+    const summary = extractLastMessageSnippet(docData);
+    const categories = splitCategories(docData.category);
+    const imageMeta = collectImageMeta(docData);
+    const hasPendingDraft = docData.draft_status === 'pending_approval';
+
+    const lastMessageText = summary
+        || (imageMeta.hasImages ? `(이미지 ${imageMeta.imageCount}개)` : '');
+
+    return {
+        id: docId || `${tenantId || docData.tenant_id || docData.tenantId || 'tenant'}_${chatId}`,
+        chatId,
+        tenantId: tenantId || docData.tenant_id || docData.tenantId || null,
+        userId: docData.user_id || docData.userId || null,
+        userName: docData.user_name || docData.userName || '익명',
+        userNameInitial: extractUserInitial(docData.user_name || docData.userName),
+        brandName: docData.brand_name || docData.brandName || null,
+        channel: docData.channel || 'unknown',
+        status: docData.status || 'waiting',
+        modeSnapshot: docData.modeSnapshot || docData.mode_snapshot || 'AUTO',
+        lastMessageAt,
+        lastMessageText,
+        summary: summary || null,
+        task: docData.task || null,
+        hasImages: imageMeta.hasImages,
+        imageCount: imageMeta.imageCount,
+        firstImageUrl: imageMeta.firstImageUrl,
+        firstThumbnailUrl: imageMeta.firstThumbnailUrl,
+        hasPendingDraft,
+        draftStatus: docData.draft_status || null,
+        category: categories[0] || null,
+        categories,
+        hasSlackCard: !!docData.hasSlackCard,
+        isTask: !!docData.isTask,
+        taskType: docData.taskType || null,
+        slackCardType: docData.slackCardType || null,
+        hasAIResponse: docData.hasAIResponse || docData.has_ai_response || false,
+        hasAgentResponse: docData.hasAgentResponse || docData.has_agent_response || false,
+        messageCount: docData.messageCount || { user: 0, ai: 0, agent: 0, total: 0 },
+    };
+};
 
 export default function ConversationsPage({ tenantId }) {
     const [conversations, setConversations] = useState([]);
@@ -45,6 +172,13 @@ export default function ConversationsPage({ tenantId }) {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage] = useState(20);
+    const firestoreUnsubscribeRef = useRef(null); // ✅ FAQ_realtime_cw 리스너 해제 함수
+    const isInitialLoadRef = useRef(true); // ✅ FAQ_realtime_cw 초기 로딩 여부
+    const modeUnsubscribeRef = useRef(null); // ✅ Conversation_Mode 리스너 해제 함수
+    const statsListenersRef = useRef([]); // ✅ stats_conversations 리스너 모음
+    const statsInitialPendingRef = useRef(0); // ✅ stats 리스너 초기 스냅샷 카운트
+    const silentRefreshTimerRef = useRef(null); // ✅ 조용한 새로고침 디바운스 타이머
+    const lastRealtimeUpdateRef = useRef(null); // ✅ 최근 실시간 패치 정보
 
     const availableCategories = [
         '결제/환불',
@@ -56,11 +190,6 @@ export default function ConversationsPage({ tenantId }) {
         '이벤트/쿠폰',
         '기타',
     ];
-
-    useEffect(() => {
-        fetchConversations();
-        fetchLibraryData();
-    }, [tenantId]);
 
     // ✅ 라이브러리 데이터 가져오기
     const fetchLibraryData = async () => {
@@ -90,7 +219,7 @@ export default function ConversationsPage({ tenantId }) {
         }
     };
 
-    const fetchConversations = async (options = {}) => {
+    const fetchConversations = useCallback(async (options = {}) => {
         const { skipLoading = false } = options;
 
         if (!skipLoading) setLoading(true);
@@ -105,7 +234,335 @@ export default function ConversationsPage({ tenantId }) {
         } finally {
             if (!skipLoading) setLoading(false);
         }
-    };
+    }, [tenantId]);
+
+    useEffect(() => {
+        fetchConversations();
+        fetchLibraryData();
+    }, [tenantId, fetchConversations]);
+
+    const triggerSilentRefresh = useCallback(() => {
+        if (silentRefreshTimerRef.current) return;
+
+        const timer = setTimeout(() => {
+            fetchConversations({ skipLoading: true })
+                .catch((error) => {
+                    console.warn('[ConversationsPage] Silent refresh failed:', error);
+                })
+                .finally(() => {
+                    silentRefreshTimerRef.current = null;
+                });
+        }, 200);
+
+        silentRefreshTimerRef.current = timer;
+    }, [fetchConversations]);
+
+    useEffect(() => {
+        return () => {
+            if (silentRefreshTimerRef.current) {
+                clearTimeout(silentRefreshTimerRef.current);
+                silentRefreshTimerRef.current = null;
+            }
+        };
+    }, []);
+
+    const fetchGlobalMode = useCallback(async () => {
+        if (!tenantId) return;
+
+        try {
+            const response = await fetch(`/api/tenants/policy?tenantId=${tenantId}`);
+            if (!response.ok) return;
+
+            const data = await response.json();
+            const modeValue = String(
+                data?.mode ||
+                data?.raw?.global?.mode ||
+                data?.policy?.defaultMode ||
+                'CONFIRM'
+            ).toUpperCase();
+
+            setGlobalMode(modeValue);
+        } catch (error) {
+            console.error('[ConversationsPage] Failed to fetch global mode:', error);
+        }
+    }, [tenantId]);
+
+    const removeConversationByChatId = useCallback((chatId, docId) => {
+        if (!chatId && !docId) return;
+
+        setConversations((prev) => {
+            if (!Array.isArray(prev) || prev.length === 0) return prev;
+            return prev.filter(
+                (conv) => conv.chatId !== chatId && conv.id !== docId
+            );
+        });
+
+        setSelectedConv((prev) => {
+            if (!prev) return prev;
+            const prevKey = prev.chatId || prev.id;
+            if (prevKey === chatId || prevKey === docId) {
+                return null;
+            }
+            return prev;
+        });
+    }, []);
+
+    const applyRealtimeConversationPatch = useCallback((docData, docId) => {
+        if (!docData) return;
+
+        const chatId = deriveChatIdFromDoc(docId, docData);
+        if (!chatId) return;
+
+        const normalizedTimestamp =
+            toISOStringSafe(docData.lastMessageAt) ||
+            toISOStringSafe(docData.updatedAt);
+        const summary = extractLastMessageSnippet(docData);
+        const categoryValue = docData.category || null;
+        const categories = categoryValue ? splitCategories(categoryValue) : [];
+        const hasPendingDraft = docData.draft_status === 'pending_approval';
+        const modeSnapshot =
+            docData.modeSnapshot || docData.mode_snapshot || undefined;
+        const imageMeta = collectImageMeta(docData);
+        const lastMessageText =
+            summary || (imageMeta.hasImages ? `(이미지 ${imageMeta.imageCount}개)` : '');
+
+        setConversations((prev) => {
+            if (!Array.isArray(prev)) {
+                const created = buildConversationFromRealtimeDoc(docData, docId, tenantId);
+                return created ? [created] : prev;
+            }
+
+            let found = false;
+            const updated = prev.map((conv) => {
+                if (conv.chatId !== chatId) return conv;
+                found = true;
+                return {
+                    ...conv,
+                    status: docData.status || conv.status,
+                    summary: summary || conv.summary,
+                    lastMessageText: lastMessageText || conv.lastMessageText,
+                    lastMessageAt: normalizedTimestamp || conv.lastMessageAt,
+                    category: categoryValue ?? conv.category,
+                    categories: categories.length ? categories : conv.categories,
+                    hasPendingDraft,
+                    draftStatus: docData.draft_status ?? conv.draftStatus,
+                    modeSnapshot: modeSnapshot || conv.modeSnapshot,
+                    hasImages: imageMeta.hasImages ?? conv.hasImages,
+                    imageCount: typeof imageMeta.imageCount === 'number' ? imageMeta.imageCount : conv.imageCount,
+                    firstImageUrl: imageMeta.firstImageUrl || conv.firstImageUrl,
+                    firstThumbnailUrl: imageMeta.firstThumbnailUrl || conv.firstThumbnailUrl,
+                    hasAIResponse: docData.hasAIResponse ?? docData.has_ai_response ?? conv.hasAIResponse,
+                    hasAgentResponse: docData.hasAgentResponse ?? docData.has_agent_response ?? conv.hasAgentResponse,
+                };
+            });
+
+            if (found) {
+                return updated;
+            }
+
+            const created = buildConversationFromRealtimeDoc(docData, docId, tenantId);
+            return created ? [created, ...prev] : prev;
+        });
+
+        setSelectedConv((prev) => {
+            if (!prev) return prev;
+            const prevKey = prev.chatId || prev.id;
+            if (prevKey !== chatId && prevKey !== docId) return prev;
+            return {
+                ...prev,
+                status: docData.status || prev.status,
+                summary: summary || prev.summary,
+                lastMessageText: lastMessageText || prev.lastMessageText,
+                lastMessageAt: normalizedTimestamp || prev.lastMessageAt,
+                category: categoryValue ?? prev.category,
+                categories: categories.length ? categories : prev.categories,
+                hasPendingDraft,
+                draftStatus: docData.draft_status ?? prev.draftStatus,
+                modeSnapshot: modeSnapshot || prev.modeSnapshot,
+            };
+        });
+
+        lastRealtimeUpdateRef.current = { chatId, timestamp: Date.now() };
+    }, [tenantId]);
+
+    // ✅ Firestore 실시간 리스너: FAQ_realtime_cw 컬렉션 변경 감지
+    useEffect(() => {
+        if (!tenantId) return;
+
+        console.log('[ConversationsPage] Setting up Firestore realtime listener for tenant:', tenantId);
+
+        if (firestoreUnsubscribeRef.current) {
+            console.log('[ConversationsPage] Cleaning up previous FAQ listener');
+            firestoreUnsubscribeRef.current();
+            firestoreUnsubscribeRef.current = null;
+        }
+
+        isInitialLoadRef.current = true;
+
+        try {
+            const q = query(
+                collection(db, 'FAQ_realtime_cw'),
+                where('tenant_id', '==', tenantId),
+                orderBy('lastMessageAt', 'desc')
+            );
+
+            const unsubscribe = onSnapshot(
+                q,
+                (snapshot) => {
+                    if (isInitialLoadRef.current) {
+                        isInitialLoadRef.current = false;
+                        console.log('[ConversationsPage] FAQ realtime listener ready');
+                        return;
+                    }
+
+                    let hasChanges = false;
+                    snapshot.docChanges().forEach((change) => {
+                        const docData = change.doc.data();
+                        const docId = change.doc.id;
+
+                        if (change.type === 'removed') {
+                            removeConversationByChatId(deriveChatIdFromDoc(docId, docData), docId);
+                            hasChanges = true;
+                            return;
+                        }
+
+                        applyRealtimeConversationPatch(docData, docId);
+                        hasChanges = true;
+                    });
+
+                    if (hasChanges) {
+                        triggerSilentRefresh();
+                    }
+                },
+                (error) => {
+                    console.error('[ConversationsPage] Firestore listener error:', error);
+                }
+            );
+
+            firestoreUnsubscribeRef.current = unsubscribe;
+        } catch (error) {
+            console.error('[ConversationsPage] Failed to setup FAQ listener:', error);
+        }
+
+        return () => {
+            if (firestoreUnsubscribeRef.current) {
+                console.log('[ConversationsPage] Cleaning up FAQ listener');
+                firestoreUnsubscribeRef.current();
+                firestoreUnsubscribeRef.current = null;
+            }
+            isInitialLoadRef.current = true;
+        };
+    }, [tenantId, triggerSilentRefresh, applyRealtimeConversationPatch, removeConversationByChatId]);
+
+    // ✅ Conversation_Mode 실시간 반영 (컨펌 모드 토글 상태)
+    useEffect(() => {
+        if (!tenantId) return;
+
+        fetchGlobalMode();
+
+        if (modeUnsubscribeRef.current) {
+            modeUnsubscribeRef.current();
+            modeUnsubscribeRef.current = null;
+        }
+
+        try {
+            const modeDocRef = doc(db, 'Conversation_Mode', `${tenantId}_global`);
+            const unsubscribe = onSnapshot(
+                modeDocRef,
+                (snapshot) => {
+                    if (!snapshot.exists()) return;
+                    const data = snapshot.data() || {};
+                    const modeValue = String(
+                        data.mode ||
+                        data.defaultMode ||
+                        data.policyMode ||
+                        'CONFIRM'
+                    ).toUpperCase();
+                    setGlobalMode(modeValue);
+                },
+                (error) => {
+                    console.error('[ConversationsPage] Conversation_Mode listener error:', error);
+                }
+            );
+
+            modeUnsubscribeRef.current = unsubscribe;
+        } catch (error) {
+            console.error('[ConversationsPage] Failed to setup Conversation_Mode listener:', error);
+        }
+
+        return () => {
+            if (modeUnsubscribeRef.current) {
+                modeUnsubscribeRef.current();
+                modeUnsubscribeRef.current = null;
+            }
+        };
+    }, [tenantId, fetchGlobalMode]);
+
+    // ✅ stats_conversations 실시간 감지 (카드 집계 자동 반영)
+    useEffect(() => {
+        if (!tenantId) return;
+
+        // 기존 리스너 정리
+        if (statsListenersRef.current.length) {
+            statsListenersRef.current.forEach((unsub) => {
+                try {
+                    unsub?.();
+                } catch (e) {
+                    console.warn('[ConversationsPage] Failed to cleanup stats listener:', e);
+                }
+            });
+            statsListenersRef.current = [];
+        }
+
+        const queryFields = ['tenant_id', 'tenantId'];
+        statsInitialPendingRef.current = 0;
+
+        const attachListener = (field) => {
+            try {
+                const q = query(collection(db, 'stats_conversations'), where(field, '==', tenantId));
+                return onSnapshot(
+                    q,
+                    () => {
+                        if (statsInitialPendingRef.current > 0) {
+                            statsInitialPendingRef.current = Math.max(0, statsInitialPendingRef.current - 1);
+                            return;
+                        }
+                        triggerSilentRefresh();
+                    },
+                    (error) => {
+                        console.error(`[ConversationsPage] stats_conversations listener error (${field}):`, error);
+                    }
+                );
+            } catch (error) {
+                console.error(`[ConversationsPage] Failed to setup stats listener (${field}):`, error);
+                // 쿼리 생성 실패 (예: 해당 필드가 없거나 인덱스 없음)
+                return null;
+            }
+        };
+
+        const unsubscribers = [];
+        queryFields.forEach((field) => {
+            const unsub = attachListener(field);
+            if (unsub) {
+                unsubscribers.push(unsub);
+                statsInitialPendingRef.current += 1;
+            }
+        });
+
+        statsListenersRef.current = unsubscribers;
+
+        return () => {
+            unsubscribers.forEach((unsub) => {
+                try {
+                    unsub?.();
+                } catch (e) {
+                    console.warn('[ConversationsPage] Failed to cleanup stats listener:', e);
+                }
+            });
+            statsListenersRef.current = [];
+            statsInitialPendingRef.current = 0;
+        };
+    }, [tenantId, triggerSilentRefresh]);
 
     // ✅ 상단에서 한눈에 보는 간단 통계
     const conversationStats = useMemo(() => {
@@ -125,7 +582,7 @@ export default function ConversationsPage({ tenantId }) {
             const last = c.lastMessageAt ? new Date(c.lastMessageAt) : null;
             if (last && last >= todayStart) today += 1;
 
-            if (c.status === 'waiting' || !c.lastAgentMessage) {
+            if (!isCompletedStatus(c.status)) {
                 unanswered += 1;
             }
             if (c.hasAIResponse) ai += 1;
@@ -151,9 +608,7 @@ export default function ConversationsPage({ tenantId }) {
                 return convs.filter((c) => new Date(c.lastMessageAt) >= today);
 
             case 'unanswered':
-                return convs.filter(
-                    (c) => c.status === 'waiting' || !c.lastAgentMessage
-                );
+                return convs.filter((c) => !isCompletedStatus(c.status));
 
             case 'ai':
                 return convs.filter((c) => c.hasAIResponse);
