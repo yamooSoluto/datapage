@@ -1,7 +1,7 @@
 // pages/api/library/get.js
 // 라이브러리 데이터 불러오기 (서브컬렉션)
 
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {

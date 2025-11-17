@@ -1,6 +1,6 @@
 // pages/api/templates.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 
 // 기본 템플릿 정의
 const DEFAULT_TEMPLATES = {

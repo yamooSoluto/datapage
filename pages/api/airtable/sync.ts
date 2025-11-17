@@ -1,7 +1,7 @@
 // pages/api/airtable/sync.ts
 // Airtable 동기화 통합 API (데이터 준비 + n8n 전송) - 개선 버전
 
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 
 // ✅ n8n 웹훅 URL: 환경변수 우선, 없으면 실제 경로로 전송
 const N8N_WEBHOOK_URL =

@@ -1,7 +1,7 @@
 // pages/api/settings/save.js
 // 설정 데이터 저장
 
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {

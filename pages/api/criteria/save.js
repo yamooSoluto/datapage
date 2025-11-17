@@ -1,7 +1,7 @@
 // pages/api/criteria/save.js
 // criteria sheet 데이터 저장 (서브컬렉션)
 
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {

@@ -4,7 +4,7 @@
 // items + links 반환
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firebase-admin";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     const tenant = String(req.query.tenant || "").trim();

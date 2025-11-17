@@ -65,7 +65,7 @@ export default async function handler(req, res) {
     // ✅ 선택적: Firebase에 로그 저장 (실패해도 무시)
     if (process.env.ENABLE_FIREBASE_LOGGING === 'true') {
       try {
-        const { db } = require('@/lib/firebase');
+        const { db } = require('@/lib/firebase-admin');
         await db.collection('magic_link_logs').add({
           email,
           tenantId,

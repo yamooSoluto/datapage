@@ -1,6 +1,6 @@
 // 
 
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

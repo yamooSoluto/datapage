@@ -1,7 +1,7 @@
 // pages/api/library/get-type.js
 // 특정 타입만 조회 (최적화)
 
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase-admin';
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') {
