@@ -30,6 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 error: 'Invalid archiveStatus. Must be: keep, hold, important, or null'
             });
         }
+        const normalizedStatus = archiveStatus === 'keep' ? null : archiveStatus;
 
         // 1. FAQ_realtime_cw 업데이트
         const convRef = db.collection('FAQ_realtime_cw').doc(`${tenantId}_${chatId}`);
@@ -39,11 +40,65 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(404).json({ error: 'Conversation not found' });
         }
 
-        await convRef.update({
-            archive_status: archiveStatus,
-            archived_at: archiveStatus ? admin.firestore.FieldValue.serverTimestamp() : null,
+        const convData = convDoc.data() || {};
+        const currentStatus = convData.status || 'waiting';
+        const wasOnHold = currentStatus === 'hold';
+        const storedPrevStatus = convData.status_before_hold || null;
+        const currentImportant = typeof convData.important === 'boolean'
+            ? convData.important
+            : convData.archive_status === 'important';
+
+        const updates: Record<string, any> = {
             archive_note: note || null,
-        });
+        };
+
+        let nextStatus = currentStatus;
+        let nextImportant = currentImportant;
+        let nextArchiveStatus: 'hold' | 'important' | null = normalizedStatus;
+
+        if (normalizedStatus === 'hold') {
+            const prevStatusToStore = wasOnHold
+                ? (storedPrevStatus || 'waiting')
+                : currentStatus;
+
+            updates.archive_status = 'hold';
+            updates.archived_at = admin.firestore.FieldValue.serverTimestamp();
+            updates.status = 'hold';
+            updates.important = false;
+            updates.status_before_hold = prevStatusToStore;
+
+            nextStatus = 'hold';
+            nextImportant = false;
+            nextArchiveStatus = 'hold';
+        } else if (normalizedStatus === 'important') {
+            updates.archive_status = 'important';
+            updates.archived_at = admin.firestore.FieldValue.serverTimestamp();
+            updates.important = true;
+            nextImportant = true;
+            nextArchiveStatus = 'important';
+
+            if (wasOnHold) {
+                const restoredStatus = storedPrevStatus || 'waiting';
+                updates.status = restoredStatus;
+                updates.status_before_hold = admin.firestore.FieldValue.delete();
+                nextStatus = restoredStatus;
+            }
+        } else {
+            updates.archive_status = null;
+            updates.archived_at = null;
+            updates.important = false;
+            updates.status_before_hold = admin.firestore.FieldValue.delete();
+            nextArchiveStatus = null;
+            nextImportant = false;
+
+            if (wasOnHold) {
+                const restoredStatus = storedPrevStatus || 'waiting';
+                updates.status = restoredStatus;
+                nextStatus = restoredStatus;
+            }
+        }
+
+        await convRef.update(updates);
 
         // 2. 슬랙 카드 업데이트 (있으면)
         const threadDoc = await db.collection('slack_threads')
@@ -64,7 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                         body: JSON.stringify({
                             tenantId,
                             chatId,
-                            archiveStatus,
+                            archiveStatus: nextArchiveStatus,
                         }),
                     });
 
@@ -73,7 +128,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
                     return res.status(200).json({
                         ok: true,
-                        archiveStatus,
+                        archiveStatus: nextArchiveStatus,
+                        status: nextStatus,
+                        important: nextImportant,
                         slackUpdated: updateResult.ok,
                     });
                 } catch (error: any) {
@@ -85,7 +142,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         return res.status(200).json({
             ok: true,
-            archiveStatus,
+            archiveStatus: nextArchiveStatus,
+            status: nextStatus,
+            important: nextImportant,
             slackUpdated: false,
         });
     } catch (error: any) {

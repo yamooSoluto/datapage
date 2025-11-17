@@ -1,7 +1,7 @@
 // components/ConversationActions.jsx
 // 대화 상태 관리 액션 버튼 (보류/중요/완료만)
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Clock, Star, CheckCircle2, Loader2 } from 'lucide-react';
 
 export default function ConversationActions({
@@ -12,11 +12,31 @@ export default function ConversationActions({
     const [loading, setLoading] = useState(false);
     const [note, setNote] = useState('');
 
-    const currentStatus = conversation?.archive_status || null;
+    const isOnHold = useMemo(() => {
+        const status = (conversation?.status || conversation?.archive_status || '').toLowerCase();
+        return status === 'hold';
+    }, [conversation?.status, conversation?.archive_status]);
+
+    const isImportant = useMemo(() => {
+        if (typeof conversation?.important === 'boolean') {
+            return conversation.important;
+        }
+        return (conversation?.archive_status || '') === 'important';
+    }, [conversation?.important, conversation?.archive_status]);
 
     // 상태 변경 핸들러
-    const handleStatusChange = async (newStatus) => {
+    const handleArchiveToggle = async (target) => {
         if (loading) return;
+
+        const nextArchiveStatus = (() => {
+            if (target === 'hold') {
+                return isOnHold ? null : 'hold';
+            }
+            if (target === 'important') {
+                return isImportant ? null : 'important';
+            }
+            return null;
+        })();
 
         setLoading(true);
         try {
@@ -26,7 +46,7 @@ export default function ConversationActions({
                 body: JSON.stringify({
                     tenantId: tenantId,
                     chatId: conversation.chatId || conversation.id,
-                    archiveStatus: currentStatus === newStatus ? null : newStatus,
+                    archiveStatus: nextArchiveStatus,
                     note: note || null,
                 }),
             });
@@ -39,9 +59,7 @@ export default function ConversationActions({
             console.log('[Actions] Status changed:', result);
 
             // 부모 컴포넌트에 알림
-            if (onStatusChange) {
-                onStatusChange(result.archiveStatus);
-            }
+            onStatusChange?.(result.status || result.archiveStatus);
 
             // 상태 초기화
             setNote('');
@@ -93,17 +111,11 @@ export default function ConversationActions({
     };
 
     // 버튼 공통 스타일
-    const getButtonStyle = (status) => {
-        const isActive = currentStatus === status;
+    const getButtonStyle = (isActive) => {
         const baseStyle = "flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all";
 
         if (isActive) {
-            if (status === 'hold') {
-                return `${baseStyle} bg-yellow-500 text-white shadow-sm`;
-            }
-            if (status === 'important') {
-                return `${baseStyle} bg-red-500 text-white shadow-sm`;
-            }
+            return `${baseStyle} text-white shadow-sm`;
         }
 
         return `${baseStyle} bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95`;
@@ -115,11 +127,11 @@ export default function ConversationActions({
             <div className="flex items-center gap-2 flex-wrap">
                 {/* 보류 */}
                 <button
-                    onClick={() => handleStatusChange('hold')}
+                    onClick={() => handleArchiveToggle('hold')}
                     disabled={loading}
-                    className={getButtonStyle('hold')}
+                    className={`${getButtonStyle(isOnHold)} ${isOnHold ? 'bg-yellow-500' : ''}`}
                 >
-                    {loading && currentStatus === 'hold' ? (
+                    {loading && isOnHold ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                         <Clock className="w-4 h-4" />
@@ -129,14 +141,14 @@ export default function ConversationActions({
 
                 {/* 중요 */}
                 <button
-                    onClick={() => handleStatusChange('important')}
+                    onClick={() => handleArchiveToggle('important')}
                     disabled={loading}
-                    className={getButtonStyle('important')}
+                    className={`${getButtonStyle(isImportant)} ${isImportant ? 'bg-red-500' : ''}`}
                 >
-                    {loading && currentStatus === 'important' ? (
+                    {loading && isImportant ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                        <Star className={`w-4 h-4 ${currentStatus === 'important' ? 'fill-current' : ''}`} />
+                        <Star className={`w-4 h-4 ${isImportant ? 'fill-current' : ''}`} />
                     )}
                     <span>중요</span>
                 </button>
@@ -160,26 +172,20 @@ export default function ConversationActions({
             </div>
 
             {/* 현재 상태 표시 */}
-            {currentStatus && (
-                <div className="mt-3 flex items-center gap-2">
-                    <div className={`
-            inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
-            ${currentStatus === 'hold' ? 'bg-yellow-100 text-yellow-700' : ''}
-            ${currentStatus === 'important' ? 'bg-red-100 text-red-700' : ''}
-          `}>
-                        {currentStatus === 'hold' && (
-                            <>
-                                <Clock className="w-3 h-3" />
-                                <span>보류 중</span>
-                            </>
-                        )}
-                        {currentStatus === 'important' && (
-                            <>
-                                <Star className="w-3 h-3 fill-current" />
-                                <span>중요</span>
-                            </>
-                        )}
-                    </div>
+            {(isOnHold || isImportant) && (
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    {isOnHold && (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                            <Clock className="w-3 h-3" />
+                            <span>보류 중</span>
+                        </div>
+                    )}
+                    {isImportant && (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                            <Star className="w-3 h-3 fill-current" />
+                            <span>중요 표시</span>
+                        </div>
+                    )}
                     {conversation.archive_note && (
                         <span className="text-xs text-gray-500">
                             {conversation.archive_note}

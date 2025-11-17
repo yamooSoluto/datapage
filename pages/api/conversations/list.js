@@ -229,6 +229,12 @@ export default async function handler(req, res) {
                 brandName: v.brand_name || v.brandName || null,
                 channel: v.channel || "unknown",
                 status: v.status || "waiting",
+                important: Boolean(
+                    typeof v.important === 'boolean'
+                        ? v.important
+                        : v.archive_status === 'important'
+                ),
+                archiveStatus: v.archive_status || null,
                 modeSnapshot: v.modeSnapshot || "AUTO",
                 lastMessageAt: v.lastMessageAt?.toDate?.()?.toISOString() || null,
 

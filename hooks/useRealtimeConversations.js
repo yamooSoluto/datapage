@@ -152,6 +152,12 @@ export function useRealtimeConversations(tenantId, channel = 'all', pageSize = 3
                             brandName: data.brand_name || data.brandName || null,
                             channel: data.channel || 'unknown',
                             status: data.status || 'waiting',
+                            important: Boolean(
+                                typeof data.important === 'boolean'
+                                    ? data.important
+                                    : data.archive_status === 'important'
+                            ),
+                            archiveStatus: data.archive_status || null,
                             modeSnapshot: data.modeSnapshot || 'AUTO',
                             lastMessageAt: data.lastMessageAt?.toDate?.()?.toISOString() || null,
                             lastMessageText: data.summary || lastMsg?.text?.slice(0, 80) || (allPics.length > 0 ? `(이미지 ${allPics.length}개)` : ''),

@@ -1,18 +1,18 @@
 // components/ConversationFilters.jsx
-// 대화 목록 필터 (전체/보류/중요만)
+// 대화 목록 필터 (활성화/보류/중요/완료)
 
 import { useState } from 'react';
-import { Clock, Star, List } from 'lucide-react';
+import { MessageCircle, Clock, Star, CheckCircle } from 'lucide-react';
 
 export default function ConversationFilters({ onFilterChange, counts }) {
-    const [activeFilter, setActiveFilter] = useState('all');
+    const [activeFilter, setActiveFilter] = useState('active');
 
     const filters = [
         {
-            id: 'all',
-            label: '전체',
-            icon: List,
-            count: counts?.all || 0,
+            id: 'active',
+            label: '진행중',
+            icon: MessageCircle,
+            count: counts?.active || 0,
             color: 'blue'
         },
         {
@@ -29,6 +29,13 @@ export default function ConversationFilters({ onFilterChange, counts }) {
             count: counts?.important || 0,
             color: 'red'
         },
+        {
+            id: 'completed',
+            label: '완료',
+            icon: CheckCircle,
+            count: counts?.completed || 0,
+            color: 'green'
+        },
     ];
 
     const handleFilterClick = (filterId) => {
@@ -44,6 +51,7 @@ export default function ConversationFilters({ onFilterChange, counts }) {
                 blue: 'bg-blue-500 text-white shadow-sm',
                 yellow: 'bg-yellow-500 text-white shadow-sm',
                 red: 'bg-red-500 text-white shadow-sm',
+                green: 'bg-green-500 text-white shadow-sm',
             };
             return colors[filter.color] || colors.blue;
         }
@@ -59,6 +67,7 @@ export default function ConversationFilters({ onFilterChange, counts }) {
                 blue: 'bg-blue-600',
                 yellow: 'bg-yellow-600',
                 red: 'bg-red-600',
+                green: 'bg-green-600',
             };
             return `${colors[filter.color] || colors.blue} text-white`;
         }

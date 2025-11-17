@@ -162,6 +162,14 @@ export default async function handler(req, res) {
                 brandName: d.brandName || null,
                 channel,
                 status: d.status || "waiting",
+                important: Boolean(
+                    typeof d.important === 'boolean'
+                        ? d.important
+                        : d.archive_status === 'important'
+                ),
+                archiveStatus: d.archive_status || null,
+                archiveNote: d.archive_note || null,
+                archivedAt: safeIso(d.archived_at),
                 modeSnapshot: d.modeSnapshot || "AUTO",
                 draftStatus: d.draft_status || null,
                 aiDraft: d.ai_draft || null,
