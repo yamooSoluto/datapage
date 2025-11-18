@@ -38,8 +38,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         // 1. FAQ_realtime_cw 업데이트
-        const convRef = db.collection('FAQ_realtime_cw').doc(`${tenantId}_${chatId}`);
-        const convDoc = await convRef.get();
+        let convRef = db.collection('FAQ_realtime_cw').doc(`${tenantId}_${chatId}`);
+        let convDoc = await convRef.get();
+
+        // ✅ 문서가 없으면 tenant/chatId 조건으로 재검색 (이전 데이터 호환)
+        if (!convDoc.exists) {
+            const fallbackSnap = await db.collection('FAQ_realtime_cw')
+                .where('tenant_id', '==', tenantId)
+                .where('chat_id', '==', chatId)
+                .orderBy('lastMessageAt', 'desc')
+                .limit(1)
+                .get();
+
+            if (!fallbackSnap.empty) {
+                convDoc = fallbackSnap.docs[0];
+                convRef = convDoc.ref;
+            }
+        }
 
         if (!convDoc.exists) {
             return res.status(404).json({ error: 'Conversation not found' });
