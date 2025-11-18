@@ -69,43 +69,6 @@ function MyApp({ Component, pageProps }) {
     initAuth();
   }, []);
 
-  // ✅ 인증 초기화 중 로딩 (선택 사항 - 제거해도 됨)
-  if (!authReady) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%)',
-        }}
-      >
-        <div style={{ textAlign: 'center', color: 'white' }}>
-          <div
-            style={{
-              border: '4px solid rgba(255,255,255,0.3)',
-              borderTop: '4px solid white',
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              margin: '0 auto',
-              animation: 'spin 0.8s linear infinite',
-            }}
-          />
-          <p style={{ marginTop: '20px', fontSize: '16px', fontWeight: '600' }}>
-            초기화 중...
-          </p>
-        </div>
-        <style jsx>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
-  }
 
   return (
     <>
