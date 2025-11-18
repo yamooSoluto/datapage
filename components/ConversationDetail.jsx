@@ -1230,14 +1230,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 type="button"
                                 onClick={toggleSaved}
                                 disabled={savingStatus}
-                                className={`p-2 rounded-lg transition-all disabled:opacity-50 ${isSaved ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                                className={`p-2 transition-all active:scale-95 disabled:opacity-50 ${isSaved ? 'text-blue-500' : 'text-gray-400'
+                                    }`}
                                 title={isSaved ? "저장 취소" : "저장"}
                                 aria-pressed={isSaved}
                                 aria-label={isSaved ? "대화 저장 해제" : "대화 저장"}
                             >
                                 <Bookmark
-                                    className="w-5 h-5 transition-all"
-                                    fill={isSaved ? 'currentColor' : 'none'}
+                                    className={`w-5 h-5 transition-colors ${isSaved ? 'fill-current' : ''
+                                        }`}
                                 />
                             </button>
 
@@ -1633,14 +1634,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     type="button"
                                     onClick={toggleSaved}
                                     disabled={savingStatus}
-                                    className={`p-2 rounded-lg transition-all disabled:opacity-50 ${isSaved ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                                    className={`p-2 transition-all active:scale-95 disabled:opacity-50 ${isSaved ? 'text-blue-500' : 'text-gray-400'
+                                        }`}
                                     title={isSaved ? "저장 취소" : "저장"}
                                     aria-pressed={isSaved}
                                     aria-label={isSaved ? "대화 저장 해제" : "대화 저장"}
                                 >
                                     <Bookmark
-                                        className="w-5 h-5 transition-all"
-                                        fill={isSaved ? 'currentColor' : 'none'}
+                                        className={`w-5 h-5 transition-colors ${isSaved ? 'fill-current' : ''
+                                            }`}
                                     />
                                 </button>
 
