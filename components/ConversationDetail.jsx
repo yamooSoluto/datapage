@@ -23,6 +23,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
     const firestorePermissionDeniedRef = useRef(false); // ✅ Firestore 권한 오류 플래그
+    const currentChatKeyRef = useRef(null); // ✅ 현재 보고 있는 chatId/tenant 추적
 
     // 입력바 상태
     const [draft, setDraft] = useState('');
@@ -55,6 +56,43 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         conversation?.chat_id ||
         conversation?.id ||
         '';
+
+    // ✅ 대화가 바뀔 때마다 상태 초기화 및 초기 상세 로드 (API)
+    useEffect(() => {
+        if (!baseChatId || !effectiveTenantId) {
+            currentChatKeyRef.current = null;
+            setDetail(null);
+            setDraft('');
+            setAttachments([]);
+            setLoading(false);
+            return;
+        }
+
+        const chatKey = `${effectiveTenantId}:${baseChatId}`;
+        currentChatKeyRef.current = chatKey;
+
+        setDetail(null);
+        setDraft('');
+        setAttachments([]);
+        initialLoadedRef.current = false;
+        firestorePermissionDeniedRef.current = false;
+        setLoading(true);
+
+        fetchDetail({
+            skipLoading: true,
+            tenantOverride: effectiveTenantId,
+            chatIdOverride: baseChatId,
+            enforceChatKey: chatKey,
+        })
+            .catch((error) => {
+                console.error('[ConversationDetail] Initial fetchDetail failed:', error);
+            })
+            .finally(() => {
+                if (currentChatKeyRef.current === chatKey) {
+                    setLoading(false);
+                }
+            });
+    }, [baseChatId, effectiveTenantId]);
 
     const resolvedChatId =
         (detail?.conversation?.chatId || detail?.conversation?.chat_id) ||
@@ -113,18 +151,24 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     };
 
     // ✅ 상태 변경 핸들러
-    const handleStatusChange = (newStatus) => {
-        if (!newStatus) return;
+    const handleStatusChange = (nextStatus) => {
+        if (!nextStatus) return;
 
-        console.log('[ConversationDetail] Status changed:', newStatus);
-        applyLocalArchiveStatus(newStatus);
-        onStatusChange?.(newStatus, {
-            chatId: resolvedChatId,
+        const targetChatId = baseChatId;
+
+        console.log('[ConversationDetail] Status changed:', nextStatus, {
             tenantId: effectiveTenantId,
+            chatId: targetChatId,
         });
 
-        if (newStatus === 'completed') {
-            // 완료 시 모달 닫기
+        applyLocalArchiveStatus(nextStatus);
+
+        onStatusChange?.(nextStatus, {
+            tenantId: effectiveTenantId,
+            chatId: targetChatId,
+        });
+
+        if (nextStatus === 'completed') {
             onClose?.();
         }
     };
@@ -149,7 +193,18 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const toggleSaved = async () => {
         if (savingStatus) return;
 
-        const newStatus = isSaved ? null : 'saved';
+        const targetChatId = baseChatId;
+        const newStatus = !isSaved;
+
+        if (!effectiveTenantId || !targetChatId) {
+            console.error('[ConversationDetail] Missing tenant or chatId for save toggle', {
+                tenantId: effectiveTenantId,
+                chatId: targetChatId,
+            });
+            alert('대화 정보를 찾을 수 없어 저장 상태를 변경할 수 없습니다.');
+            return;
+        }
+
         setSavingStatus(true);
 
         try {
@@ -158,19 +213,19 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tenantId: effectiveTenantId,
-                    chatId: resolvedChatId,
-                    archiveStatus: newStatus,
+                    chatId: String(targetChatId),
+                    archiveStatus: newStatus ? 'saved' : null,
                 }),
             });
 
             if (!response.ok) throw new Error('저장 실패');
 
-            setIsSaved(!isSaved);
-            console.log('[ConversationDetail] Saved status:', newStatus);
+            setIsSaved(newStatus);
+            console.log('[ConversationDetail] Saved status updated:', newStatus);
             handleStatusChange(newStatus ? 'saved' : 'active');
         } catch (error) {
-            console.error('[ConversationDetail] Save error:', error);
-            alert('저장에 실패했습니다.');
+            console.error('[ConversationDetail] Save toggle error:', error);
+            alert('저장 상태 변경에 실패했습니다.');
         } finally {
             setSavingStatus(false);
         }
@@ -219,6 +274,17 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             }
         }
 
+        const targetChatId = baseChatId;
+
+        if (!effectiveTenantId || !targetChatId) {
+            console.error('[ConversationDetail] Missing tenant/chatId for complete', {
+                tenantId: effectiveTenantId,
+                chatId: targetChatId,
+            });
+            alert('대화 정보를 찾을 수 없어 완료 처리할 수 없습니다.');
+            return;
+        }
+
         setCompleting(true);
 
         try {
@@ -227,7 +293,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tenantId: effectiveTenantId,
-                    chatId: resolvedChatId,
+                    chatId: String(targetChatId),
                     archiveStatus: 'completed',
                 }),
             });
@@ -352,6 +418,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 }
 
                 const docSnap = snapshot.docs[0];
+                const activeChatKey = `${effectiveTenantId}:${baseChatId}`;
+                if (currentChatKeyRef.current && currentChatKeyRef.current !== activeChatKey) {
+                    return;
+                }
+
                 const data = docSnap.data();
 
                 const serverMessages = normalizeServerMessages(data.messages);
@@ -362,6 +433,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     ) || [];
 
                     const mergedMessages = mergeOptimisticMessages(serverMessages, optimisticMessages);
+                    const dedupedMessages = dedupeMessagesById(mergedMessages);
 
                     const isInitialLoad = !initialLoadedRef.current;
                     if (isInitialLoad) {
@@ -371,8 +443,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
                     console.log('[ConversationDetail] Firestore update received:', {
                         docId: docSnap.id,
-                        messagesCount: mergedMessages.length,
-                        lastMessage: mergedMessages[mergedMessages.length - 1]?.text?.substring(0, 50),
+                        messagesCount: dedupedMessages.length,
+                        lastMessage: dedupedMessages[dedupedMessages.length - 1]?.text?.substring(0, 50),
                         isInitialLoad,
                     });
 
@@ -396,7 +468,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             category: data.category || null,
                             categories: data.category ? data.category.split('|').map(c => c.trim()) : [],
                         },
-                        messages: mergedMessages,
+                        messages: dedupedMessages,
                     };
                 });
             },
@@ -503,13 +575,43 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         return [...serverMessages, ...remaining];
     };
 
-    const fetchDetail = async (options = {}) => {
-        const { skipLoading = false } = options;
+    const dedupeMessagesById = (messages) => {
+        if (!Array.isArray(messages)) return [];
+        const seen = new Set();
+        const result = [];
+        for (const msg of messages) {
+            const msgId = msg?.msgId;
+            if (msgId) {
+                if (seen.has(msgId)) continue;
+                seen.add(msgId);
+            }
+            result.push(msg);
+        }
+        return result;
+    };
 
-        if (!resolvedChatId) {
+    const fetchDetail = async (options = {}) => {
+        const {
+            skipLoading = false,
+            tenantOverride = effectiveTenantId,
+            chatIdOverride = resolvedChatId,
+            enforceChatKey,
+        } = options;
+
+        const targetTenantId = tenantOverride;
+        const targetChatId = chatIdOverride;
+
+        if (!targetChatId) {
             console.error('[ConversationDetail] Cannot fetch detail: chatId is missing');
             return;
         }
+
+        if (!targetTenantId) {
+            console.error('[ConversationDetail] Cannot fetch detail: tenantId is missing');
+            return;
+        }
+
+        const appliedChatKey = enforceChatKey || `${targetTenantId}:${targetChatId}`;
 
         if (!skipLoading) {
             setLoading(true);
@@ -517,7 +619,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
         try {
             const res = await fetch(
-                `/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${resolvedChatId}`
+                `/api/conversations/detail?tenant=${targetTenantId}&chatId=${targetChatId}`
             );
             if (!res.ok) {
                 throw new Error(`Failed to fetch: ${res.status}`);
@@ -526,24 +628,29 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             const data = await res.json();
 
             setDetail(prev => {
+                if (appliedChatKey && currentChatKeyRef.current !== appliedChatKey) {
+                    return prev;
+                }
+
                 const optimisticMessages = prev?.messages?.filter(m =>
                     m._status === 'pending' || m._status === 'sent'
                 ) || [];
 
                 const serverMessages = normalizeServerMessages(data.messages);
+                const merged = mergeOptimisticMessages(serverMessages, optimisticMessages);
 
                 return {
                     ...data,
-                    messages: mergeOptimisticMessages(serverMessages, optimisticMessages),
+                    messages: dedupeMessagesById(merged),
                 };
             });
         } catch (error) {
             console.error('[ConversationDetail] Failed to fetch detail:', error);
-            if (!skipLoading) {
+            if (!skipLoading && (!appliedChatKey || currentChatKeyRef.current === appliedChatKey)) {
                 setDetail(null);
             }
         } finally {
-            if (!skipLoading) {
+            if (!skipLoading && (!appliedChatKey || currentChatKeyRef.current === appliedChatKey)) {
                 setLoading(false);
             }
         }
