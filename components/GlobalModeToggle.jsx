@@ -1,30 +1,46 @@
 // components/GlobalModeToggle.jsx
-export function GlobalModeToggle({ mode, onToggle, disabled }) {
-    const isConfirm = mode === 'CONFIRM';
+// 전역 모드 토글 - 차분하고 미니멀한 디자인
+
+import { Sparkles } from 'lucide-react';
+
+export const GlobalModeToggle = ({ currentMode, onModeChange, isUpdating = false }) => {
+    const isAutoMode = currentMode === 'AUTO';
 
     return (
-        <div className="inline-flex items-center gap-2 md:gap-3 px-3 md:px-4 py-1.5 md:py-2 bg-gray-50 rounded-lg border border-gray-200 md:border-0 md:bg-transparent">
-            <div className="flex flex-col">
-                <span className="text-xs md:text-sm font-medium text-gray-900">
-                    {isConfirm ? '🟡 컨펌 모드' : '🟢 자동 모드'}
-                </span>
-                <span className="text-[10px] md:text-xs text-gray-600 md:text-gray-500">
-                    {isConfirm ? '답변 승인 후 전송' : 'AI가 즉시 전송'}
-                </span>
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+                <div className={`
+                    w-8 h-8 rounded-lg flex items-center justify-center
+                    ${isAutoMode ? 'bg-green-50' : 'bg-gray-100'}
+                `}>
+                    <Sparkles className={`w-4 h-4 ${isAutoMode ? 'text-green-600' : 'text-gray-400'}`} />
+                </div>
+                <div>
+                    <div className="text-sm font-medium text-gray-900">
+                        자동 응답 모드
+                    </div>
+                    <div className="text-xs text-gray-500">
+                        회원 문의에 AI가 바로 답변을 전송해요
+                    </div>
+                </div>
             </div>
 
             <button
-                type="button"
-                onClick={onToggle}
-                disabled={disabled}
-                className={`relative inline-flex h-5 w-9 md:h-6 md:w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${isConfirm ? 'bg-yellow-500' : 'bg-green-500'
-                    } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                onClick={() => onModeChange(isAutoMode ? 'CONFIRM' : 'AUTO')}
+                disabled={isUpdating}
+                className={`
+                    relative w-11 h-6 rounded-full transition-colors duration-200
+                    ${isAutoMode ? 'bg-green-500' : 'bg-gray-300'}
+                    ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                `}
             >
-                <span
-                    className={`inline-block h-3.5 w-3.5 md:h-4 md:w-4 transform rounded-full bg-white transition-transform shadow-sm ${isConfirm ? 'translate-x-5 md:translate-x-6' : 'translate-x-0.5 md:translate-x-1'
-                        }`}
+                <div
+                    className={`
+                        absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform duration-200
+                        ${isAutoMode ? 'translate-x-[22px]' : 'translate-x-0.5'}
+                    `}
                 />
             </button>
         </div>
     );
-}
+};
