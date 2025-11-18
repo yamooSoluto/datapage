@@ -801,57 +801,6 @@ export default function ConversationsPage({ tenantId }) {
         }
     };
 
-    const handleDetailStatusChange = useCallback((nextStatus, context = {}) => {
-        if (!nextStatus) return;
-
-        const archiveValue = nextStatus === 'active' ? null : nextStatus;
-        const targetChatId =
-            context?.chatId ||
-            selectedConv?.chatId ||
-            selectedConv?.chat_id ||
-            selectedConv?.id ||
-            null;
-
-        if (!targetChatId) {
-            console.warn('[ConversationsPage] handleDetailStatusChange: missing chatId context');
-            return;
-        }
-
-        setConversations((prev) => {
-            if (!Array.isArray(prev) || prev.length === 0) return prev;
-            return prev.map((conv) => {
-                const convChatId = conv?.chatId || conv?.chat_id || conv?.id;
-                if (convChatId !== targetChatId) return conv;
-                const updated = {
-                    ...conv,
-                    archive_status: archiveValue,
-                    archiveStatus: archiveValue,
-                    currentArchiveStatus: nextStatus,
-                };
-                if (nextStatus === 'completed') {
-                    updated.status = 'completed';
-                }
-                return updated;
-            });
-        });
-
-        setSelectedConv((prev) => {
-            if (!prev) return prev;
-            const prevChatId = prev?.chatId || prev?.chat_id || prev?.id;
-            if (prevChatId !== targetChatId) return prev;
-            const updated = {
-                ...prev,
-                archive_status: archiveValue,
-                archiveStatus: archiveValue,
-                currentArchiveStatus: nextStatus,
-            };
-            if (nextStatus === 'completed') {
-                updated.status = 'completed';
-            }
-            return updated;
-        });
-    }, [selectedConv]);
-
     const handleAISend = async (aiContent) => {
         if (!selectedConv) return;
         return handleSend({
@@ -987,17 +936,15 @@ export default function ConversationsPage({ tenantId }) {
                             </div>
 
                             {/* 모드 카드 */}
-                            <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 flex items-center justify-between gap-3">
+                            <div className="mb-3 rounded-2xl border border-gray-100 bg-gradient-to-r from-yellow-50/70 via-white to-blue-50/60 px-3 py-2.5 flex items-center justify-between gap-3">
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${globalMode === 'AUTO' ? 'bg-green-50' : 'bg-gray-100'
-                                            }`}>
-                                            <SparklesIcon className={`w-4 h-4 ${globalMode === 'AUTO' ? 'text-green-600' : 'text-gray-400'
-                                                }`} />
-                                        </div>
+                                    <div className="flex items-center gap-1.5 text-xs font-medium text-gray-900 md:text-gray-800">
+                                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-100">
+                                            <SparklesIcon className="w-3 h-3 text-yellow-600" />
+                                        </span>
                                         <span className="truncate">{modeTitle}</span>
                                     </div>
-                                    <p className="mt-1 text-xs text-gray-500 leading-snug pl-10">
+                                    <p className="mt-0.5 text-[11px] text-gray-700 md:text-gray-500 leading-snug">
                                         {modeSubtitle}
                                     </p>
                                 </div>
@@ -1019,67 +966,75 @@ export default function ConversationsPage({ tenantId }) {
                                 counts={archiveCounts}
                             />
 
-                            {/* 탭 (언더라인 스타일) */}
-                            <div className="flex items-center gap-1 mb-3 border-b border-gray-200">
-                                {[
-                                    { key: 'all', label: '전체' },
-                                    { key: 'today', label: '오늘' },
-                                    { key: 'unanswered', label: '미답변' },
-                                ].map(({ key, label }) => (
-                                    <button
-                                        key={key}
-                                        onClick={() => {
-                                            setQuickFilter(key);
-                                            setCurrentPage(1);
-                                        }}
-                                        className={`
-                                            relative px-3 py-2 text-sm font-medium transition-colors
-                                            ${quickFilter === key
-                                                ? 'text-gray-900'
-                                                : 'text-gray-500 hover:text-gray-700'
-                                            }
-                                        `}
-                                    >
-                                        {label}
-                                        {quickFilter === key && (
-                                            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* 검색 + 필터 */}
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className="flex-1 relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            {/* 검색 + 필터 카드 */}
+                            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                                {/* 검색 */}
+                                <div className="relative mb-2.5">
+                                    <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input
                                         type="text"
                                         placeholder="이름, 내용 검색..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         style={{ fontSize: '16px' }}
-                                        className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:border-gray-300 focus:ring-1 focus:ring-gray-200 transition-all"
+                                        className="w-full pl-8 pr-8 py-2 rounded-xl border border-gray-200 bg-white focus:outline-none focus:border-blue-500 text-[13px] text-gray-900 placeholder-gray-400"
                                     />
+                                    {searchQuery && (
+                                        <button
+                                            onClick={() => setSearchQuery('')}
+                                            className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
                                 </div>
-                                <button
-                                    onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                                    className={`
-                                        p-2 rounded-lg transition-colors border
-                                        ${showAdvancedFilters
-                                            ? 'bg-gray-100 border-gray-300 text-gray-700'
-                                            : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300'
-                                        }
-                                    `}
-                                    title="상세 필터"
-                                >
-                                    <Filter className="w-4 h-4" />
-                                </button>
-                            </div>
 
-                            {/* 고급 필터 */}
-                            {showAdvancedFilters && (
-                                <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                    <div className="space-y-2.5">
+                                {/* 빠른 필터 + 상세 필터 버튼 한 줄 정렬 */}
+                                <div className="flex items-center gap-2">
+                                    {/* 빠른 필터 */}
+                                    <div className="flex flex-1 flex-wrap gap-1.5">
+                                        {[
+                                            { key: 'all', label: '전체', icon: MessageSquare },
+                                            { key: 'today', label: '오늘', icon: Clock },
+                                            {
+                                                key: 'unanswered',
+                                                label: '미답변',
+                                                icon: AlertCircle,
+                                            },
+                                        ].map(({ key, label, icon: Icon }) => (
+                                            <button
+                                                key={key}
+                                                onClick={() => {
+                                                    setQuickFilter(key);
+                                                    setCurrentPage(1);
+                                                }}
+                                                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-medium transition-all ${quickFilter === key
+                                                    ? 'bg-blue-600 text-white shadow-sm'
+                                                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                                                    }`}
+                                            >
+                                                <Icon className="w-3.5 h-3.5" />
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* 상세 필터 토글 */}
+                                    <button
+                                        onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-medium whitespace-nowrap transition-all ${showAdvancedFilters
+                                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                            : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                    >
+                                        <Filter className="w-3.5 h-3.5" />
+                                        {showAdvancedFilters ? '필터 닫기' : '상세 필터'}
+                                    </button>
+                                </div>
+
+                                {/* 고급 필터 */}
+                                {showAdvancedFilters && (
+                                    <div className="mt-3 pt-2 border-t border-gray-200 space-y-2.5 md:space-y-2">
                                         <div className="grid grid-cols-2 gap-2 md:gap-2.5">
                                             <div>
                                                 <label className="block text-[10px] md:text-[11px] font-medium text-gray-600 md:text-gray-700 mb-1 md:mb-1.5">
@@ -1172,13 +1127,13 @@ export default function ConversationsPage({ tenantId }) {
 
                                         <button
                                             onClick={resetFilters}
-                                            className="w-full mt-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                                            className="w-full mt-1 px-3 py-1.5 md:py-2 bg-gray-100 md:bg-gray-200 text-gray-700 rounded-lg md:rounded-xl hover:bg-gray-200 md:hover:bg-gray-300 transition-colors text-xs md:text-sm font-medium"
                                         >
                                             필터 초기화
                                         </button>
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
 
                         {/* 리스트 영역 */}
@@ -1260,7 +1215,6 @@ export default function ConversationsPage({ tenantId }) {
                                 onSend={handleSend}
                                 onOpenAICorrector={() => setShowAIModal(true)}
                                 onPendingDraftCleared={handlePendingDraftCleared}
-                                onStatusChange={handleDetailStatusChange}
                                 isEmbedded={true}
                                 libraryData={libraryData}
                             />
@@ -1287,7 +1241,6 @@ export default function ConversationsPage({ tenantId }) {
                         onSend={handleSend}
                         onOpenAICorrector={() => setShowAIModal(true)}
                         onPendingDraftCleared={handlePendingDraftCleared}
-                        onStatusChange={handleDetailStatusChange}
                         isEmbedded={false}
                         libraryData={libraryData}
                     />
