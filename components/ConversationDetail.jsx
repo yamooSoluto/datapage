@@ -409,7 +409,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             collection(db, 'FAQ_realtime_cw'),
             where('tenant_id', '==', effectiveTenantId),
             where('chat_id', '==', String(baseChatId)),
-            limit(1) // ✅ orderBy 제거 - limit(1)만으로 충분
+            orderBy('lastMessageAt', 'desc'),  // ✅ 유지
+            limit(1)
         );
 
         console.log('[ConversationDetail] Setting up Firestore listener for chat:', effectiveTenantId, baseChatId);
