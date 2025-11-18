@@ -57,8 +57,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         conversation?.id ||
         '';
 
-    // ✅ 대화가 바뀔 때마다 상태 초기화
-    // Firestore 리스너가 자동으로 데이터를 가져오므로 별도 API 호출 불필요
+    // ✅ 대화가 바뀔 때마다 상태 초기화 및 초기 데이터 로드
     useEffect(() => {
         if (!baseChatId || !effectiveTenantId) {
             currentChatKeyRef.current = null;
@@ -72,13 +71,32 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         const chatKey = `${effectiveTenantId}:${baseChatId}`;
         currentChatKeyRef.current = chatKey;
 
-        // 상태 초기화만 수행 (Firestore 리스너가 데이터 로드)
+        // 상태 초기화
         setDetail(null);
         setDraft('');
         setAttachments([]);
         initialLoadedRef.current = false;
         firestorePermissionDeniedRef.current = false;
-        setLoading(true); // Firestore 리스너가 데이터 로드하면 false로 변경
+        setLoading(true);
+
+        // ✅ 개선: API로 초기 데이터 빠르게 로드 (Firestore보다 빠름)
+        fetchDetail({
+            skipLoading: false,
+            tenantOverride: effectiveTenantId,
+            chatIdOverride: baseChatId,
+            enforceChatKey: chatKey,
+        })
+            .then(() => {
+                console.log('[ConversationDetail] Initial data loaded via API');
+                initialLoadedRef.current = true;
+            })
+            .catch((error) => {
+                console.error('[ConversationDetail] Initial API fetch failed:', error);
+                // API 실패해도 Firestore 리스너가 데이터를 가져올 수 있음
+            })
+            .finally(() => {
+                setLoading(false);
+            });
     }, [baseChatId, effectiveTenantId]);
 
     const resolvedChatId =
@@ -391,24 +409,18 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             collection(db, 'FAQ_realtime_cw'),
             where('tenant_id', '==', effectiveTenantId),
             where('chat_id', '==', String(baseChatId)),
-            orderBy('lastMessageAt', 'desc'),
-            limit(1)
+            limit(1) // ✅ orderBy 제거 - limit(1)만으로 충분
         );
 
         console.log('[ConversationDetail] Setting up Firestore listener for chat:', effectiveTenantId, baseChatId);
 
-        setLoading(true);
-        initialLoadedRef.current = false;
-
         const unsubscribe = onSnapshot(
             q,
             (snapshot) => {
+                const snapshotTime = Date.now();
+
                 if (snapshot.empty) {
                     console.warn('[ConversationDetail] No docs for chat:', baseChatId);
-                    if (!initialLoadedRef.current) {
-                        setLoading(false);
-                        initialLoadedRef.current = true;
-                    }
                     setDetail(null);
                     return;
                 }
@@ -416,11 +428,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 const docSnap = snapshot.docs[0];
                 const activeChatKey = `${effectiveTenantId}:${baseChatId}`;
                 if (currentChatKeyRef.current && currentChatKeyRef.current !== activeChatKey) {
+                    console.log('[ConversationDetail] Ignoring snapshot for different chat');
                     return;
                 }
 
                 const data = docSnap.data();
-
                 const serverMessages = normalizeServerMessages(data.messages);
 
                 setDetail(prev => {
@@ -432,17 +444,19 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     const dedupedMessages = dedupeMessagesById(mergedMessages);
 
                     const isInitialLoad = !initialLoadedRef.current;
-                    if (isInitialLoad) {
-                        setLoading(false);
-                        initialLoadedRef.current = true;
-                    }
+                    const processingTime = Date.now() - snapshotTime;
 
-                    console.log('[ConversationDetail] Firestore update received:', {
+                    console.log('[ConversationDetail] Firestore update:', {
                         docId: docSnap.id,
                         messagesCount: dedupedMessages.length,
-                        lastMessage: dedupedMessages[dedupedMessages.length - 1]?.text?.substring(0, 50),
                         isInitialLoad,
+                        processingTime: `${processingTime}ms`,
+                        lastMessage: dedupedMessages[dedupedMessages.length - 1]?.text?.substring(0, 50),
                     });
+
+                    if (isInitialLoad) {
+                        initialLoadedRef.current = true;
+                    }
 
                     return {
                         conversation: {
@@ -463,7 +477,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             summary: typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null,
                             category: data.category || null,
                             categories: data.category ? data.category.split('|').map(c => c.trim()) : [],
-                            // ✅ archive_status 추가
                             archive_status: data.archive_status || null,
                             archived_at: data.archived_at?.toDate?.()?.toISOString() || data.archived_at || null,
                         },

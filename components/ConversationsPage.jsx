@@ -380,9 +380,11 @@ export default function ConversationsPage({ tenantId }) {
             const unsubscribe = onSnapshot(
                 q,
                 (snapshot) => {
+                    const snapshotTime = Date.now();
+
                     if (isInitialLoadRef.current) {
                         isInitialLoadRef.current = false;
-                        console.log('[ConversationsPage] Initial snapshot received:', snapshot.size);
+                        console.log('[ConversationsPage] Initial snapshot received:', snapshot.size, 'docs');
 
                         const initialConversations = [];
                         const chatIdMap = new Map();
@@ -401,6 +403,12 @@ export default function ConversationsPage({ tenantId }) {
                                 }
                                 initialConversations.push(conv);
                             }
+                        });
+
+                        const processingTime = Date.now() - snapshotTime;
+                        console.log('[ConversationsPage] Initial load completed:', {
+                            conversations: initialConversations.length,
+                            processingTime: `${processingTime}ms`
                         });
 
                         setConversations(initialConversations);
@@ -423,10 +431,13 @@ export default function ConversationsPage({ tenantId }) {
                         hasChanges = true;
                     });
 
-                    // ✅ 최적화: triggerSilentRefresh 제거
-                    // 실시간 업데이트가 즉시 반영되므로 추가 API 호출 불필요
                     if (hasChanges) {
-                        console.log('[ConversationsPage] Realtime changes applied:', snapshot.docChanges().length);
+                        const processingTime = Date.now() - snapshotTime;
+                        console.log('[ConversationsPage] Realtime update:', {
+                            changes: snapshot.docChanges().length,
+                            processingTime: `${processingTime}ms`,
+                            types: snapshot.docChanges().map(c => c.type)
+                        });
                     }
                 },
                 (error) => {
