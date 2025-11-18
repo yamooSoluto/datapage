@@ -637,10 +637,14 @@ export default function ConversationsPage({ tenantId }) {
         // 빠른 필터 적용
         result = applyQuickFilter(result);
 
-        // ✅ 상태 필터 (진행중/저장/완료)
+        // ✅ 상태 필터 (진행중/저장/완료) - currentArchiveStatus 우선 확인
         if (archiveFilter && archiveFilter !== 'all') {
             result = result.filter((c) => {
-                const status = normalizeArchiveStatus(c.archive_status);
+                // currentArchiveStatus가 있으면 그것을 우선 사용 (즉시 반영)
+                const status = normalizeArchiveStatus(
+                    c.currentArchiveStatus || c.archive_status
+                );
+
                 if (archiveFilter === 'active') {
                     return !status || status === 'active';
                 }
@@ -837,6 +841,40 @@ export default function ConversationsPage({ tenantId }) {
                 draftCreatedAt: null,
             };
         });
+    }, []);
+
+    // ✅ 상태 변경 핸들러 (저장/완료 처리)
+    const handleStatusChange = useCallback((newStatus, { chatId, tenantId: statusTenantId }) => {
+        if (!chatId) return;
+
+        console.log('[ConversationsPage] handleStatusChange:', { newStatus, chatId, tenantId: statusTenantId });
+
+        // 로컬 상태 즉시 업데이트
+        setConversations(prev => {
+            if (!Array.isArray(prev)) return prev;
+            return prev.map(conv => {
+                if (conv.chatId !== chatId) return conv;
+                return {
+                    ...conv,
+                    archive_status: newStatus === 'active' ? null : newStatus,
+                    currentArchiveStatus: newStatus, // ✅ 임시 상태 저장 (필터링용)
+                };
+            });
+        });
+
+        setSelectedConv(prev => {
+            if (!prev || prev.chatId !== chatId) return prev;
+            return {
+                ...prev,
+                archive_status: newStatus === 'active' ? null : newStatus,
+                currentArchiveStatus: newStatus,
+            };
+        });
+
+        // completed 상태일 경우 모달 닫기
+        if (newStatus === 'completed') {
+            setTimeout(() => setSelectedConv(null), 300);
+        }
     }, []);
 
     const handleModeToggle = async () => {
@@ -1215,6 +1253,7 @@ export default function ConversationsPage({ tenantId }) {
                                 onSend={handleSend}
                                 onOpenAICorrector={() => setShowAIModal(true)}
                                 onPendingDraftCleared={handlePendingDraftCleared}
+                                onStatusChange={handleStatusChange}
                                 isEmbedded={true}
                                 libraryData={libraryData}
                             />
@@ -1241,6 +1280,7 @@ export default function ConversationsPage({ tenantId }) {
                         onSend={handleSend}
                         onOpenAICorrector={() => setShowAIModal(true)}
                         onPendingDraftCleared={handlePendingDraftCleared}
+                        onStatusChange={handleStatusChange}
                         isEmbedded={false}
                         libraryData={libraryData}
                     />

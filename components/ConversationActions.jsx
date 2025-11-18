@@ -96,8 +96,8 @@ export default function ConversationActions({
             className={`
                 p-2 rounded-full transition-all active:scale-90 disabled:opacity-50
                 ${isSaved
-                    ? 'text-blue-500 hover:bg-blue-50'
-                    : 'text-gray-400 hover:bg-gray-100'
+                    ? 'text-blue-500'
+                    : 'text-gray-400 hover:text-gray-600'
                 }
             `}
             aria-label={isSaved ? '저장 취소' : '저장'}
