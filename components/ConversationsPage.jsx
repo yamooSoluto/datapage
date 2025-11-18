@@ -695,7 +695,7 @@ export default function ConversationsPage({ tenantId }) {
         );
     }, [conversations, filters, searchQuery, quickFilter, archiveFilter]);
 
-    // ✅ 상태별 카운트
+    // ✅ 상태별 카운트 - currentArchiveStatus 우선 확인
     const archiveCounts = useMemo(() => {
         const counts = {
             all: conversations.length,
@@ -705,7 +705,11 @@ export default function ConversationsPage({ tenantId }) {
         };
 
         conversations.forEach((conversation) => {
-            const status = normalizeArchiveStatus(conversation.archive_status);
+            // currentArchiveStatus가 있으면 우선 사용
+            const status = normalizeArchiveStatus(
+                conversation.currentArchiveStatus || conversation.archive_status
+            );
+
             if (!status || status === 'active') {
                 counts.active += 1;
             } else if (status === 'saved' || status === 'hold' || status === 'important') {
@@ -845,25 +849,68 @@ export default function ConversationsPage({ tenantId }) {
 
     // ✅ 상태 변경 핸들러 (저장/완료 처리)
     const handleStatusChange = useCallback((newStatus, { chatId, tenantId: statusTenantId }) => {
-        if (!chatId) return;
+        if (!chatId) {
+            console.warn('[ConversationsPage] handleStatusChange called without chatId');
+            return;
+        }
 
-        console.log('[ConversationsPage] handleStatusChange:', { newStatus, chatId, tenantId: statusTenantId });
+        console.log('[ConversationsPage] handleStatusChange:', {
+            newStatus,
+            chatId,
+            tenantId: statusTenantId
+        });
 
         // 로컬 상태 즉시 업데이트
         setConversations(prev => {
             if (!Array.isArray(prev)) return prev;
-            return prev.map(conv => {
-                if (conv.chatId !== chatId) return conv;
+
+            let foundMatch = false;
+            const updated = prev.map(conv => {
+                // chatId 매칭 (여러 필드 확인)
+                const convChatId = conv.chatId || conv.chat_id;
+                const isMatch = convChatId === chatId ||
+                    conv.id === chatId ||
+                    conv.id === `${statusTenantId}_${chatId}`;
+
+                if (!isMatch) return conv;
+
+                foundMatch = true;
+                console.log('[ConversationsPage] Updating conversation:', {
+                    convId: conv.id,
+                    convChatId,
+                    targetChatId: chatId,
+                    newStatus,
+                });
+
                 return {
                     ...conv,
                     archive_status: newStatus === 'active' ? null : newStatus,
                     currentArchiveStatus: newStatus, // ✅ 임시 상태 저장 (필터링용)
                 };
             });
+
+            if (!foundMatch) {
+                console.warn('[ConversationsPage] No conversation found for chatId:', chatId);
+                console.log('[ConversationsPage] Available conversations:', prev.map(c => ({
+                    id: c.id,
+                    chatId: c.chatId,
+                    chat_id: c.chat_id
+                })));
+            }
+
+            return updated;
         });
 
         setSelectedConv(prev => {
-            if (!prev || prev.chatId !== chatId) return prev;
+            if (!prev) return prev;
+
+            const prevChatId = prev.chatId || prev.chat_id;
+            const isMatch = prevChatId === chatId ||
+                prev.id === chatId ||
+                prev.id === `${statusTenantId}_${chatId}`;
+
+            if (!isMatch) return prev;
+
             return {
                 ...prev,
                 archive_status: newStatus === 'active' ? null : newStatus,

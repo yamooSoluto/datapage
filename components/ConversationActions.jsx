@@ -59,6 +59,14 @@ export default function ConversationActions({
             return;
         }
 
+        // ✅ 낙관적 업데이트: 즉시 UI 변경
+        const previousStatus = currentStatus;
+        setCurrentStatus(targetStatus);
+        onStatusChange?.(targetStatus, {
+            chatId,
+            tenantId: effectiveTenantId,
+        });
+
         setSaving(true);
         try {
             const response = await fetch('/api/conversations/archive', {
@@ -74,13 +82,14 @@ export default function ConversationActions({
             if (!response.ok) throw new Error('상태 변경 실패');
 
             await response.json();
-            setCurrentStatus(targetStatus);
-            onStatusChange?.(targetStatus, {
+        } catch (error) {
+            console.error('[ConversationActions] Save toggle error:', error);
+            // ✅ 실패 시 원래 상태로 복구
+            setCurrentStatus(previousStatus);
+            onStatusChange?.(previousStatus, {
                 chatId,
                 tenantId: effectiveTenantId,
             });
-        } catch (error) {
-            console.error('[ConversationActions] Save toggle error:', error);
             alert('저장 상태 변경에 실패했습니다.');
         } finally {
             setSaving(false);
@@ -93,17 +102,14 @@ export default function ConversationActions({
         <button
             onClick={handleSaveToggle}
             disabled={saving}
-            className={`
-                p-2 rounded-full transition-all active:scale-90 disabled:opacity-50
-                ${isSaved
-                    ? 'text-blue-500'
-                    : 'text-gray-400 hover:text-gray-600'
-                }
-            `}
+            className="p-2 transition-all active:scale-95 disabled:opacity-50"
             aria-label={isSaved ? '저장 취소' : '저장'}
         >
             <Bookmark
-                className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`}
+                className={`w-5 h-5 transition-colors ${isSaved
+                    ? 'text-blue-500 fill-current'
+                    : 'text-gray-400'
+                    }`}
             />
         </button>
     );

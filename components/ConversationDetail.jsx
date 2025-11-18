@@ -205,6 +205,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             return;
         }
 
+        // ✅ 낙관적 업데이트: 즉시 UI 변경
+        const previousStatus = isSaved;
+        setIsSaved(newStatus);
+        handleStatusChange(newStatus ? 'saved' : 'active');
+
         setSavingStatus(true);
 
         try {
@@ -220,11 +225,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
             if (!response.ok) throw new Error('저장 실패');
 
-            setIsSaved(newStatus);
             console.log('[ConversationDetail] Saved status updated:', newStatus);
-            handleStatusChange(newStatus ? 'saved' : 'active');
         } catch (error) {
             console.error('[ConversationDetail] Save toggle error:', error);
+            // ✅ 실패 시 원래 상태로 복구
+            setIsSaved(previousStatus);
+            handleStatusChange(previousStatus ? 'saved' : 'active');
             alert('저장 상태 변경에 실패했습니다.');
         } finally {
             setSavingStatus(false);
@@ -285,6 +291,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             return;
         }
 
+        // ✅ 낙관적 업데이트: 즉시 상태 변경
+        handleStatusChange('completed');
         setCompleting(true);
 
         try {
@@ -301,9 +309,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             if (!response.ok) throw new Error('완료 처리 실패');
 
             console.log('[ConversationDetail] Completed conversation');
-            handleStatusChange('completed');
         } catch (error) {
             console.error('[ConversationDetail] Complete error:', error);
+            // ✅ 실패 시 원래 상태로 복구
+            handleStatusChange('active');
             alert('완료 처리에 실패했습니다.');
         } finally {
             setCompleting(false);
