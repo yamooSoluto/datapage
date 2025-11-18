@@ -20,7 +20,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [composerMode, setComposerMode] = useState('ai'); // 'ai' | 'confirm-edit'
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
-    const touchStartYRef = useRef(0); // 터치 시작 Y 위치
     const firestorePermissionDeniedRef = useRef(false); // ✅ Firestore 권한 오류 플래그
 
     // 입력바 상태
@@ -153,7 +152,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         } finally {
             setCompleting(false);
         }
-    }, [chatId, completing, effectiveTenantId, handleStatusChange, onClose]);
+    }, [chatId, completing, effectiveTenantId, onClose]);
 
     // 초기 로딩은 onSnapshot useEffect에서 처리
 
@@ -866,8 +865,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
         const handleTouchStart = (e) => {
             if (e.touches.length !== 1) return;
-            const target = e.target;
-            if (target.closest('[data-no-swipe]')) return;
 
             touchStartXRef.current = e.touches[0].clientX;
             touchStartTimeRef.current = Date.now();
@@ -1116,32 +1113,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     {/* 메시지 영역 */}
                     <div
                         ref={messagesContainerRef}
-                        data-no-swipe="true"
                         className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50"
                         style={{
                             WebkitOverflowScrolling: 'touch',
                             touchAction: 'pan-y',
                             overscrollBehavior: 'contain',
                             minHeight: 0, // flex-1이 제대로 작동하도록
-                        }}
-                        onTouchStart={(e) => {
-                            // 터치 시작 위치 저장
-                            touchStartYRef.current = e.touches[0].clientY;
-                            const target = e.currentTarget;
-                            const isScrollable = target.scrollHeight > target.clientHeight;
-                            // 스크롤 가능한 영역에서 터치가 시작되면 상위로 전파 방지
-                            if (isScrollable) {
-                                e.stopPropagation();
-                            }
-                        }}
-                        onTouchMove={(e) => {
-                            const target = e.currentTarget;
-                            const isScrollable = target.scrollHeight > target.clientHeight;
-
-                            // 스크롤 가능한 영역에서는 항상 전파 방지
-                            if (isScrollable) {
-                                e.stopPropagation();
-                            }
                         }}
                     >
                         {loading || !detail ? (
@@ -1186,12 +1163,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     {/* 입력 영역 - 키보드 위 고정 */}
                     <div
                         className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white relative"
-                        data-no-swipe="true"
                         style={{
                             // 모바일에서 키보드 위에 고정
                             position: 'sticky',
                             bottom: 0,
                             zIndex: 10,
+                            paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)',
                         }}
                     >
                         {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 (깜빡임 방지) */}
@@ -1405,7 +1382,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         }}
                     />
                     <div
-                        className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4"
+                        className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 pb-20 sm:p-4 sm:pb-4"
                         style={{
                             transform: `translateX(${swipeX}px)`,
                             transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
@@ -1414,6 +1391,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         <div
                             ref={modalRef}
                             className="w-full sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden h-[85vh] sm:h-[90vh] flex flex-col pointer-events-auto"
+                            style={{ touchAction: 'pan-y' }}
                         >
                             {/* 헤더 */}
                             <div className="flex-shrink-0 border-b border-gray-100 bg-white">
@@ -1432,9 +1410,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                                 conversation?.userName ||
                                                 '고객'}
                                         </h3>
-                                        <p className="text-xs text-gray-500">
-                                            {detail?.conversation?.channel || conversation?.channel || 'chatwoot'}
-                                        </p>
+                                        {detail?.conversation?.summary ? (
+                                            <p className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">
+                                                💡 {detail.conversation.summary}
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-gray-500">
+                                                {detail?.conversation?.channel || conversation?.channel || 'chatwoot'}
+                                            </p>
+                                        )}
                                     </div>
                                     <ConversationActions
                                         conversation={conversation}
@@ -1470,28 +1454,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             {/* 메시지 영역 */}
                             <div
                                 ref={messagesContainerRef}
-                                data-no-swipe="true"
                                 className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 bg-gray-50"
                                 style={{
                                     WebkitOverflowScrolling: 'touch',
                                     touchAction: 'pan-y',
                                     overscrollBehavior: 'contain',
                                     minHeight: 0,
-                                }}
-                                onTouchStart={(e) => {
-                                    touchStartYRef.current = e.touches[0].clientY;
-                                    const target = e.currentTarget;
-                                    const isScrollable = target.scrollHeight > target.clientHeight;
-                                    if (isScrollable) {
-                                        e.stopPropagation();
-                                    }
-                                }}
-                                onTouchMove={(e) => {
-                                    const target = e.currentTarget;
-                                    const isScrollable = target.scrollHeight > target.clientHeight;
-                                    if (isScrollable) {
-                                        e.stopPropagation();
-                                    }
                                 }}
                             >
                                 {loading || !detail ? (
@@ -1536,11 +1504,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             {/* 입력 영역 */}
                             <div
                                 className="flex-shrink-0 border-t border-gray-100 bg-white p-4 sm:p-6"
-                                data-no-swipe="true"
                                 style={{
                                     position: 'sticky',
                                     bottom: 0,
                                     zIndex: 10,
+                                    paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)',
                                 }}
                             >
                                 {showLibraryDropdown && libraryData && macroTriggerPosition && (
