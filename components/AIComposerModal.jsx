@@ -227,41 +227,34 @@ export default function AIComposerModal({
         setStep('edit');
     };
 
-    // ✅ processing 단계일 때는 우하단 플로팅 인디케이터만 표시
+    // ✅ processing 단계일 때만 투명 배경에 캐릭터만 중앙에 표시
     if (step === 'processing') {
         return (
-            <div className="fixed bottom-6 right-6 z-[200] animate-in">
-                <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 min-w-[280px] p-4 flex items-center gap-3">
-                    {/* 야무 캐릭터 애니메이션 */}
-                    <div className="relative flex-shrink-0" style={{ animation: 'floatBounce 2s ease-in-out infinite' }}>
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-500 flex items-center justify-center shadow-lg overflow-hidden">
-                            <img
-                                src={yamuCharacter}
-                                alt="야무 보정 중"
-                                className="w-14 h-14 object-contain"
-                            />
+            <div className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none">
+                <div className="flex flex-col items-center gap-3 pointer-events-none">
+                    <div className="relative">
+                        {/* 야무 캐릭터 */}
+                        <img
+                            src={yamuCharacter}
+                            alt="YAMOO"
+                            className="w-24 h-24 animate-floatBounce drop-shadow-2xl"
+                        />
+                        {/* 반짝이 효과들 */}
+                        <div className="absolute -top-1 -right-1 animate-pulse">
+                            <Sparkles className="w-5 h-5 text-yellow-400 drop-shadow-lg" />
                         </div>
-                        {/* 파란 점 애니메이션 */}
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-ping" />
-                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full" />
+                        <div className="absolute top-2 -left-2 animate-pulse delay-300">
+                            <Sparkles className="w-4 h-4 text-purple-400 drop-shadow-lg" />
+                        </div>
+                        <div className="absolute -bottom-1 right-1 animate-pulse delay-500">
+                            <Sparkles className="w-3 h-3 text-blue-400 drop-shadow-lg" />
+                        </div>
                     </div>
-
-                    {/* 텍스트 영역 */}
-                    <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">🪄 야무가 보정 중</p>
-                        <p className="text-xs text-gray-600 mt-0.5">답변을 다듬고 있어요...</p>
+                    <div className="text-center">
+                        <h3 className="text-lg font-bold text-gray-900 drop-shadow-md">
+                            야무지게 보정 중
+                        </h3>
                     </div>
-
-                    {/* 닫기 버튼 */}
-                    <button
-                        onClick={() => {
-                            setProcessing(false);
-                            setStep('compose');
-                        }}
-                        className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
-                    >
-                        <X className="w-3.5 h-3.5 text-gray-600" />
-                    </button>
                 </div>
             </div>
         );
@@ -836,12 +829,20 @@ export default function AIComposerModal({
                         transform: translateY(0px);
                     }
                     50% {
-                        transform: translateY(-10px);
+                        transform: translateY(-15px);
                     }
                 }
                 
                 .animate-in {
                     animation: slide-in-from-top 0.2s ease-out;
+                }
+                
+                .delay-300 {
+                    animation-delay: 0.3s;
+                }
+                
+                .delay-500 {
+                    animation-delay: 0.5s;
                 }
             `}</style>
             <style jsx>{`

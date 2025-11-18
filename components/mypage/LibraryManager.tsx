@@ -378,10 +378,10 @@ export default function LibraryManager({ initialData, onSave }: LibraryManagerPr
                                 <Icon className="w-8 h-8 text-gray-400" />
                             </div>
                             <p className="text-lg font-semibold text-gray-900 mb-2">
-                                {config.label}이 없습니다
+                                {config.label} 없음
                             </p>
                             <p className="text-sm text-gray-500 mb-6">
-                                첫 번째 {config.label}을 추가해보세요
+                                회원에게 안내 될 {config.label} 추가하기
                             </p>
                             <button
                                 onClick={handleAdd}

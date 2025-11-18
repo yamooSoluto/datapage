@@ -2,13 +2,13 @@
 // 애플 스타일 대화 상세 모달 - 클라이언트 중심 최적화 (tenantId 우선 사용)
 // ✨ 라이브러리 매크로 기능 추가: # 입력 시 라이브러리 항목 선택 가능
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles } from 'lucide-react';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase-client';
 import AIComposerModal from './AIComposerModal';
 import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 추가
-import ConversationActions from './ConversationActions'; // ✅ 상태 관리 버튼
+import ConversationActions from './ConversationActions';
 
 export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, onPendingDraftCleared, tenantId, planName = 'trial', isEmbedded = false, libraryData }) {
     const [detail, setDetail] = useState(null);
@@ -86,14 +86,74 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [pendingDraftDismissed, setPendingDraftDismissed] = useState(false);
 
     // ✅ 상태 변경 핸들러
-    const handleStatusChange = (newStatus) => {
+    const handleStatusChange = useCallback((newStatus) => {
         console.log('[ConversationDetail] Status changed:', newStatus);
 
         if (newStatus === 'completed') {
-            // 완료 시 모달 닫기
             onClose?.();
         }
-    };
+    }, [onClose]);
+
+    // ✅ 스와이프 완료 상태
+    const [swipeX, setSwipeX] = useState(0);
+    const [isSwiping, setIsSwiping] = useState(false);
+    const [completing, setCompleting] = useState(false);
+    const touchStartXRef = useRef(0);
+    const touchStartTimeRef = useRef(0);
+    const swipeDistanceRef = useRef(0);
+    const swipingStateRef = useRef(false);
+    const modalRef = useRef(null);
+
+    // ✅ 완료 처리 핸들러 (스와이프 + 데스크톱 버튼)
+    const handleCompleteConversation = useCallback(async () => {
+        if (completing) return;
+
+        const confirmed = window.confirm(
+            '이 대화를 완료 처리하시겠습니까?\n완료된 대화는 "완료" 탭에서 확인할 수 있습니다.'
+        );
+
+        if (!confirmed) {
+            setSwipeX(0);
+            swipeDistanceRef.current = 0;
+            return;
+        }
+
+        if (!effectiveTenantId || !chatId) {
+            console.error('[ConversationDetail] Missing tenantId or chatId for completion');
+            alert('필수 정보가 없어 완료할 수 없습니다.');
+            return;
+        }
+
+        setCompleting(true);
+        try {
+            const response = await fetch('/api/conversations/archive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tenantId: effectiveTenantId,
+                    chatId,
+                    archiveStatus: 'completed',
+                }),
+            });
+
+            if (!response.ok) throw new Error('완료 처리 실패');
+            await response.json();
+            console.log('[ConversationDetail] Conversation completed via detail modal');
+
+            setSwipeX(window.innerWidth);
+            swipeDistanceRef.current = window.innerWidth;
+            setTimeout(() => {
+                onClose?.();
+            }, 200);
+        } catch (error) {
+            console.error('[ConversationDetail] Complete error:', error);
+            alert('완료 처리에 실패했습니다.');
+            setSwipeX(0);
+            swipeDistanceRef.current = 0;
+        } finally {
+            setCompleting(false);
+        }
+    }, [chatId, completing, effectiveTenantId, handleStatusChange, onClose]);
 
     // 초기 로딩은 onSnapshot useEffect에서 처리
 
@@ -757,6 +817,15 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const showPendingDraftCard = hasPendingDraft && !pendingDraftDismissed && !hasExternalAnswer;
     const confirmThreadTs = conversationData?.confirmThreadTs || null;
     const confirmThreadChannel = conversationData?.confirmThreadChannel || null;
+    const archiveStatusForCompletion =
+        (conversationData?.archiveStatus ||
+            conversationData?.archive_status ||
+            conversationData?.status ||
+            conversation?.archiveStatus ||
+            conversation?.archive_status ||
+            conversation?.status ||
+            '').toLowerCase();
+    const isConversationCompleted = archiveStatusForCompletion === 'completed';
 
     // ✅ 승인 대기 상태가 Firestore에서 해제되면 자동으로 UI 업데이트
     useEffect(() => {
@@ -784,6 +853,74 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             setPendingDraftDismissed(true);
         }
     }, [hasPendingDraft, hasExternalAnswer]);
+
+    // ✅ 모달 우측 스와이프 제스처 (모바일)
+    useEffect(() => {
+        if (isEmbedded || isConversationCompleted) return;
+        if (!modalRef.current) return;
+
+        const modal = modalRef.current;
+        const threshold = 100;
+        const velocityThreshold = 0.3;
+        let vibrated = false;
+
+        const handleTouchStart = (e) => {
+            if (e.touches.length !== 1) return;
+            const target = e.target;
+            if (target.closest('[data-no-swipe]')) return;
+
+            touchStartXRef.current = e.touches[0].clientX;
+            touchStartTimeRef.current = Date.now();
+            swipeDistanceRef.current = 0;
+            setIsSwiping(true);
+            swipingStateRef.current = true;
+            vibrated = false;
+        };
+
+        const handleTouchMove = (e) => {
+            if (!swipingStateRef.current) return;
+            const currentX = e.touches[0].clientX;
+            const diffX = Math.max(0, currentX - touchStartXRef.current);
+
+            setSwipeX(diffX);
+            swipeDistanceRef.current = diffX;
+
+            if (diffX > threshold && !vibrated) {
+                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+                vibrated = true;
+            }
+        };
+
+        const handleTouchEnd = () => {
+            if (!swipingStateRef.current) return;
+
+            const diffX = swipeDistanceRef.current;
+            const duration = Math.max(Date.now() - touchStartTimeRef.current, 1);
+            const velocity = diffX / duration;
+
+            setIsSwiping(false);
+            swipingStateRef.current = false;
+
+            if (diffX > threshold || velocity > velocityThreshold) {
+                handleCompleteConversation();
+            } else {
+                setSwipeX(0);
+                swipeDistanceRef.current = 0;
+            }
+        };
+
+        modal.addEventListener('touchstart', handleTouchStart, { passive: true });
+        modal.addEventListener('touchmove', handleTouchMove, { passive: true });
+        modal.addEventListener('touchend', handleTouchEnd);
+
+        return () => {
+            modal.removeEventListener('touchstart', handleTouchStart);
+            modal.removeEventListener('touchmove', handleTouchMove);
+            modal.removeEventListener('touchend', handleTouchEnd);
+        };
+    }, [handleCompleteConversation, isConversationCompleted, isEmbedded]);
 
     // ✅ 포탈에서 메시지 전송하는 공통 함수
     const sendFinalViaPortal = async (text, options = {}) => {
@@ -958,6 +1095,11 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         </div>
 
                         <div className="flex items-center gap-2">
+                            <ConversationActions
+                                conversation={conversation}
+                                tenantId={effectiveTenantId}
+                                onStatusChange={handleStatusChange}
+                            />
                             {/* AI 보정 버튼 */}
                             {(planName === 'pro' || planName === 'business') && (
                                 <button
@@ -974,6 +1116,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     {/* 메시지 영역 */}
                     <div
                         ref={messagesContainerRef}
+                        data-no-swipe="true"
                         className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50"
                         style={{
                             WebkitOverflowScrolling: 'touch',
@@ -1043,6 +1186,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     {/* 입력 영역 - 키보드 위 고정 */}
                     <div
                         className="flex-shrink-0 px-4 py-4 border-t border-gray-200 bg-white relative"
+                        data-no-swipe="true"
                         style={{
                             // 모바일에서 키보드 위에 고정
                             position: 'sticky',
@@ -1253,364 +1397,324 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     `}</style>
                 </div>
             ) : (
-                /* 모달 모드: 기존 코드 유지 */
-                <div
-                    className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4 pt-16 pb-[calc(env(safe-area-inset-bottom)+5rem)] md:pt-16 md:pb-20"
-                    onClick={(e) => e.target === e.currentTarget && onClose()}
-                >
-                    <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[75vh] flex flex-col border border-gray-200">
-                        {/* 헤더 */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-                            <div className="flex items-center gap-3">{/* ✅ 리스트와 동일한 아바타 스타일 적용 */}
-                                {(() => {
-                                    const getAvatarStyle = () => {
-                                        if (!conversation.hasSlackCard && !conversation.taskType) {
-                                            return {
-                                                bg: 'bg-gradient-to-br from-blue-500 to-blue-600',
-                                                text: 'text-white'
-                                            };
-                                        }
-                                        if (conversation.taskType === 'shadow') {
-                                            return {
-                                                bg: 'bg-gradient-to-br from-gray-300 to-gray-400',
-                                                text: 'text-gray-600'
-                                            };
-                                        }
-                                        if (conversation.taskType === 'work') {
-                                            return {
-                                                bg: 'bg-gradient-to-br from-yellow-400 to-orange-500',
-                                                text: 'text-white'
-                                            };
-                                        }
-                                        if (conversation.taskType === 'confirm') {
-                                            return {
-                                                bg: 'bg-gradient-to-br from-purple-400 to-purple-500',
-                                                text: 'text-white'
-                                            };
-                                        }
-                                        if (conversation.taskType === 'agent') {
-                                            return {
-                                                bg: 'bg-gradient-to-br from-red-400 to-red-500',
-                                                text: 'text-white'
-                                            };
-                                        }
-                                        return {
-                                            bg: 'bg-gradient-to-br from-indigo-400 to-indigo-500',
-                                            text: 'text-white'
-                                        };
-                                    };
-
-                                    const avatarStyle = getAvatarStyle();
-                                    return (
-                                        <div className={`w-10 h-10 rounded-full ${avatarStyle.bg} flex items-center justify-center`}>
-                                            <span className={`${avatarStyle.text} text-sm font-semibold`}>
-                                                {conversation.userNameInitial || conversation.userName?.charAt(0) || '?'}
-                                            </span>
-                                        </div>
-                                    );
-                                })()}
-                                <div>
-                                    <h2 className="text-lg font-semibold text-gray-900">{conversation.userName || '익명'}</h2>
-                                    {/* 요약을 여기로 이동 */}
-                                    {detail?.conversation?.summary ? (
-                                        <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">
-                                            💡 {detail.conversation.summary}
-                                        </p>
-                                    ) : (
-                                        <p className="text-xs text-gray-500">
-                                            {conversation.channel || 'unknown'}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                                {/* AI 보정 버튼 */}
-                                {(planName === 'pro' || planName === 'business') && (
+                <>
+                    <div
+                        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+                        onClick={(e) => {
+                            if (e.target === e.currentTarget) onClose?.();
+                        }}
+                    />
+                    <div
+                        className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4"
+                        style={{
+                            transform: `translateX(${swipeX}px)`,
+                            transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
+                        }}
+                    >
+                        <div
+                            ref={modalRef}
+                            className="w-full sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden h-[85vh] sm:h-[90vh] flex flex-col pointer-events-auto"
+                        >
+                            {/* 헤더 */}
+                            <div className="flex-shrink-0 border-b border-gray-100 bg-white">
+                                <div className="flex items-center justify-between px-4 h-14">
                                     <button
-                                        onClick={() => openAIComposer(draft)}
-                                        className="px-3 py-2 bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition-all flex items-center gap-2 text-sm font-medium"
+                                        onClick={onClose}
+                                        className="p-2 hover:bg-gray-100 rounded-full transition-colors active:scale-95"
+                                        aria-label="닫기"
                                     >
-                                        <Sparkles className="w-4 h-4" />
-                                        AI 보정
+                                        <X className="w-5 h-5 text-gray-600" />
                                     </button>
+                                    <div className="flex-1 text-center px-4">
+                                        <h3 className="font-semibold text-gray-900 truncate">
+                                            {detail?.customerName ||
+                                                detail?.conversation?.userName ||
+                                                conversation?.userName ||
+                                                '고객'}
+                                        </h3>
+                                        <p className="text-xs text-gray-500">
+                                            {detail?.conversation?.channel || conversation?.channel || 'chatwoot'}
+                                        </p>
+                                    </div>
+                                    <ConversationActions
+                                        conversation={conversation}
+                                        tenantId={effectiveTenantId}
+                                        onStatusChange={handleStatusChange}
+                                    />
+                                </div>
+
+                                {!isConversationCompleted && (
+                                    <div className="sm:hidden px-4 pb-2">
+                                        <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                            <span>우측으로 스와이프하면 완료 처리됩니다</span>
+                                        </div>
+                                    </div>
                                 )}
 
-                                <button
-                                    onClick={onClose}
-                                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                >
-                                    <X className="w-5 h-5" />
-                                </button>
+                                {!isConversationCompleted && (
+                                    <div className="hidden sm:block px-4 pb-3">
+                                        <button
+                                            onClick={handleCompleteConversation}
+                                            disabled={completing}
+                                            className="w-full py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {completing ? '처리 중...' : '완료 처리'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                        </div>
 
-                        {/* 메시지 영역 */}
-                        <div
-                            ref={messagesContainerRef}
-                            className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50"
-                            style={{
-                                WebkitOverflowScrolling: 'touch',
-                                touchAction: 'pan-y',
-                                overscrollBehavior: 'contain',
-                                minHeight: 0, // flex-1이 제대로 작동하도록
-                            }}
-                            onTouchStart={(e) => {
-                                // 터치 시작 위치 저장
-                                touchStartYRef.current = e.touches[0].clientY;
-                                const target = e.currentTarget;
-                                const isScrollable = target.scrollHeight > target.clientHeight;
-                                // 스크롤 가능한 영역에서 터치가 시작되면 상위로 전파 방지
-                                if (isScrollable) {
-                                    e.stopPropagation();
-                                }
-                            }}
-                            onTouchMove={(e) => {
-                                const target = e.currentTarget;
-                                const isScrollable = target.scrollHeight > target.clientHeight;
-
-                                // 스크롤 가능한 영역에서는 항상 전파 방지
-                                if (isScrollable) {
-                                    e.stopPropagation();
-                                }
-                            }}
-                        >
-                            {loading || !detail ? (
-                                <div className="flex flex-col items-center justify-center py-20">
-                                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mb-4" />
-                                    <p className="text-gray-600">메시지를 불러오는 중...</p>
-                                </div>
-                            ) : detail?.messages && detail.messages.length > 0 ? (
-                                <div className="space-y-3">
-                                    {detail.messages[0]?.timestamp && (
-                                        <div className="flex items-center justify-center my-4">
-                                            <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-                                                {new Date(detail.messages[0].timestamp).toLocaleDateString('ko-KR', {
-                                                    year: 'numeric',
-                                                    month: 'long',
-                                                    day: 'numeric',
-                                                    weekday: 'long',
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {detail.messages.map((msg, idx) => (
-                                        <MessageBubble
-                                            key={msg.msgId || idx}
-                                            message={msg}
-                                            onImageClick={(url) => setImagePreview(url)}
-                                        />
-                                    ))}
-                                    <div ref={messagesEndRef} />
-                                </div>
-                            ) : (
-                                <div className="text-center py-20">
-                                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-                                        <User className="w-8 h-8 text-gray-400" />
+                            {/* 메시지 영역 */}
+                            <div
+                                ref={messagesContainerRef}
+                                data-no-swipe="true"
+                                className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 bg-gray-50"
+                                style={{
+                                    WebkitOverflowScrolling: 'touch',
+                                    touchAction: 'pan-y',
+                                    overscrollBehavior: 'contain',
+                                    minHeight: 0,
+                                }}
+                                onTouchStart={(e) => {
+                                    touchStartYRef.current = e.touches[0].clientY;
+                                    const target = e.currentTarget;
+                                    const isScrollable = target.scrollHeight > target.clientHeight;
+                                    if (isScrollable) {
+                                        e.stopPropagation();
+                                    }
+                                }}
+                                onTouchMove={(e) => {
+                                    const target = e.currentTarget;
+                                    const isScrollable = target.scrollHeight > target.clientHeight;
+                                    if (isScrollable) {
+                                        e.stopPropagation();
+                                    }
+                                }}
+                            >
+                                {loading || !detail ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-200 border-t-blue-600 mb-4" />
+                                        <p className="text-gray-600">메시지를 불러오는 중...</p>
                                     </div>
-                                    <p className="text-gray-500">메시지가 없습니다</p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* ✅ 상태 관리 버튼 (보류/중요/완료) */}
-                        <ConversationActions
-                            conversation={detail?.conversation || conversation}
-                            tenantId={effectiveTenantId}
-                            onStatusChange={handleStatusChange}
-                        />
-
-                        {/* 입력 영역 - 키보드 위 고정 */}
-                        <div
-                            className="flex-shrink-0 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl relative"
-                            style={{
-                                // 모바일에서 키보드 위에 고정
-                                position: 'sticky',
-                                bottom: 0,
-                                zIndex: 10,
-                            }}
-                        >
-                            {/* ✅ 라이브러리 드롭다운 - position이 계산된 후에만 렌더링 (깜빡임 방지) */}
-                            {showLibraryDropdown && libraryData && macroTriggerPosition && (
-                                <LibraryMacroDropdown
-                                    libraryData={libraryData}
-                                    searchQuery={macroSearchQuery}
-                                    onSelect={handleLibrarySelect}
-                                    position={macroTriggerPosition}
-                                    onClose={() => {
-                                        setShowLibraryDropdown(false);
-                                        setMacroTriggerPosition(null);
-                                    }}
-                                />
-                            )}
-
-                            {/* 🔹 컨펌 초안 카드 */}
-                            {showPendingDraftCard && (
-                                <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
-                                    <div className="flex items-start justify-between mb-1 gap-3">
-                                        <div>
-                                            <span className="text-xs font-semibold text-yellow-700 block">
-                                                🟡 컨펌 모드 · 답변 승인 대기 중
-                                            </span>
-                                            <span className="text-[11px] text-yellow-500">
-                                                포탈에서 승인 / 수정 후 전송할 수 있어요
-                                            </span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => setPendingDraftDismissed(true)}
-                                            className="p-1 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"
-                                            aria-label="승인 안내 닫기"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    </div>
-
-                                    <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
-                                        {pendingDraftText}
-                                    </p>
-
-                                    <div className="flex justify-end gap-2 mt-3">
-                                        <button
-                                            type="button"
-                                            onClick={handleSendDraftAsIs}
-                                            className="px-3 py-1.5 text-xs rounded-lg bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors"
-                                        >
-                                            ✅ 그대로 전송
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleEditDraft}
-                                            className="px-3 py-1.5 text-xs rounded-lg border border-yellow-300 text-yellow-700 bg-white hover:bg-yellow-50 transition-colors"
-                                        >
-                                            ✏️ 수정 후 전송
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* 첨부 파일 미리보기 */}
-                            {attachments.length > 0 && (
-                                <div className="mb-3 flex flex-wrap gap-2">
-                                    {attachments.map((att, idx) => (
-                                        <div key={idx} className="relative group">
-                                            {att.preview ? (
-                                                // 이미지 미리보기
-                                                <>
-                                                    <img
-                                                        src={att.preview}
-                                                        alt={att.name}
-                                                        className="w-20 h-20 object-cover rounded-lg border border-gray-200"
-                                                    />
-                                                    <button
-                                                        onClick={() => removeAttachment(idx)}
-                                                        disabled={uploading}
-                                                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        aria-label="첨부파일 삭제"
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                // 일반 파일 (PDF 등)
-                                                <div className="relative">
-                                                    <div className="w-20 h-20 bg-gray-100 rounded-lg border border-gray-200 flex flex-col items-center justify-center p-2">
-                                                        <Paperclip className="w-6 h-6 text-gray-400 mb-1" />
-                                                        <span className="text-xs text-gray-600 truncate w-full text-center">
-                                                            {att.name.slice(0, 8)}...
-                                                        </span>
-                                                        <span className="text-xs text-gray-400">
-                                                            {formatFileSize(att.size)}
-                                                        </span>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => removeAttachment(idx)}
-                                                        disabled={sending || uploading}
-                                                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        aria-label="첨부파일 삭제"
-                                                    >
-                                                        ×
-                                                    </button>
+                                ) : detail?.messages && detail.messages.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {detail.messages[0]?.timestamp && (
+                                            <div className="flex items-center justify-center my-4">
+                                                <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
+                                                    {new Date(detail.messages[0].timestamp).toLocaleDateString('ko-KR', {
+                                                        year: 'numeric',
+                                                        month: 'long',
+                                                        day: 'numeric',
+                                                        weekday: 'long',
+                                                    })}
                                                 </div>
-                                            )}
+                                            </div>
+                                        )}
+
+                                        {detail.messages.map((msg, idx) => (
+                                            <MessageBubble
+                                                key={msg.msgId || idx}
+                                                message={msg}
+                                                onImageClick={(url) => setImagePreview(url)}
+                                            />
+                                        ))}
+                                        <div ref={messagesEndRef} />
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-20">
+                                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                            <User className="w-8 h-8 text-gray-400" />
                                         </div>
-                                    ))}
+                                        <p className="text-gray-500">메시지가 없습니다</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 입력 영역 */}
+                            <div
+                                className="flex-shrink-0 border-t border-gray-100 bg-white p-4 sm:p-6"
+                                data-no-swipe="true"
+                                style={{
+                                    position: 'sticky',
+                                    bottom: 0,
+                                    zIndex: 10,
+                                }}
+                            >
+                                {showLibraryDropdown && libraryData && macroTriggerPosition && (
+                                    <LibraryMacroDropdown
+                                        libraryData={libraryData}
+                                        searchQuery={macroSearchQuery}
+                                        onSelect={handleLibrarySelect}
+                                        position={macroTriggerPosition}
+                                        onClose={() => {
+                                            setShowLibraryDropdown(false);
+                                            setMacroTriggerPosition(null);
+                                        }}
+                                    />
+                                )}
+
+                                {showPendingDraftCard && (
+                                    <div className="mb-3 p-3 rounded-xl border border-yellow-200 bg-yellow-50/80">
+                                        <div className="flex items-start justify-between mb-1 gap-3">
+                                            <div>
+                                                <span className="text-xs font-semibold text-yellow-700 block">
+                                                    🟡 컨펌 모드 · 답변 승인 대기 중
+                                                </span>
+                                                <span className="text-[11px] text-yellow-500">
+                                                    포탈에서 승인 / 수정 후 전송할 수 있어요
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setPendingDraftDismissed(true)}
+                                                className="p-1 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-full transition-colors"
+                                                aria-label="승인 안내 닫기"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+
+                                        <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">
+                                            {pendingDraftText}
+                                        </p>
+
+                                        <div className="flex justify-end gap-2 mt-3">
+                                            <button
+                                                type="button"
+                                                onClick={handleSendDraftAsIs}
+                                                className="px-3 py-1.5 text-xs rounded-lg bg-yellow-500 text-white font-semibold hover:bg-yellow-600 transition-colors"
+                                            >
+                                                ✅ 그대로 전송
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleEditDraft}
+                                                className="px-3 py-1.5 text-xs rounded-lg border border-yellow-300 text-yellow-700 bg-white hover:bg-yellow-50 transition-colors"
+                                            >
+                                                ✏️ 수정 후 전송
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {attachments.length > 0 && (
+                                    <div className="mb-3 flex flex-wrap gap-2">
+                                        {attachments.map((att, idx) => (
+                                            <div key={idx} className="relative group">
+                                                {att.preview ? (
+                                                    <>
+                                                        <img
+                                                            src={att.preview}
+                                                            alt={att.name}
+                                                            className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                                                        />
+                                                        <button
+                                                            onClick={() => removeAttachment(idx)}
+                                                            disabled={uploading}
+                                                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            aria-label="첨부파일 삭제"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <div className="relative">
+                                                        <div className="w-20 h-20 bg-gray-100 rounded-lg border border-gray-200 flex flex-col items-center justify-center p-2">
+                                                            <Paperclip className="w-6 h-6 text-gray-400 mb-1" />
+                                                            <span className="text-xs text-gray-600 truncate w-full text-center">
+                                                                {att.name.slice(0, 8)}...
+                                                            </span>
+                                                            <span className="text-xs text-gray-400">
+                                                                {formatFileSize(att.size)}
+                                                            </span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => removeAttachment(idx)}
+                                                            disabled={sending || uploading}
+                                                            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-100 md:opacity-90 md:group-hover:opacity-100 transition-opacity shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            aria-label="첨부파일 삭제"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {uploading && (
+                                    <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600" />
+                                        <span className="text-sm text-blue-900">파일 처리 중...</span>
+                                    </div>
+                                )}
+
+                                <div className="flex items-end gap-2">
+                                    <button
+                                        onClick={() => filePickerRef.current?.click()}
+                                        disabled={uploading}
+                                        className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                        aria-label="첨부"
+                                    >
+                                        <Paperclip className="w-4 h-4 text-gray-600" />
+                                    </button>
+
+                                    <button
+                                        onClick={() => openAIComposer(draft)}
+                                        disabled={sending || uploading}
+                                        className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                                        aria-label="AI 보정"
+                                        title="AI 톤 보정"
+                                    >
+                                        <Sparkles className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                                    </button>
+
+                                    <textarea
+                                        ref={textareaRef}
+                                        value={draft}
+                                        onChange={(e) => {
+                                            if (!uploading) {
+                                                handleDraftChange(e);
+                                            }
+                                        }}
+                                        onKeyDown={onKeyDown}
+                                        onPaste={onPaste}
+                                        placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
+                                        disabled={uploading}
+                                        enterKeyHint="send"
+                                        style={{ fontSize: '16px' }}
+                                        className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
+                                        rows={1}
+                                    />
+                                    <button
+                                        onClick={handleSend}
+                                        disabled={!canSend || sending || uploading}
+                                        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${canSend && !sending && !uploading
+                                            ? 'bg-blue-500 hover:bg-blue-600 active:scale-95 text-white shadow-sm'
+                                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                            }`}
+                                        aria-label="전송"
+                                    >
+                                        <Send className="w-4 h-4" />
+                                    </button>
+
+                                    <input
+                                        ref={filePickerRef}
+                                        type="file"
+                                        accept="image/*,video/*,application/pdf"
+                                        multiple
+                                        className="hidden"
+                                        onChange={(e) => handleFiles(e.target.files)}
+                                    />
                                 </div>
-                            )}
-
-                            {/* 업로드 중 표시 */}
-                            {uploading && (
-                                <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
-                                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-600" />
-                                    <span className="text-sm text-blue-900">파일 처리 중...</span>
-                                </div>
-                            )}
-
-                            {/* 입력바 */}
-                            <div className="flex items-end gap-2">
-                                <button
-                                    onClick={() => filePickerRef.current?.click()}
-                                    disabled={uploading}
-                                    className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                    aria-label="첨부"
-                                >
-                                    <Paperclip className="w-4 h-4 text-gray-600" />
-                                </button>
-
-                                {/* ✅ AI 보정 버튼 - AIComposerModal 연결 */}
-                                <button
-                                    onClick={() => openAIComposer(draft)}
-                                    disabled={sending || uploading}
-                                    className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-100 to-pink-100 hover:from-purple-200 hover:to-pink-200 active:scale-95 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-                                    aria-label="AI 보정"
-                                    title="AI 톤 보정"
-                                >
-                                    <Sparkles className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-                                </button>
-
-                                <textarea
-                                    ref={textareaRef}
-                                    value={draft} // ❌ sending 여부에 따라 바꾸지 않기
-                                    onChange={(e) => {
-                                        if (!uploading) {            // ❌ sending은 무시
-                                            handleDraftChange(e);
-                                        }
-                                    }}
-                                    onKeyDown={onKeyDown}
-                                    onPaste={onPaste}
-                                    placeholder={uploading ? '파일 처리 중...' : '메시지 입력...'}
-                                    disabled={uploading}             // ❌ sending으로 disable 안 함
-                                    enterKeyHint="send"
-                                    style={{ fontSize: '16px' }} // 모바일 화면 확대 방지
-                                    className="flex-1 resize-none bg-gray-50 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50 max-h-[120px]"
-                                    rows={1}
-                                />
-                                <button
-                                    onClick={handleSend}
-                                    disabled={!canSend || sending || uploading}
-                                    className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all ${canSend && !sending && !uploading
-                                        ? 'bg-blue-500 hover:bg-blue-600 active:scale-95 text-white shadow-sm'
-                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                        }`}
-                                    aria-label="전송"
-                                >
-                                    {/* 항상 아이콘만 */}
-                                    <Send className="w-4 h-4" />
-                                </button>
-
-                                <input
-                                    ref={filePickerRef}
-                                    type="file"
-                                    accept="image/*,video/*,application/pdf"
-                                    multiple
-                                    className="hidden"
-                                    onChange={(e) => handleFiles(e.target.files)}
-                                />
                             </div>
                         </div>
                     </div>
-                </div>
+                </>
             )}
 
             {/* 이미지 프리뷰 모달 */}

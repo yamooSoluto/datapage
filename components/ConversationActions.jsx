@@ -1,16 +1,16 @@
 // components/ConversationActions.jsx
-// 대화 상태 관리 액션 버튼 (저장/완료) - 모바일 최적화
+// 대화 상태 관리 - 모바일 스와이프 + 상단 저장 아이콘
 
 import { useEffect, useState } from 'react';
-import { Bookmark, CheckCircle2, Loader2 } from 'lucide-react';
+import { Bookmark } from 'lucide-react';
 
 export default function ConversationActions({
     conversation,
     tenantId,
     onStatusChange
 }) {
-    const [loading, setLoading] = useState(null); // 어떤 버튼이 로딩중인지 추적
     const [currentStatus, setCurrentStatus] = useState('active');
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         if (!conversation) {
@@ -26,7 +26,6 @@ export default function ConversationActions({
         const archiveStatus = (conversation.archive_status || conversation.archiveStatus || '').toLowerCase();
         const status = (conversation.status || '').toLowerCase();
 
-        // hold, important를 saved로 통합
         if (archiveStatus === 'completed' || status === 'completed') {
             setCurrentStatus('completed');
         } else if (archiveStatus === 'saved' || archiveStatus === 'hold' || archiveStatus === 'important' || conversation.important) {
@@ -36,17 +35,10 @@ export default function ConversationActions({
         }
     }, [conversation]);
 
-    const handleStatusChange = async (newStatus) => {
-        if (loading) return;
+    const handleSaveToggle = async () => {
+        if (saving) return;
 
-        if (newStatus === 'completed') {
-            const confirmed = window.confirm(
-                '이 대화를 완료 처리하시겠습니까?\n완료된 대화는 "완료" 탭에서 확인할 수 있습니다.'
-            );
-            if (!confirmed) return;
-        }
-
-        const targetStatus = currentStatus === newStatus ? 'active' : newStatus;
+        const targetStatus = currentStatus === 'saved' ? 'active' : 'saved';
         const chatId = conversation?.chatId || conversation?.id;
 
         if (!tenantId || !chatId) {
@@ -55,7 +47,7 @@ export default function ConversationActions({
             return;
         }
 
-        setLoading(newStatus);
+        setSaving(true);
         try {
             const response = await fetch('/api/conversations/archive', {
                 method: 'POST',
@@ -73,61 +65,31 @@ export default function ConversationActions({
             setCurrentStatus(targetStatus);
             onStatusChange?.(targetStatus);
         } catch (error) {
-            console.error('[ConversationActions] Status change error:', error);
-            alert('상태 변경에 실패했습니다.');
+            console.error('[ConversationActions] Save toggle error:', error);
+            alert('저장 상태 변경에 실패했습니다.');
         } finally {
-            setLoading(null);
+            setSaving(false);
         }
     };
 
-    const statusConfig = {
-        saved: {
-            label: '저장',
-            icon: Bookmark,
-            activeClass: 'bg-blue-500 text-white',
-            inactiveClass: 'bg-gray-100 text-gray-600',
-            ringClass: 'ring-blue-500',
-            fill: true,
-        },
-        completed: {
-            label: '완료',
-            icon: CheckCircle2,
-            activeClass: 'bg-green-500 text-white',
-            inactiveClass: 'bg-gray-100 text-gray-600',
-            ringClass: 'ring-green-500',
-        },
-    };
+    const isSaved = currentStatus === 'saved';
 
     return (
-        <div className="border-t border-gray-100 bg-white">
-            <div className="flex items-center gap-2 overflow-x-auto px-4 py-3 scrollbar-hide">
-                {Object.entries(statusConfig).map(([key, config]) => {
-                    const Icon = config.icon;
-                    const isActive = currentStatus === key;
-                    const isLoading = loading === key;
-
-                    return (
-                        <button
-                            key={key}
-                            onClick={() => handleStatusChange(key)}
-                            disabled={loading !== null}
-                            className={`
-                                flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium
-                                transition-all whitespace-nowrap active:scale-95 disabled:opacity-50
-                                ${isActive ? config.activeClass : config.inactiveClass}
-                                ${isActive ? 'shadow-sm ring-2 ring-offset-1 ' + config.ringClass : 'hover:bg-gray-200'}
-                            `}
-                        >
-                            {isLoading ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                <Icon className={`w-4 h-4 ${config.fill && isActive ? 'fill-current' : ''}`} />
-                            )}
-                            <span>{config.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
+        <button
+            onClick={handleSaveToggle}
+            disabled={saving}
+            className={`
+                p-2 rounded-full transition-all active:scale-90 disabled:opacity-50
+                ${isSaved
+                    ? 'text-blue-500 hover:bg-blue-50'
+                    : 'text-gray-400 hover:bg-gray-100'
+                }
+            `}
+            aria-label={isSaved ? '저장 취소' : '저장'}
+        >
+            <Bookmark
+                className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`}
+            />
+        </button>
     );
 }
