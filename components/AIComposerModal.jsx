@@ -227,10 +227,15 @@ export default function AIComposerModal({
         setStep('edit');
     };
 
+    const processingBottomOffset = 'calc(env(safe-area-inset-bottom, 0px) + 7rem)';
+
     // ✅ processing 단계일 때는 우하단 플로팅 인디케이터만 표시
     if (step === 'processing') {
         return (
-            <div className="fixed bottom-6 right-6 z-[200] animate-in">
+            <div
+                className="fixed right-4 left-4 sm:left-auto sm:right-6 z-[200] animate-in"
+                style={{ bottom: processingBottomOffset }}
+            >
                 <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 min-w-[280px] p-4 flex items-center gap-3">
                     {/* 야무 캐릭터 애니메이션 */}
                     <div className="relative flex-shrink-0" style={{ animation: 'floatBounce 2s ease-in-out infinite' }}>
