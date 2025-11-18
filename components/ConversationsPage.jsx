@@ -2,6 +2,7 @@
 // CRM 메인 페이지 - 웹: 2-column 레이아웃 / 모바일: 모달 방식
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useRouter } from 'next/router';
 import {
     Search,
     ChevronLeft,
@@ -96,6 +97,11 @@ const isCompletedStatus = (status) =>
         .trim()
         .toLowerCase() === 'completed';
 
+const normalizeArchiveStatus = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === '' ? null : normalized;
+};
+
 const deriveChatIdFromDoc = (docId, docData) => {
     if (docData?.chat_id || docData?.chatId) return docData.chat_id || docData.chatId;
     if (typeof docId === 'string' && docId.includes('_')) {
@@ -155,6 +161,9 @@ const buildConversationFromRealtimeDoc = (docData, docId, tenantId) => {
 };
 
 export default function ConversationsPage({ tenantId }) {
+    const router = useRouter();
+    const { chatId: routeChatId } = router.query || {};
+
     const [conversations, setConversations] = useState([]);
     const [selectedConv, setSelectedConv] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -167,7 +176,7 @@ export default function ConversationsPage({ tenantId }) {
     const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'today' | 'unanswered' | 'ai' | 'agent'
 
     // ✅ 상태 필터 추가
-    const [archiveFilter, setArchiveFilter] = useState('all'); // 'all' | 'hold' | 'important'
+    const [archiveFilter, setArchiveFilter] = useState('active'); // 'active' | 'hold' | 'important' | 'completed'
 
     const [filters, setFilters] = useState({
         channel: 'all',
@@ -632,9 +641,15 @@ export default function ConversationsPage({ tenantId }) {
         // 빠른 필터 적용
         result = applyQuickFilter(result);
 
-        // ✅ 상태 필터 (보류/중요)
-        if (archiveFilter !== 'all') {
-            result = result.filter((c) => c.archive_status === archiveFilter);
+        // ✅ 상태 필터 (진행중/보류/중요/완료)
+        if (archiveFilter && archiveFilter !== 'all') {
+            result = result.filter((c) => {
+                const status = normalizeArchiveStatus(c.archive_status);
+                if (archiveFilter === 'active') {
+                    return !status || status === 'active';
+                }
+                return status === archiveFilter;
+            });
         }
 
         // 채널 필터
@@ -678,11 +693,28 @@ export default function ConversationsPage({ tenantId }) {
 
     // ✅ 상태별 카운트
     const archiveCounts = useMemo(() => {
-        return {
+        const counts = {
             all: conversations.length,
-            hold: conversations.filter(c => c.archive_status === 'hold').length,
-            important: conversations.filter(c => c.archive_status === 'important').length,
+            active: 0,
+            hold: 0,
+            important: 0,
+            completed: 0,
         };
+
+        conversations.forEach((conversation) => {
+            const status = normalizeArchiveStatus(conversation.archive_status);
+            if (!status || status === 'active') {
+                counts.active += 1;
+            } else if (status === 'hold') {
+                counts.hold += 1;
+            } else if (status === 'important') {
+                counts.important += 1;
+            } else if (status === 'completed') {
+                counts.completed += 1;
+            }
+        });
+
+        return counts;
     }, [conversations]);
 
     const totalPages = Math.ceil(filteredConversations.length / itemsPerPage);
@@ -690,6 +722,51 @@ export default function ConversationsPage({ tenantId }) {
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
     );
+
+    const handleSelectConversation = useCallback((conv) => {
+        if (!conv) return;
+
+        setSelectedConv(conv);
+
+        if (!conv.chatId) return;
+
+        try {
+            router.push(
+                {
+                    pathname: '/conversations/[chatId]',
+                    query: { chatId: conv.chatId },
+                },
+                `/conversations/${conv.chatId}`,
+                { shallow: true }
+            );
+        } catch (e) {
+            console.warn('[ConversationsPage] router.push failed:', e);
+        }
+    }, [router]);
+
+    const handleCloseDetail = useCallback(() => {
+        setSelectedConv(null);
+
+        try {
+            router.push('/conversations', undefined, { shallow: true });
+        } catch (e) {
+            console.warn('[ConversationsPage] router back to /conversations failed:', e);
+        }
+    }, [router]);
+
+    useEffect(() => {
+        if (!routeChatId || !conversations.length) return;
+
+        const found = conversations.find(
+            (c) => String(c.chatId) === String(routeChatId)
+        );
+
+        if (found) {
+            setSelectedConv((prev) =>
+                prev?.chatId === found.chatId ? prev : found
+            );
+        }
+    }, [routeChatId, conversations]);
 
     // 전송 핸들러
     const handleSend = async ({
@@ -1138,7 +1215,7 @@ export default function ConversationsPage({ tenantId }) {
                                         <ConversationCard
                                             key={conv.id}
                                             conversation={conv}
-                                            onClick={() => setSelectedConv(conv)}
+                                            onClick={() => handleSelectConversation(conv)}
                                             isSelected={selectedConv?.id === conv.id}
                                         />
                                     ))}
@@ -1182,7 +1259,7 @@ export default function ConversationsPage({ tenantId }) {
                             <ConversationDetail
                                 conversation={selectedConv}
                                 tenantId={tenantId}
-                                onClose={() => setSelectedConv(null)}
+                                onClose={handleCloseDetail}
                                 onSend={handleSend}
                                 onOpenAICorrector={() => setShowAIModal(true)}
                                 onPendingDraftCleared={handlePendingDraftCleared}
@@ -1208,7 +1285,7 @@ export default function ConversationsPage({ tenantId }) {
                     <ConversationDetail
                         conversation={selectedConv}
                         tenantId={tenantId}
-                        onClose={() => setSelectedConv(null)}
+                        onClose={handleCloseDetail}
                         onSend={handleSend}
                         onOpenAICorrector={() => setShowAIModal(true)}
                         onPendingDraftCleared={handlePendingDraftCleared}

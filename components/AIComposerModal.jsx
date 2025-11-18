@@ -53,6 +53,17 @@ export default function AIComposerModal({
     const [correctedText, setCorrectedText] = useState(initialText || '');
     const [error, setError] = useState('');
 
+    // ✅ 야무 캐릭터 랜덤 선택
+    const [yamuCharacter] = useState(() => {
+        const characters = [
+            '/images/yamoo_1.png',
+            '/images/yamoo_2.png',
+            '/images/yamoo_3.png',
+            '/images/yamoo_4.png',
+        ];
+        return characters[Math.floor(Math.random() * characters.length)];
+    });
+
     // ✅ 라이브러리 매크로 상태
     const [showLibraryDropdown, setShowLibraryDropdown] = useState(false);
     const [macroSearchQuery, setMacroSearchQuery] = useState('');
@@ -221,10 +232,14 @@ export default function AIComposerModal({
         return (
             <div className="fixed bottom-6 right-6 z-[200] animate-in">
                 <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 min-w-[280px] p-4 flex items-center gap-3">
-                    {/* 그라데이션 아이콘 컨테이너 */}
+                    {/* 야무 캐릭터 애니메이션 */}
                     <div className="relative flex-shrink-0" style={{ animation: 'floatBounce 2s ease-in-out infinite' }}>
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
-                            <Wand2 className="w-6 h-6 text-white" />
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-500 flex items-center justify-center shadow-lg overflow-hidden">
+                            <img
+                                src={yamuCharacter}
+                                alt="야무 보정 중"
+                                className="w-14 h-14 object-contain"
+                            />
                         </div>
                         {/* 파란 점 애니메이션 */}
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-ping" />
@@ -233,7 +248,7 @@ export default function AIComposerModal({
 
                     {/* 텍스트 영역 */}
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">🪄 AI 보정 중</p>
+                        <p className="text-sm font-semibold text-gray-900">🪄 야무가 보정 중</p>
                         <p className="text-xs text-gray-600 mt-0.5">답변을 다듬고 있어요...</p>
                     </div>
 
@@ -254,9 +269,11 @@ export default function AIComposerModal({
 
     // ✅ compose/result 단계일 때는 전체 모달 표시
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+        <div
+            className="fixed inset-0 z-[200] flex items-end justify-center pb-20 pointer-events-none"
+        >
             <div
-                className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden mx-4 pointer-events-auto"
                 style={{
                     maxHeight: step === 'edit'
                         ? '600px'
