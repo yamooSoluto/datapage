@@ -2,7 +2,6 @@
 // CRM 메인 페이지 - 웹: 2-column 레이아웃 / 모바일: 모달 방식
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useRouter } from 'next/router';
 import {
     Search,
     ChevronLeft,
@@ -161,9 +160,6 @@ const buildConversationFromRealtimeDoc = (docData, docId, tenantId) => {
 };
 
 export default function ConversationsPage({ tenantId }) {
-    const router = useRouter();
-    const { chatId: routeChatId } = router.query || {};
-
     const [conversations, setConversations] = useState([]);
     const [selectedConv, setSelectedConv] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -641,12 +637,16 @@ export default function ConversationsPage({ tenantId }) {
         // 빠른 필터 적용
         result = applyQuickFilter(result);
 
-        // ✅ 상태 필터 (진행중/보류/중요/완료)
+        // ✅ 상태 필터 (진행중/저장/완료)
         if (archiveFilter && archiveFilter !== 'all') {
             result = result.filter((c) => {
                 const status = normalizeArchiveStatus(c.archive_status);
                 if (archiveFilter === 'active') {
                     return !status || status === 'active';
+                }
+                // saved 필터는 hold, important, saved 모두 포함
+                if (archiveFilter === 'saved') {
+                    return status === 'saved' || status === 'hold' || status === 'important';
                 }
                 return status === archiveFilter;
             });
@@ -696,8 +696,7 @@ export default function ConversationsPage({ tenantId }) {
         const counts = {
             all: conversations.length,
             active: 0,
-            hold: 0,
-            important: 0,
+            saved: 0, // hold + important + saved 통합
             completed: 0,
         };
 
@@ -705,10 +704,8 @@ export default function ConversationsPage({ tenantId }) {
             const status = normalizeArchiveStatus(conversation.archive_status);
             if (!status || status === 'active') {
                 counts.active += 1;
-            } else if (status === 'hold') {
-                counts.hold += 1;
-            } else if (status === 'important') {
-                counts.important += 1;
+            } else if (status === 'saved' || status === 'hold' || status === 'important') {
+                counts.saved += 1;
             } else if (status === 'completed') {
                 counts.completed += 1;
             }
@@ -722,51 +719,6 @@ export default function ConversationsPage({ tenantId }) {
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
     );
-
-    const handleSelectConversation = useCallback((conv) => {
-        if (!conv) return;
-
-        setSelectedConv(conv);
-
-        if (!conv.chatId) return;
-
-        try {
-            router.push(
-                {
-                    pathname: '/conversations/[chatId]',
-                    query: { chatId: conv.chatId },
-                },
-                `/conversations/${conv.chatId}`,
-                { shallow: true }
-            );
-        } catch (e) {
-            console.warn('[ConversationsPage] router.push failed:', e);
-        }
-    }, [router]);
-
-    const handleCloseDetail = useCallback(() => {
-        setSelectedConv(null);
-
-        try {
-            router.push('/conversations', undefined, { shallow: true });
-        } catch (e) {
-            console.warn('[ConversationsPage] router back to /conversations failed:', e);
-        }
-    }, [router]);
-
-    useEffect(() => {
-        if (!routeChatId || !conversations.length) return;
-
-        const found = conversations.find(
-            (c) => String(c.chatId) === String(routeChatId)
-        );
-
-        if (found) {
-            setSelectedConv((prev) =>
-                prev?.chatId === found.chatId ? prev : found
-            );
-        }
-    }, [routeChatId, conversations]);
 
     // 전송 핸들러
     const handleSend = async ({
@@ -1215,7 +1167,7 @@ export default function ConversationsPage({ tenantId }) {
                                         <ConversationCard
                                             key={conv.id}
                                             conversation={conv}
-                                            onClick={() => handleSelectConversation(conv)}
+                                            onClick={() => setSelectedConv(conv)}
                                             isSelected={selectedConv?.id === conv.id}
                                         />
                                     ))}
@@ -1259,7 +1211,7 @@ export default function ConversationsPage({ tenantId }) {
                             <ConversationDetail
                                 conversation={selectedConv}
                                 tenantId={tenantId}
-                                onClose={handleCloseDetail}
+                                onClose={() => setSelectedConv(null)}
                                 onSend={handleSend}
                                 onOpenAICorrector={() => setShowAIModal(true)}
                                 onPendingDraftCleared={handlePendingDraftCleared}
@@ -1285,7 +1237,7 @@ export default function ConversationsPage({ tenantId }) {
                     <ConversationDetail
                         conversation={selectedConv}
                         tenantId={tenantId}
-                        onClose={handleCloseDetail}
+                        onClose={() => setSelectedConv(null)}
                         onSend={handleSend}
                         onOpenAICorrector={() => setShowAIModal(true)}
                         onPendingDraftCleared={handlePendingDraftCleared}

@@ -23,19 +23,19 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
         return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
     };
 
-    // ✅ 카테고리 색상 매핑 (테두리 제거, 배경만)
+    // ✅ 카테고리 색상 매핑 - 깔끔한 단색 (테두리 X)
     const getCategoryColor = (category) => {
         const colors = {
-            '결제/환불': 'bg-blue-100/60 text-blue-700',
-            '예약/변경': 'bg-purple-100/60 text-purple-700',
-            '이용/시설': 'bg-green-100/60 text-green-700',
-            '상품/서비스': 'bg-orange-100/60 text-orange-700',
-            '시스템/오류': 'bg-red-100/60 text-red-700',
-            '건의/요청': 'bg-yellow-100/60 text-yellow-700',
-            '이벤트/쿠폰': 'bg-pink-100/60 text-pink-700',
-            '기타': 'bg-gray-100/60 text-gray-600',
+            '결제/환불': 'bg-blue-500 text-white',
+            '예약/변경': 'bg-purple-500 text-white',
+            '이용/시설': 'bg-green-500 text-white',
+            '상품/서비스': 'bg-orange-500 text-white',
+            '시스템/오류': 'bg-red-500 text-white',
+            '건의/요청': 'bg-yellow-500 text-white',
+            '이벤트/쿠폰': 'bg-pink-500 text-white',
+            '기타': 'bg-gray-500 text-white',
         };
-        return colors[category] || 'bg-gray-100/60 text-gray-600';
+        return colors[category] || 'bg-gray-500 text-white';
     };
 
     // ✅ 먼저 계산: 승인 대기 상태 확인 (getAvatarStyle에서 사용)
@@ -152,13 +152,13 @@ const ConversationCard = React.memo(({ conversation, onClick, isSelected }) => {
                                     {conversation.categories.slice(0, 2).map((cat, idx) => (
                                         <span
                                             key={idx}
-                                            className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${getCategoryColor(cat)}`}
+                                            className={`text-[10px] px-2 py-0.5 rounded font-semibold ${getCategoryColor(cat)}`}
                                         >
                                             {cat}
                                         </span>
                                     ))}
                                     {conversation.categories.length > 2 && (
-                                        <span className="text-[10px] text-gray-400">
+                                        <span className="text-[10px] text-gray-500 font-medium">
                                             +{conversation.categories.length - 2}
                                         </span>
                                     )}

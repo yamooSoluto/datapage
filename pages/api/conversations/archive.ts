@@ -1,5 +1,5 @@
 // pages/api/conversations/archive.ts
-// 대화를 보류/중요/완료 표시 (status와 별개)
+// 대화를 저장/완료 표시 (status와 별개)
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import admin, { db } from '@/lib/firebase-admin';
@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const {
             tenantId,
             chatId,
-            archiveStatus, // 'hold' | 'important' | 'completed' | null
+            archiveStatus, // 'saved' | 'completed' | null (기존 'hold', 'important'도 'saved'로 처리)
             note,
         } = req.body;
 
@@ -23,12 +23,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             return res.status(400).json({ error: 'tenantId and chatId required' });
         }
 
-        // 유효한 archiveStatus 값 확인
-        const validStatuses = ['hold', 'important', 'completed', null];
+        // 유효한 archiveStatus 값 확인 (기존 값도 허용하되 saved로 변환)
+        const validStatuses = ['saved', 'completed', 'hold', 'important', null];
         if (!validStatuses.includes(archiveStatus)) {
             return res.status(400).json({
-                error: 'Invalid archiveStatus. Must be: hold, important, completed, or null'
+                error: 'Invalid archiveStatus. Must be: saved, completed, or null'
             });
+        }
+
+        // 기존 hold, important를 saved로 변환
+        let normalizedStatus = archiveStatus;
+        if (archiveStatus === 'hold' || archiveStatus === 'important') {
+            normalizedStatus = 'saved';
         }
 
         // 1. FAQ_realtime_cw 업데이트
@@ -41,15 +47,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         // 업데이트할 데이터 준비
         const updateData: any = {
-            archive_status: archiveStatus, // hold/important/completed/null
-            archived_at: archiveStatus ? admin.firestore.FieldValue.serverTimestamp() : null,
+            archive_status: normalizedStatus, // saved/completed/null
+            archived_at: normalizedStatus ? admin.firestore.FieldValue.serverTimestamp() : null,
             archive_note: note || null,
         };
 
-        // important는 별도 boolean 필드로도 관리 (기존 로직 유지)
-        if (archiveStatus === 'important') {
+        // important 필드는 saved일 때만 true (기존 로직 호환성 유지)
+        if (normalizedStatus === 'saved') {
             updateData.important = true;
-        } else if (archiveStatus === null) {
+        } else if (normalizedStatus === null) {
             updateData.important = false;
         }
 
@@ -74,7 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                         body: JSON.stringify({
                             tenantId,
                             chatId,
-                            archiveStatus,
+                            archiveStatus: normalizedStatus,
                         }),
                     });
 
@@ -83,7 +89,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
                     return res.status(200).json({
                         ok: true,
-                        archiveStatus,
+                        archiveStatus: normalizedStatus,
                         slackUpdated: updateResult.ok,
                     });
                 } catch (error: any) {
@@ -95,7 +101,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
         return res.status(200).json({
             ok: true,
-            archiveStatus,
+            archiveStatus: normalizedStatus,
             slackUpdated: false,
         });
     } catch (error: any) {
