@@ -188,10 +188,6 @@ export default function ConversationsPage({ tenantId }) {
     const firestoreUnsubscribeRef = useRef(null); // ✅ FAQ_realtime_cw 리스너 해제 함수
     const isInitialLoadRef = useRef(true); // ✅ FAQ_realtime_cw 초기 로딩 여부
     const modeUnsubscribeRef = useRef(null); // ✅ Conversation_Mode 리스너 해제 함수
-    const statsListenersRef = useRef([]); // ✅ stats_conversations 리스너 모음
-    const statsInitialPendingRef = useRef(0); // ✅ stats 리스너 초기 스냅샷 카운트
-    const silentRefreshTimerRef = useRef(null); // ✅ 조용한 새로고침 디바운스 타이머
-    const lastRealtimeUpdateRef = useRef(null); // ✅ 최근 실시간 패치 정보
 
     const availableCategories = [
         '결제/환불',
@@ -253,31 +249,6 @@ export default function ConversationsPage({ tenantId }) {
         fetchLibraryData();
     }, [tenantId]);
 
-    const triggerSilentRefresh = useCallback(() => {
-        if (silentRefreshTimerRef.current) return;
-
-        const timer = setTimeout(() => {
-            fetchConversations({ skipLoading: true })
-                .catch((error) => {
-                    console.warn('[ConversationsPage] Silent refresh failed:', error);
-                })
-                .finally(() => {
-                    silentRefreshTimerRef.current = null;
-                });
-        }, 200);
-
-        silentRefreshTimerRef.current = timer;
-    }, [fetchConversations]);
-
-    useEffect(() => {
-        return () => {
-            if (silentRefreshTimerRef.current) {
-                clearTimeout(silentRefreshTimerRef.current);
-                silentRefreshTimerRef.current = null;
-            }
-        };
-    }, []);
-
     const fetchGlobalMode = useCallback(async () => {
         if (!tenantId) return;
 
@@ -322,106 +293,66 @@ export default function ConversationsPage({ tenantId }) {
     const applyRealtimeConversationPatch = useCallback((docData, docId) => {
         if (!docData) return;
 
-        const chatId = deriveChatIdFromDoc(docId, docData);
-        if (!chatId) return;
+        // buildConversationFromRealtimeDoc를 사용해서 표준화된 conversation 객체 생성
+        const updated = buildConversationFromRealtimeDoc(docData, docId, tenantId);
+        if (!updated) return;
 
-        const normalizedTimestamp =
-            toISOStringSafe(docData.lastMessageAt) ||
-            toISOStringSafe(docData.updatedAt);
-        const summary = extractLastMessageSnippet(docData);
-        const categoryValue = docData.category || null;
-        const categories = categoryValue ? splitCategories(categoryValue) : [];
-        const hasPendingDraft = docData.draft_status === 'pending_approval';
-        const modeSnapshot =
-            docData.modeSnapshot || docData.mode_snapshot || undefined;
-        const imageMeta = collectImageMeta(docData);
-        const lastMessageText =
-            summary || (imageMeta.hasImages ? `(이미지 ${imageMeta.imageCount}개)` : '');
-
-        // ✅ 로그: 승인 대기 상태 변경 추적
         console.log('[applyRealtimeConversationPatch] Updating conversation:', {
-            chatId,
-            status: docData.status,
-            draft_status: docData.draft_status,
-            hasPendingDraft,
-            hasAiDraft: !!docData.ai_draft,
+            chatId: updated.chatId,
+            status: updated.status,
+            archive_status: updated.archive_status,
+            hasPendingDraft: updated.hasPendingDraft,
         });
-
-        // ✅ 메시지 카운트 실시간 계산
-        const messages = Array.isArray(docData.messages) ? docData.messages : [];
-        let userCount = 0, aiCount = 0, agentCount = 0;
-        messages.forEach(msg => {
-            if (msg.sender === 'user') userCount++;
-            else if (msg.sender === 'ai') aiCount++;
-            else if (msg.sender === 'agent') agentCount++;
-        });
-        const messageCount = {
-            user: userCount,
-            ai: aiCount,
-            agent: agentCount,
-            total: userCount + aiCount + agentCount
-        };
 
         setConversations((prev) => {
             if (!Array.isArray(prev)) {
-                const created = buildConversationFromRealtimeDoc(docData, docId, tenantId);
-                return created ? [created] : prev;
+                return [updated];
             }
 
-            let found = false;
-            const updated = prev.map((conv) => {
-                if (conv.chatId !== chatId) return conv;
-                found = true;
-                return {
-                    ...conv,
-                    status: docData.status || conv.status,
-                    summary: summary || conv.summary,
-                    lastMessageText: lastMessageText || conv.lastMessageText,
-                    lastMessageAt: normalizedTimestamp || conv.lastMessageAt,
-                    category: categoryValue ?? conv.category,
-                    categories: categories.length ? categories : conv.categories,
-                    hasPendingDraft,
-                    draftStatus: docData.draft_status ?? conv.draftStatus,
-                    draftCreatedAt: toISOStringSafe(docData.draft_created_at) || conv.draftCreatedAt,
-                    modeSnapshot: modeSnapshot || conv.modeSnapshot,
-                    hasImages: imageMeta.hasImages ?? conv.hasImages,
-                    imageCount: typeof imageMeta.imageCount === 'number' ? imageMeta.imageCount : conv.imageCount,
-                    firstImageUrl: imageMeta.firstImageUrl || conv.firstImageUrl,
-                    firstThumbnailUrl: imageMeta.firstThumbnailUrl || conv.firstThumbnailUrl,
-                    hasAIResponse: docData.hasAIResponse ?? docData.has_ai_response ?? conv.hasAIResponse,
-                    hasAgentResponse: docData.hasAgentResponse ?? docData.has_agent_response ?? conv.hasAgentResponse,
-                    messageCount, // ✅ 실시간 업데이트
-                };
-            });
+            const index = prev.findIndex(conv =>
+                conv.chatId === updated.chatId || conv.id === updated.id
+            );
 
-            if (found) {
-                return updated;
+            if (index === -1) {
+                // 새 대화 추가 (최상단)
+                return [updated, ...prev];
             }
 
-            const created = buildConversationFromRealtimeDoc(docData, docId, tenantId);
-            return created ? [created, ...prev] : prev;
+            // 기존 대화 업데이트 (위치 유지)
+            const newList = [...prev];
+            const existing = prev[index];
+
+            newList[index] = {
+                ...existing,
+                ...updated,
+                // ✅ 낙관적 업데이트를 덮어쓰지 않도록: currentArchiveStatus가 있으면 유지
+                archive_status: existing.currentArchiveStatus
+                    ? (existing.currentArchiveStatus === 'active' ? null : existing.currentArchiveStatus)
+                    : updated.archive_status,
+                currentArchiveStatus: existing.currentArchiveStatus || undefined,
+            };
+
+            return newList;
         });
 
         setSelectedConv((prev) => {
             if (!prev) return prev;
-            const prevKey = prev.chatId || prev.id;
-            if (prevKey !== chatId && prevKey !== docId) return prev;
+
+            const prevChatId = prev.chatId || prev.id;
+            const isMatch = prevChatId === updated.chatId || prevChatId === updated.id;
+
+            if (!isMatch) return prev;
+
             return {
                 ...prev,
-                status: docData.status || prev.status,
-                summary: summary || prev.summary,
-                lastMessageText: lastMessageText || prev.lastMessageText,
-                lastMessageAt: normalizedTimestamp || prev.lastMessageAt,
-                category: categoryValue ?? prev.category,
-                categories: categories.length ? categories : prev.categories,
-                hasPendingDraft,
-                draftStatus: docData.draft_status ?? prev.draftStatus,
-                draftCreatedAt: toISOStringSafe(docData.draft_created_at) || prev.draftCreatedAt,
-                modeSnapshot: modeSnapshot || prev.modeSnapshot,
+                ...updated,
+                // ✅ 낙관적 업데이트 유지
+                archive_status: prev.currentArchiveStatus
+                    ? (prev.currentArchiveStatus === 'active' ? null : prev.currentArchiveStatus)
+                    : updated.archive_status,
+                currentArchiveStatus: prev.currentArchiveStatus || undefined,
             };
         });
-
-        lastRealtimeUpdateRef.current = { chatId, timestamp: Date.now() };
     }, [tenantId]);
 
     // ✅ Firestore 실시간 리스너: FAQ_realtime_cw 컬렉션 변경 감지

@@ -57,7 +57,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         conversation?.id ||
         '';
 
-    // ✅ 대화가 바뀔 때마다 상태 초기화 및 초기 상세 로드 (API)
+    // ✅ 대화가 바뀔 때마다 상태 초기화
+    // Firestore 리스너가 자동으로 데이터를 가져오므로 별도 API 호출 불필요
     useEffect(() => {
         if (!baseChatId || !effectiveTenantId) {
             currentChatKeyRef.current = null;
@@ -71,27 +72,13 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         const chatKey = `${effectiveTenantId}:${baseChatId}`;
         currentChatKeyRef.current = chatKey;
 
+        // 상태 초기화만 수행 (Firestore 리스너가 데이터 로드)
         setDetail(null);
         setDraft('');
         setAttachments([]);
         initialLoadedRef.current = false;
         firestorePermissionDeniedRef.current = false;
-        setLoading(true);
-
-        fetchDetail({
-            skipLoading: true,
-            tenantOverride: effectiveTenantId,
-            chatIdOverride: baseChatId,
-            enforceChatKey: chatKey,
-        })
-            .catch((error) => {
-                console.error('[ConversationDetail] Initial fetchDetail failed:', error);
-            })
-            .finally(() => {
-                if (currentChatKeyRef.current === chatKey) {
-                    setLoading(false);
-                }
-            });
+        setLoading(true); // Firestore 리스너가 데이터 로드하면 false로 변경
     }, [baseChatId, effectiveTenantId]);
 
     const resolvedChatId =
@@ -476,6 +463,9 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             summary: typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null,
                             category: data.category || null,
                             categories: data.category ? data.category.split('|').map(c => c.trim()) : [],
+                            // ✅ archive_status 추가
+                            archive_status: data.archive_status || null,
+                            archived_at: data.archived_at?.toDate?.()?.toISOString() || data.archived_at || null,
                         },
                         messages: dedupedMessages,
                     };
