@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { X, User, Bot, UserCheck, ZoomIn, Paperclip, Send, Sparkles, Bookmark, Check } from 'lucide-react';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase-client';
 import AIComposerModal from './AIComposerModal';
 import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 추가
@@ -23,6 +23,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
     const firestorePermissionDeniedRef = useRef(false); // ✅ Firestore 권한 오류 플래그
+    const currentChatIdRef = useRef(null); // ✅ 현재 로드된 chatId 추적
 
     // 입력바 상태
     const [draft, setDraft] = useState('');
@@ -94,6 +95,20 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     // ✅ AI 보정 모달
     const [showAICorrector, setShowAICorrector] = useState(false);
     const [pendingDraftDismissed, setPendingDraftDismissed] = useState(false);
+
+    // ✅ 대화 변경 시 입력바와 상태 초기화
+    useEffect(() => {
+        setDraft('');
+        setAttachments((prev) => {
+            prev.forEach((att) => {
+                if (att?.preview) {
+                    URL.revokeObjectURL(att.preview);
+                }
+            });
+            return [];
+        });
+        setPendingDraftDismissed(false);
+    }, [baseChatId, effectiveTenantId]);
 
     const applyLocalArchiveStatus = (status) => {
         setDetail((prev) => {
@@ -246,6 +261,47 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         }
     };
 
+    // ✅ conversation/tenant 변경 시 초기 상세 정보 로드 및 상태 리셋
+    useEffect(() => {
+        if (!baseChatId || !effectiveTenantId) {
+            console.warn('[ConversationDetail] Missing chatId or tenantId');
+            setLoading(false);
+            return;
+        }
+
+        const chatIdentity = `${effectiveTenantId}::${baseChatId}`;
+        const chatChanged = currentChatIdRef.current !== chatIdentity;
+
+        if (chatChanged) {
+            console.log('[ConversationDetail] Chat changed, resetting state:', baseChatId);
+            currentChatIdRef.current = chatIdentity;
+            setDetail(null);
+            setLoading(true);
+            firestorePermissionDeniedRef.current = false;
+        }
+
+        let isMounted = true;
+
+        const loadInitialDetail = async () => {
+            try {
+                await fetchDetail({
+                    chatId: baseChatId,
+                });
+            } catch (error) {
+                if (isMounted) {
+                    console.error('[ConversationDetail] Failed to load detail via API:', error);
+                }
+            }
+        };
+
+        loadInitialDetail();
+
+        return () => {
+            isMounted = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [baseChatId, effectiveTenantId]);
+
     // 초기 로딩은 onSnapshot useEffect에서 처리
 
     useEffect(() => {
@@ -329,8 +385,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             collection(db, 'FAQ_realtime_cw'),
             where('tenant_id', '==', effectiveTenantId),
             where('chat_id', '==', String(baseChatId)),
-            orderBy('lastMessageAt', 'desc'),
-            limit(1)
+            orderBy('lastMessageAt', 'desc')
         );
 
         console.log('[ConversationDetail] Setting up Firestore listener for chat:', effectiveTenantId, baseChatId);
@@ -347,57 +402,99 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         setLoading(false);
                         initialLoadedRef.current = true;
                     }
-                    setDetail(null);
                     return;
                 }
 
-                const docSnap = snapshot.docs[0];
-                const data = docSnap.data();
+                const docs = snapshot.docs.map((doc) => ({
+                    id: doc.id,
+                    data: doc.data(),
+                }));
 
-                const serverMessages = normalizeServerMessages(data.messages);
+                const serverMessages = docs.flatMap((doc) =>
+                    normalizeServerMessages(doc.data?.messages)
+                );
 
-                setDetail(prev => {
-                    const optimisticMessages = prev?.messages?.filter(m =>
-                        m._status === 'pending' || m._status === 'sent'
-                    ) || [];
+                const uniqueMessages = sortAndDedupeMessages(serverMessages);
 
-                    const mergedMessages = mergeOptimisticMessages(serverMessages, optimisticMessages);
+                setDetail((prev) => {
+                    const baseDetail = prev || {
+                        conversation: conversation || {},
+                        messages: [],
+                    };
 
-                    const isInitialLoad = !initialLoadedRef.current;
-                    if (isInitialLoad) {
-                        setLoading(false);
-                        initialLoadedRef.current = true;
-                    }
+                    const firstDoc = docs[0];
+                    const docData = firstDoc?.data || {};
+                    const docConversation = firstDoc
+                        ? {
+                            id: firstDoc.id,
+                            chatId: docData.chat_id || docData.chatId || baseChatId,
+                            userId: docData.user_id ?? baseDetail.conversation?.userId,
+                            userName: docData.user_name || baseDetail.conversation?.userName || '익명',
+                            brandName: docData.brandName || docData.brand_name || baseDetail.conversation?.brandName || null,
+                            channel: docData.channel || baseDetail.conversation?.channel || 'unknown',
+                            status: docData.status || baseDetail.conversation?.status || 'waiting',
+                            modeSnapshot: docData.modeSnapshot || baseDetail.conversation?.modeSnapshot || 'AUTO',
+                            draftStatus: docData.draft_status ?? baseDetail.conversation?.draftStatus ?? null,
+                            aiDraft: docData.ai_draft ?? baseDetail.conversation?.aiDraft ?? null,
+                            confirmThreadTs: docData.confirm_thread_ts ?? baseDetail.conversation?.confirmThreadTs ?? null,
+                            confirmThreadChannel: docData.confirm_thread_channel ?? baseDetail.conversation?.confirmThreadChannel ?? null,
+                            lastMessageAt: docData.lastMessageAt?.toDate?.()?.toISOString() || docData.lastMessageAt || baseDetail.conversation?.lastMessageAt || null,
+                            cwConversationId: docData.cw_conversation_id ?? baseDetail.conversation?.cwConversationId ?? null,
+                            summary:
+                                (typeof docData.summary === 'string' && docData.summary.trim()
+                                    ? docData.summary.trim()
+                                    : null) ??
+                                baseDetail.conversation?.summary ??
+                                null,
+                            category: docData.category ?? baseDetail.conversation?.category ?? null,
+                            categories: docData.category
+                                ? docData.category.split('|').map((c) => c.trim())
+                                : baseDetail.conversation?.categories || [],
+                        }
+                        : baseDetail.conversation;
 
-                    console.log('[ConversationDetail] Firestore update received:', {
-                        docId: docSnap.id,
-                        messagesCount: mergedMessages.length,
-                        lastMessage: mergedMessages[mergedMessages.length - 1]?.text?.substring(0, 50),
-                        isInitialLoad,
-                    });
+                    const targetChatId =
+                        docConversation?.chatId ||
+                        docConversation?.chat_id ||
+                        baseChatId;
+
+                    const optimisticMessages =
+                        targetChatId &&
+                            (baseDetail.conversation?.chatId === targetChatId ||
+                                baseDetail.conversation?.chat_id === targetChatId)
+                            ? (baseDetail.messages || []).filter(
+                                (m) => m._status === 'pending' || m._status === 'sent'
+                            )
+                            : [];
+
+                    const mergedMessages = mergeOptimisticMessages(
+                        uniqueMessages,
+                        optimisticMessages
+                    );
 
                     return {
+                        ...baseDetail,
                         conversation: {
-                            id: docSnap.id,
-                            chatId: data.chat_id || data.chatId || baseChatId,
-                            userId: data.user_id,
-                            userName: data.user_name || '익명',
-                            brandName: data.brandName || data.brand_name || null,
-                            channel: data.channel || 'unknown',
-                            status: data.status || 'waiting',
-                            modeSnapshot: data.modeSnapshot || 'AUTO',
-                            draftStatus: data.draft_status || null,
-                            aiDraft: data.ai_draft || null,
-                            confirmThreadTs: data.confirm_thread_ts || null,
-                            confirmThreadChannel: data.confirm_thread_channel || null,
-                            lastMessageAt: data.lastMessageAt?.toDate?.()?.toISOString() || data.lastMessageAt,
-                            cwConversationId: data.cw_conversation_id || null,
-                            summary: typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null,
-                            category: data.category || null,
-                            categories: data.category ? data.category.split('|').map(c => c.trim()) : [],
+                            ...baseDetail.conversation,
+                            ...docConversation,
                         },
                         messages: mergedMessages,
                     };
+                });
+
+                const isInitialLoad = !initialLoadedRef.current;
+
+                if (isInitialLoad) {
+                    setLoading(false);
+                    initialLoadedRef.current = true;
+                }
+
+                const lastMessage = uniqueMessages[uniqueMessages.length - 1];
+                console.log('[ConversationDetail] Firestore update received:', {
+                    docs: docs.length,
+                    messagesCount: uniqueMessages.length,
+                    lastMessage: lastMessage?.text?.substring(0, 50),
+                    isInitialLoad,
                 });
             },
             (error) => {
@@ -468,6 +565,33 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         });
     };
 
+    const sortAndDedupeMessages = (messages) => {
+        if (!Array.isArray(messages)) return [];
+
+        const sorted = [...messages].sort((a, b) => {
+            const tsA = new Date(a.timestamp || 0).getTime();
+            const tsB = new Date(b.timestamp || 0).getTime();
+            return tsA - tsB;
+        });
+
+        const seen = new Set();
+        const unique = [];
+
+        sorted.forEach((msg) => {
+            const tsKey = new Date(msg.timestamp || 0).getTime();
+            const textKey = (msg.text || '').slice(0, 50);
+            const picsLen = (msg.pics || []).length;
+            const key = msg.msgId || `${msg.sender || 'unknown'}_${tsKey}_${textKey}_${picsLen}`;
+
+            if (!seen.has(key)) {
+                seen.add(key);
+                unique.push(msg);
+            }
+        });
+
+        return unique;
+    };
+
     // ✅ 옵티미스틱 메시지와 서버 메시지 병합 헬퍼 함수
     const mergeOptimisticMessages = (serverMessages, optimisticMessages) => {
         const serverMsgIds = new Set(serverMessages.map(m => m.msgId).filter(Boolean));
@@ -504,9 +628,10 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     };
 
     const fetchDetail = async (options = {}) => {
-        const { skipLoading = false } = options;
+        const { skipLoading = false, chatId: chatIdOverride } = options;
+        const targetChatId = chatIdOverride || resolvedChatId;
 
-        if (!resolvedChatId) {
+        if (!targetChatId) {
             console.error('[ConversationDetail] Cannot fetch detail: chatId is missing');
             return;
         }
@@ -517,7 +642,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
         try {
             const res = await fetch(
-                `/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${resolvedChatId}`
+                `/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${targetChatId}`
             );
             if (!res.ok) {
                 throw new Error(`Failed to fetch: ${res.status}`);
@@ -526,13 +651,23 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             const data = await res.json();
 
             setDetail(prev => {
-                const optimisticMessages = prev?.messages?.filter(m =>
-                    m._status === 'pending' || m._status === 'sent'
-                ) || [];
+                const baseDetail = prev && typeof prev === 'object' ? prev : {};
+
+                const isSameChat =
+                    targetChatId &&
+                    (baseDetail?.conversation?.chatId === targetChatId ||
+                        baseDetail?.conversation?.chat_id === targetChatId);
+
+                const optimisticMessages = isSameChat
+                    ? (baseDetail?.messages || []).filter(
+                        (m) => m._status === 'pending' || m._status === 'sent'
+                    )
+                    : [];
 
                 const serverMessages = normalizeServerMessages(data.messages);
 
                 return {
+                    ...baseDetail,
                     ...data,
                     messages: mergeOptimisticMessages(serverMessages, optimisticMessages),
                 };
@@ -1110,6 +1245,36 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                         </div>
 
                         <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={toggleSaved}
+                                disabled={savingStatus}
+                                className={`p-2 rounded-lg transition-all disabled:opacity-50 ${isSaved ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                                title={isSaved ? "저장 취소" : "저장"}
+                                aria-pressed={isSaved}
+                                aria-label={isSaved ? "대화 저장 해제" : "대화 저장"}
+                            >
+                                <Bookmark
+                                    className="w-5 h-5 transition-all"
+                                    fill={isSaved ? 'currentColor' : 'none'}
+                                />
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    completeConversation({
+                                        confirmMessage: '이 대화를 완료 처리하시겠습니까?\n완료된 대화는 "완료" 탭에서 확인할 수 있습니다.',
+                                    })
+                                }
+                                disabled={completing}
+                                className="hidden sm:inline-flex p-2 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="대화 완료 처리"
+                                aria-label="대화 완료 처리"
+                            >
+                                <Check className="w-5 h-5" />
+                            </button>
+
                             {/* AI 보정 버튼 */}
                             {(planName === 'pro' || planName === 'business') && (
                                 <button
