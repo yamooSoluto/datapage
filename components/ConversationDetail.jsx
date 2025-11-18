@@ -12,7 +12,7 @@ import LibraryMacroDropdown from './LibraryMacroDropdown'; // ✅ 추가
 const SWIPE_COMPLETE_THRESHOLD = 80;
 const MAX_SWIPE_DISTANCE = 160;
 
-export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, onPendingDraftCleared, tenantId, planName = 'trial', isEmbedded = false, libraryData }) {
+export default function ConversationDetail({ conversation, onClose, onSend, onOpenAICorrector, onPendingDraftCleared, onStatusChange, tenantId, planName = 'trial', isEmbedded = false, libraryData }) {
     const [detail, setDetail] = useState(null);
     const [loading, setLoading] = useState(true);
     const initialLoadedRef = useRef(false); // ✅ 초기 로딩 완료 플래그 (클로저 문제 방지)
@@ -22,7 +22,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [composerMode, setComposerMode] = useState('ai'); // 'ai' | 'confirm-edit'
     const messagesEndRef = useRef(null);
     const messagesContainerRef = useRef(null); // 메시지 스크롤 컨테이너 ref
-    const touchStartYRef = useRef(0); // 터치 시작 Y 위치
     const firestorePermissionDeniedRef = useRef(false); // ✅ Firestore 권한 오류 플래그
 
     // 입력바 상태
@@ -44,16 +43,25 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         tenantId ||
         conversation?.tenant ||
         conversation?.tenantId ||
+        conversation?.tenant_id ||
         (typeof conversation?.id === 'string' && conversation.id.includes('_')
             ? conversation.id.split('_')[0]
             : null) ||
         'default';
 
-    // ✅ chatId 안전하게 추출
-    const chatId = conversation?.chatId || conversation?.id || '';
+    // ✅ chatId 안전하게 추출 (snake_case 포함)
+    const baseChatId =
+        conversation?.chatId ||
+        conversation?.chat_id ||
+        conversation?.id ||
+        '';
+
+    const resolvedChatId =
+        (detail?.conversation?.chatId || detail?.conversation?.chat_id) ||
+        baseChatId;
 
     // ✅ 로컬 스토리지 키 (effectiveTenantId와 chatId 사용)
-    const draftKey = chatId ? `draft_${effectiveTenantId}_${chatId}` : null;
+    const draftKey = resolvedChatId ? `draft_${effectiveTenantId}_${resolvedChatId}` : null;
 
     // ✅ 컴포넌트 마운트 시 저장된 draft 복원
     useEffect(() => {
@@ -87,9 +95,33 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const [showAICorrector, setShowAICorrector] = useState(false);
     const [pendingDraftDismissed, setPendingDraftDismissed] = useState(false);
 
+    const applyLocalArchiveStatus = (status) => {
+        setDetail((prev) => {
+            if (!prev?.conversation) return prev;
+            const archiveValue = status === 'active' ? null : status;
+            return {
+                ...prev,
+                conversation: {
+                    ...prev.conversation,
+                    archive_status: archiveValue,
+                    archiveStatus: archiveValue,
+                    currentArchiveStatus: status,
+                    status: status === 'completed' ? 'completed' : prev.conversation.status,
+                },
+            };
+        });
+    };
+
     // ✅ 상태 변경 핸들러
     const handleStatusChange = (newStatus) => {
+        if (!newStatus) return;
+
         console.log('[ConversationDetail] Status changed:', newStatus);
+        applyLocalArchiveStatus(newStatus);
+        onStatusChange?.(newStatus, {
+            chatId: resolvedChatId,
+            tenantId: effectiveTenantId,
+        });
 
         if (newStatus === 'completed') {
             // 완료 시 모달 닫기
@@ -126,7 +158,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tenantId: effectiveTenantId,
-                    chatId: conversation?.chatId || conversation?.id,
+                    chatId: resolvedChatId,
                     archiveStatus: newStatus,
                 }),
             });
@@ -135,6 +167,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
             setIsSaved(!isSaved);
             console.log('[ConversationDetail] Saved status:', newStatus);
+            handleStatusChange(newStatus ? 'saved' : 'active');
         } catch (error) {
             console.error('[ConversationDetail] Save error:', error);
             alert('저장에 실패했습니다.');
@@ -194,7 +227,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tenantId: effectiveTenantId,
-                    chatId: conversation?.chatId || conversation?.id,
+                    chatId: resolvedChatId,
                     archiveStatus: 'completed',
                 }),
             });
@@ -265,7 +298,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     // ✅ Firestore 실시간 리스너: 모달이 열려 있는 동안 새 메시지 자동 감지
     useEffect(() => {
-        if (!chatId || !effectiveTenantId) {
+        if (!baseChatId || !effectiveTenantId) {
             setLoading(false);
             initialLoadedRef.current = false;
             return;
@@ -295,12 +328,12 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
         const q = query(
             collection(db, 'FAQ_realtime_cw'),
             where('tenant_id', '==', effectiveTenantId),
-            where('chat_id', '==', String(chatId)),
+            where('chat_id', '==', String(baseChatId)),
             orderBy('lastMessageAt', 'desc'),
             limit(1)
         );
 
-        console.log('[ConversationDetail] Setting up Firestore listener for chat:', effectiveTenantId, chatId);
+        console.log('[ConversationDetail] Setting up Firestore listener for chat:', effectiveTenantId, baseChatId);
 
         setLoading(true);
         initialLoadedRef.current = false;
@@ -309,7 +342,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             q,
             (snapshot) => {
                 if (snapshot.empty) {
-                    console.warn('[ConversationDetail] No docs for chat:', chatId);
+                    console.warn('[ConversationDetail] No docs for chat:', baseChatId);
                     if (!initialLoadedRef.current) {
                         setLoading(false);
                         initialLoadedRef.current = true;
@@ -346,7 +379,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     return {
                         conversation: {
                             id: docSnap.id,
-                            chatId: data.chat_id || chatId,
+                            chatId: data.chat_id || data.chatId || baseChatId,
                             userId: data.user_id,
                             userName: data.user_name || '익명',
                             brandName: data.brandName || data.brand_name || null,
@@ -407,7 +440,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             initialLoadedRef.current = false;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [chatId, effectiveTenantId]);
+    }, [baseChatId, effectiveTenantId]);
 
     // ✅ 서버 메시지 정규화 헬퍼 함수 (Firestore Timestamp 및 일반 문자열 모두 처리)
     const normalizeServerMessages = (messages) => {
@@ -473,7 +506,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const fetchDetail = async (options = {}) => {
         const { skipLoading = false } = options;
 
-        if (!chatId) {
+        if (!resolvedChatId) {
             console.error('[ConversationDetail] Cannot fetch detail: chatId is missing');
             return;
         }
@@ -484,7 +517,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
         try {
             const res = await fetch(
-                `/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${chatId}`
+                `/api/conversations/detail?tenant=${effectiveTenantId}&chatId=${resolvedChatId}`
             );
             if (!res.ok) {
                 throw new Error(`Failed to fetch: ${res.status}`);
@@ -701,7 +734,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
             textLength: text.length,
             attachmentsCount: attachments.length,
             tenantId: effectiveTenantId,
-            chatId: chatId,
+            chatId: resolvedChatId,
         });
 
         const savedDraft = draft;
@@ -748,7 +781,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                     base64: att.base64,
                 })),
                 tenantId: effectiveTenantId,
-                chatId: chatId,
+                chatId: resolvedChatId,
             });
 
             // ================================================
@@ -864,7 +897,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
     const hasPendingDraft = isConfirmMode && conversationData?.draftStatus === "pending_approval" && !!conversationData?.aiDraft;
     const pendingDraftText = hasPendingDraft ? conversationData.aiDraft : "";
     const pendingDraftKey = hasPendingDraft
-        ? `${conversationData?.chatId || conversation?.chatId || 'unknown'}_${conversationData?.draftStatus}_${conversationData?.aiDraft}_${draftCreatedAt || ''}`
+        ? `${conversationData?.chatId || conversationData?.chat_id || conversation?.chatId || conversation?.chat_id || 'unknown'}_${conversationData?.draftStatus}_${conversationData?.aiDraft}_${draftCreatedAt || ''}`
         : null;
     const messages = Array.isArray(detail?.messages) ? detail.messages : [];
     const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -905,7 +938,8 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
     // ✅ 포탈에서 메시지 전송하는 공통 함수
     const sendFinalViaPortal = async (text, options = {}) => {
-        if (!conversationData?.chatId || !effectiveTenantId) return;
+        const targetChatId = conversationData?.chatId || conversationData?.chat_id || resolvedChatId;
+        if (!targetChatId || !effectiveTenantId) return;
 
         // ✅ 중복 전송 방지
         if (sending) {
@@ -921,7 +955,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     tenantId: effectiveTenantId,
-                    chatId: conversationData.chatId,
+                    chatId: targetChatId,
                     content: text,
                     attachments: [],
                     // 🔹 컨펌용 공통 옵션
@@ -952,7 +986,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
 
             // ✅ 상위 컴포넌트에 알림
             onPendingDraftCleared?.({
-                chatId: conversationData?.chatId || conversation?.chatId || null,
+                chatId: conversationData?.chatId || conversationData?.chat_id || conversation?.chatId || conversation?.chat_id || null,
                 tenantId: effectiveTenantId,
             });
 
@@ -1098,25 +1132,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                             touchAction: 'pan-y',
                             overscrollBehavior: 'contain',
                             minHeight: 0, // flex-1이 제대로 작동하도록
-                        }}
-                        onTouchStart={(e) => {
-                            // 터치 시작 위치 저장
-                            touchStartYRef.current = e.touches[0].clientY;
-                            const target = e.currentTarget;
-                            const isScrollable = target.scrollHeight > target.clientHeight;
-                            // 스크롤 가능한 영역에서 터치가 시작되면 상위로 전파 방지
-                            if (isScrollable) {
-                                e.stopPropagation();
-                            }
-                        }}
-                        onTouchMove={(e) => {
-                            const target = e.currentTarget;
-                            const isScrollable = target.scrollHeight > target.clientHeight;
-
-                            // 스크롤 가능한 영역에서는 항상 전파 방지
-                            if (isScrollable) {
-                                e.stopPropagation();
-                            }
                         }}
                     >
                         {loading || !detail ? (
@@ -1529,25 +1544,6 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                 overscrollBehavior: 'contain',
                                 minHeight: 0, // flex-1이 제대로 작동하도록
                             }}
-                            onTouchStart={(e) => {
-                                // 터치 시작 위치 저장
-                                touchStartYRef.current = e.touches[0].clientY;
-                                const target = e.currentTarget;
-                                const isScrollable = target.scrollHeight > target.clientHeight;
-                                // 스크롤 가능한 영역에서 터치가 시작되면 상위로 전파 방지
-                                if (isScrollable) {
-                                    e.stopPropagation();
-                                }
-                            }}
-                            onTouchMove={(e) => {
-                                const target = e.currentTarget;
-                                const isScrollable = target.scrollHeight > target.clientHeight;
-
-                                // 스크롤 가능한 영역에서는 항상 전파 방지
-                                if (isScrollable) {
-                                    e.stopPropagation();
-                                }
-                            }}
                         >
                             {loading || !detail ? (
                                 <div className="flex flex-col items-center justify-center py-20">
@@ -1855,7 +1851,7 @@ export default function ConversationDetail({ conversation, onClose, onSend, onOp
                                     text: trimmed,
                                     attachments: [],              // AI 보정으로 보낼 때는 첨부 없음
                                     tenantId: effectiveTenantId,  // 위에서 계산한 tenant
-                                    chatId,                       // 위에서 계산한 chatId
+                                    chatId: resolvedChatId,       // 위에서 계산한 chatId
                                 });
                             }
 

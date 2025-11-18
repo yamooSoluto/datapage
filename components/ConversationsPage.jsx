@@ -801,6 +801,57 @@ export default function ConversationsPage({ tenantId }) {
         }
     };
 
+    const handleDetailStatusChange = useCallback((nextStatus, context = {}) => {
+        if (!nextStatus) return;
+
+        const archiveValue = nextStatus === 'active' ? null : nextStatus;
+        const targetChatId =
+            context?.chatId ||
+            selectedConv?.chatId ||
+            selectedConv?.chat_id ||
+            selectedConv?.id ||
+            null;
+
+        if (!targetChatId) {
+            console.warn('[ConversationsPage] handleDetailStatusChange: missing chatId context');
+            return;
+        }
+
+        setConversations((prev) => {
+            if (!Array.isArray(prev) || prev.length === 0) return prev;
+            return prev.map((conv) => {
+                const convChatId = conv?.chatId || conv?.chat_id || conv?.id;
+                if (convChatId !== targetChatId) return conv;
+                const updated = {
+                    ...conv,
+                    archive_status: archiveValue,
+                    archiveStatus: archiveValue,
+                    currentArchiveStatus: nextStatus,
+                };
+                if (nextStatus === 'completed') {
+                    updated.status = 'completed';
+                }
+                return updated;
+            });
+        });
+
+        setSelectedConv((prev) => {
+            if (!prev) return prev;
+            const prevChatId = prev?.chatId || prev?.chat_id || prev?.id;
+            if (prevChatId !== targetChatId) return prev;
+            const updated = {
+                ...prev,
+                archive_status: archiveValue,
+                archiveStatus: archiveValue,
+                currentArchiveStatus: nextStatus,
+            };
+            if (nextStatus === 'completed') {
+                updated.status = 'completed';
+            }
+            return updated;
+        });
+    }, [selectedConv]);
+
     const handleAISend = async (aiContent) => {
         if (!selectedConv) return;
         return handleSend({
@@ -1209,6 +1260,7 @@ export default function ConversationsPage({ tenantId }) {
                                 onSend={handleSend}
                                 onOpenAICorrector={() => setShowAIModal(true)}
                                 onPendingDraftCleared={handlePendingDraftCleared}
+                                onStatusChange={handleDetailStatusChange}
                                 isEmbedded={true}
                                 libraryData={libraryData}
                             />
@@ -1235,6 +1287,7 @@ export default function ConversationsPage({ tenantId }) {
                         onSend={handleSend}
                         onOpenAICorrector={() => setShowAIModal(true)}
                         onPendingDraftCleared={handlePendingDraftCleared}
+                        onStatusChange={handleDetailStatusChange}
                         isEmbedded={false}
                         libraryData={libraryData}
                     />

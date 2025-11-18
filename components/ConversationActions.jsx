@@ -35,13 +35,25 @@ export default function ConversationActions({
         }
     }, [conversation]);
 
+    const effectiveTenantId =
+        tenantId ||
+        conversation?.tenant ||
+        conversation?.tenantId ||
+        conversation?.tenant_id ||
+        (typeof conversation?.id === 'string' && conversation.id.includes('_')
+            ? conversation.id.split('_')[0]
+            : null);
+
     const handleSaveToggle = async () => {
         if (saving) return;
 
         const targetStatus = currentStatus === 'saved' ? 'active' : 'saved';
-        const chatId = conversation?.chatId || conversation?.id;
+        const chatId =
+            conversation?.chatId ||
+            conversation?.chat_id ||
+            conversation?.id;
 
-        if (!tenantId || !chatId) {
+        if (!effectiveTenantId || !chatId) {
             console.error('[ConversationActions] Missing tenantId or chatId');
             alert('필수 정보가 없어 상태를 변경할 수 없습니다.');
             return;
@@ -53,7 +65,7 @@ export default function ConversationActions({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    tenantId,
+                    tenantId: effectiveTenantId,
                     chatId,
                     archiveStatus: targetStatus === 'active' ? null : targetStatus,
                 }),
@@ -63,7 +75,10 @@ export default function ConversationActions({
 
             await response.json();
             setCurrentStatus(targetStatus);
-            onStatusChange?.(targetStatus);
+            onStatusChange?.(targetStatus, {
+                chatId,
+                tenantId: effectiveTenantId,
+            });
         } catch (error) {
             console.error('[ConversationActions] Save toggle error:', error);
             alert('저장 상태 변경에 실패했습니다.');
