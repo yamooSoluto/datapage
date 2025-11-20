@@ -1,39 +1,46 @@
 // components/minimap/MiniMapEditor.tsx
-// 심플하지만 확장 가능한 미니맵 에디터 뼈대
-// - 기본 구조 템플릿(ㅁ, ㄱ, ㄴ, T)
-// - 공간 / 시설 팔레트
-// - 그리드 캔버스 + 요소 배치
-// - 선택 / 좌표 수정 / 삭제
-// ※ 실제 저장은 onSave에서 처리 (Firestore 연동은 상위에서)
+// 3단 레이어 구조: 프레임(층/동) → 공간(존) → 시설(아이템)
+// - 프레임별 탭 전환
+// - 클릭으로 배치, 드래그로 이동
+// - 벽: 클릭-드래그로 그리기 (SVG로 연결점 부드럽게)
+// - 문: 벽을 끊는 도면 스타일
+// - note 필드: 데이터 시트와 쌍방향 동기화
+// - CriteriaSheetEditor 데이터와 연동
 
 import React, {
     useState,
-    useMemo,
-    useCallback,
+    useRef,
+    useEffect,
     MouseEvent,
 } from "react";
 import type { MapCandidate } from "@/lib/mapPalette";
 
 const GRID_SIZE = 40;
-const DEFAULT_WIDTH = 960;
-const DEFAULT_HEIGHT = 640;
+const DEFAULT_WIDTH = 1400;
+const DEFAULT_HEIGHT = 900;
+const WALL_THICKNESS = 8;
 
 // === 타입 정의 ===
 
-// 미니맵에 저장될 벽/문/기둥 같은 구조 요소
-export type SegmentType = "wall" | "door" | "column" | "elevator";
-
-export interface Segment {
+// 벽 (수평/수직 직선만)
+export interface Wall {
     id: string;
-    type: SegmentType;
-    // 벽/문: x1,y1 ~ x2,y2 (그리드 스냅)
     x1: number;
     y1: number;
     x2: number;
     y2: number;
 }
 
-// 공간(존) 영역 (직사각형 정도로)
+// 문 (벽을 끊는 형태)
+export interface Door {
+    id: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+}
+
+// 공간(존) 영역
 export interface ZoneRect {
     id: string;
     kind: "space";
@@ -42,884 +49,1304 @@ export interface ZoneRect {
     y: number;
     width: number;
     height: number;
+    note?: string; // 비고 필드
 }
 
-// 시설/아이템 (정수기, 에어컨 등)
+// 시설/아이템
 export interface MapObject {
     id: string;
     kind: "facility";
     candidate: MapCandidate;
     x: number;
     y: number;
-    rotation: number;
+    width: number;
+    height: number;
     status: "ok" | "issue" | "broken" | "off";
+    note?: string; // 비고 필드
 }
 
-// 전체 미니맵 데이터
-export interface MiniMapData {
-    frameId: string;
+// 프레임 (층/동/공간묶음)
+export interface Frame {
+    id: string;
     name: string;
     width: number;
     height: number;
-    segments: Segment[];
+    walls: Wall[];
+    doors: Door[];
     zones: ZoneRect[];
     objects: MapObject[];
 }
 
-// 선택 상태
+// 전체 미니맵 데이터
+export interface MiniMapData {
+    tenantId: string;
+    frames: Frame[];
+}
+
 type Selection =
-    | { type: "segment"; id: string }
+    | { type: "wall"; id: string }
+    | { type: "door"; id: string }
     | { type: "zone"; id: string }
     | { type: "object"; id: string }
     | null;
 
-type Tool =
-    | "select"
-    | "wall"
-    | "space"
-    | "facility";
+type Tool = "select" | "wall" | "door" | "space" | "facility";
 
 interface MiniMapEditorProps {
     tenantId: string;
-    frameId: string;
+    frameId?: string;
     initialName?: string;
-    initialData?: Partial<MiniMapData>;
+    initialData?: MiniMapData;
     spaceCandidates: MapCandidate[];
     facilityCandidates: MapCandidate[];
     onSave?: (data: MiniMapData) => Promise<void> | void;
+    onUpdateNote?: (type: "space" | "facility", itemId: string, note: string) => void; // note 업데이트 콜백
 }
 
 export default function MiniMapEditor({
     tenantId,
     frameId,
-    initialName = "기본 미니맵",
+    initialName,
     initialData,
     spaceCandidates,
     facilityCandidates,
     onSave,
+    onUpdateNote,
 }: MiniMapEditorProps) {
-    const [name, setName] = useState(initialName);
-    const [width] = useState(initialData?.width || DEFAULT_WIDTH);
-    const [height] = useState(initialData?.height || DEFAULT_HEIGHT);
+    const fallbackFrame: Frame = {
+        id: frameId || "frame_1",
+        name: initialName || "1층",
+        width: DEFAULT_WIDTH,
+        height: DEFAULT_HEIGHT,
+        walls: [],
+        doors: [],
+        zones: [],
+        objects: [],
+    };
+    const initialFrames = initialData?.frames?.length
+        ? initialData.frames
+        : [fallbackFrame];
 
-    const [segments, setSegments] = useState<Segment[]>(
-        initialData?.segments || []
-    );
-    const [zones, setZones] = useState<ZoneRect[]>(
-        initialData?.zones || []
-    );
-    const [objects, setObjects] = useState<MapObject[]>(
-        initialData?.objects || []
-    );
-
+    // === State ===
+    const [frames, setFrames] = useState<Frame[]>(initialFrames);
+    const [activeFrameId, setActiveFrameId] = useState(() => {
+        if (frameId && initialFrames.some((f) => f.id === frameId)) {
+            return frameId;
+        }
+        return initialFrames[0].id;
+    });
     const [tool, setTool] = useState<Tool>("select");
-    const [activeCandidate, setActiveCandidate] = useState<MapCandidate | null>(
-        null
-    );
     const [selection, setSelection] = useState<Selection>(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // 벽 드래그용
-    const [wallStart, setWallStart] = useState<{
-        x: number;
-        y: number;
+    // 드래그 상태
+    const [isDragging, setIsDragging] = useState(false);
+    const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
+
+    // 선택된 공간/시설 (클릭 배치용)
+    const [selectedCandidate, setSelectedCandidate] = useState<{
+        kind: "space" | "facility";
+        candidate: MapCandidate;
     } | null>(null);
 
-    // 그리드 좌표 스냅
-    const snapToGrid = (x: number, y: number) => {
-        const sx = Math.round(x / GRID_SIZE) * GRID_SIZE;
-        const sy = Math.round(y / GRID_SIZE) * GRID_SIZE;
-        return { x: sx, y: sy };
+    // 벽/문 그리기용
+    const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+    const [drawPreview, setDrawPreview] = useState<{ x: number; y: number } | null>(null);
+
+    // 고스트 미리보기 (마우스 커서 위치)
+    const [ghostPosition, setGhostPosition] = useState<{ x: number; y: number } | null>(null);
+
+    // 리사이즈 핸들 드래그
+    const [resizeHandle, setResizeHandle] = useState<string | null>(null);
+
+    const canvasRef = useRef<HTMLDivElement>(null);
+
+    // === 현재 활성 프레임 ===
+    const activeFrame = frames.find((f) => f.id === activeFrameId) || frames[0];
+
+    const updateFrame = (frameId: string, updates: Partial<Frame>) => {
+        setFrames((prev) =>
+            prev.map((f) => (f.id === frameId ? { ...f, ...updates } : f))
+        );
     };
 
-    // 캔버스 클릭 좌표 계산
-    const getCanvasPos = (e: MouseEvent<HTMLDivElement>) => {
-        const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    // === 유틸 함수 ===
+    const snapToGrid = (x: number, y: number) => {
+        return {
+            x: Math.round(x / GRID_SIZE) * GRID_SIZE,
+            y: Math.round(y / GRID_SIZE) * GRID_SIZE,
+        };
+    };
+
+    const getCanvasPos = (e: MouseEvent<HTMLDivElement> | MouseEvent) => {
+        if (!canvasRef.current) return { x: 0, y: 0 };
+        const rect = canvasRef.current.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         return snapToGrid(x, y);
     };
 
-    // === 기본 구조 템플릿 ===
-    const applyTemplate = (type: "box" | "ㄱ" | "ㄴ" | "T") => {
-        const newSegments: Segment[] = [];
-        const margin = GRID_SIZE;
-        const w = width - margin * 2;
-        const h = height - margin * 2;
+    const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-        const nextId = (() => {
-            let i = 1;
-            return () => `seg_tpl_${type}_${i++}`;
-        })();
-
-        const hSeg = (x1: number, y: number, x2: number): Segment => ({
-            id: nextId(),
-            type: "wall",
-            x1,
-            y1: y,
-            x2,
-            y2: y,
+    useEffect(() => {
+        if (!frameId) return;
+        setFrames((prev) => {
+            if (prev.some((f) => f.id === frameId)) {
+                return prev;
+            }
+            const nextFrame: Frame = {
+                id: frameId,
+                name: initialName || frameId,
+                width: DEFAULT_WIDTH,
+                height: DEFAULT_HEIGHT,
+                walls: [],
+                doors: [],
+                zones: [],
+                objects: [],
+            };
+            return [...prev, nextFrame];
         });
-        const vSeg = (x: number, y1: number, y2: number): Segment => ({
-            id: nextId(),
-            type: "wall",
-            x1: x,
-            y1,
-            x2: x,
-            y2,
-        });
+        setActiveFrameId(frameId);
+    }, [frameId, initialName]);
 
-        const left = margin;
-        const right = margin + w;
-        const top = margin;
-        const bottom = margin + h;
-
-        if (type === "box") {
-            newSegments.push(
-                hSeg(left, top, right),
-                hSeg(left, bottom, right),
-                vSeg(left, top, bottom),
-                vSeg(right, top, bottom)
-            );
-        } else if (type === "ㄱ") {
-            // ㄱ자: 왼쪽, 아래쪽 벽 + 위쪽 일부
-            const midX = left + w * 0.4;
-            newSegments.push(
-                vSeg(left, top, bottom),
-                hSeg(left, bottom, right),
-                hSeg(left, top, midX)
-            );
-        } else if (type === "ㄴ") {
-            // ㄴ자: 오른쪽, 아래쪽 + 위쪽 일부
-            const midX = right - w * 0.4;
-            newSegments.push(
-                vSeg(right, top, bottom),
-                hSeg(left, bottom, right),
-                hSeg(midX, top, right)
-            );
-        } else if (type === "T") {
-            // T자: 상단 가로 + 중앙 세로
-            const midX = left + w / 2;
-            const midY = top + h / 2;
-            newSegments.push(
-                hSeg(left, top, right),
-                vSeg(midX, top, bottom),
-                hSeg(left, midY, right)
-            );
-        }
-
-        // 기존 벽은 유지 + 템플릿 추가 (원하면 교체로 바꿔도 됨)
-        setSegments((prev) => [...prev, ...newSegments]);
-    };
-
-    // === 요소 생성 ===
-    const createZone = (candidate: MapCandidate, x: number, y: number) => {
-        const id = `zone_${candidate.rowId}_${Date.now()}`;
-        const defaultWidth = GRID_SIZE * 4;
-        const defaultHeight = GRID_SIZE * 3;
-
-        const zone: ZoneRect = {
-            id,
-            kind: "space",
-            candidate,
-            x,
-            y,
-            width: defaultWidth,
-            height: defaultHeight,
+    // === 프레임 관리 ===
+    const addFrame = () => {
+        const newFrame: Frame = {
+            id: genId("frame"),
+            name: `${frames.length + 1}층`,
+            width: DEFAULT_WIDTH,
+            height: DEFAULT_HEIGHT,
+            walls: [],
+            doors: [],
+            zones: [],
+            objects: [],
         };
-        setZones((prev) => [...prev, zone]);
-        setSelection({ type: "zone", id });
+        setFrames([...frames, newFrame]);
+        setActiveFrameId(newFrame.id);
     };
 
-    const createObject = (candidate: MapCandidate, x: number, y: number) => {
-        const id = `obj_${candidate.rowId}_${Date.now()}`;
-        const obj: MapObject = {
-            id,
-            kind: "facility",
-            candidate,
-            x,
-            y,
-            rotation: 0,
-            status: "ok",
-        };
-        setObjects((prev) => [...prev, obj]);
-        setSelection({ type: "object", id });
-    };
-
-    const createWallSegment = (start: { x: number; y: number }, end: { x: number; y: number }) => {
-        // 수평/수직만 허용 (더 깔끔)
-        let { x: x1, y: y1 } = start;
-        let { x: x2, y: y2 } = end;
-
-        const dx = Math.abs(x2 - x1);
-        const dy = Math.abs(y2 - y1);
-
-        if (dx < GRID_SIZE && dy < GRID_SIZE) {
-            return; // 너무 짧은 건 무시
+    const deleteFrame = (frameId: string) => {
+        if (frames.length === 1) {
+            alert("최소 1개의 프레임은 있어야 합니다.");
+            return;
         }
-
-        if (dx > dy) {
-            // 수평으로 고정
-            y2 = y1;
-        } else {
-            // 수직으로 고정
-            x2 = x1;
+        const remaining = frames.filter((f) => f.id !== frameId);
+        setFrames(remaining);
+        if (activeFrameId === frameId) {
+            setActiveFrameId(remaining[0].id);
         }
-
-        const id = `seg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const seg: Segment = {
-            id,
-            type: "wall",
-            x1,
-            y1,
-            x2,
-            y2,
-        };
-        setSegments((prev) => [...prev, seg]);
-        setSelection({ type: "segment", id });
     };
 
-    // === 캔버스 클릭 핸들러 ===
+    const renameFrame = (frameId: string, newName: string) => {
+        updateFrame(frameId, { name: newName });
+    };
+
+    // 벽 클릭 체크 함수
+    const checkWallClick = (pos: { x: number; y: number }): string | null => {
+        for (const wall of activeFrame.walls) {
+            const isHorizontal = wall.y1 === wall.y2;
+            if (isHorizontal) {
+                if (
+                    Math.abs(pos.y - wall.y1) < WALL_THICKNESS * 1.5 &&
+                    pos.x >= Math.min(wall.x1, wall.x2) - 10 &&
+                    pos.x <= Math.max(wall.x1, wall.x2) + 10
+                ) {
+                    return wall.id;
+                }
+            } else {
+                if (
+                    Math.abs(pos.x - wall.x1) < WALL_THICKNESS * 1.5 &&
+                    pos.y >= Math.min(wall.y1, wall.y2) - 10 &&
+                    pos.y <= Math.max(wall.y1, wall.y2) + 10
+                ) {
+                    return wall.id;
+                }
+            }
+        }
+        return null;
+    };
+
+    // === 벽/문 그리기 + 공간/시설 배치 (클릭) ===
     const handleCanvasMouseDown = (e: MouseEvent<HTMLDivElement>) => {
-        if (tool === "wall") {
-            const { x, y } = getCanvasPos(e);
-            setWallStart({ x, y });
+        e.stopPropagation();
+        const pos = getCanvasPos(e);
+
+        // 공간/시설 배치 모드
+        if (tool === "space" && selectedCandidate?.kind === "space") {
+            const newZone: ZoneRect = {
+                id: genId("zone"),
+                kind: "space",
+                candidate: selectedCandidate.candidate,
+                x: pos.x,
+                y: pos.y,
+                width: GRID_SIZE * 4,
+                height: GRID_SIZE * 3,
+                note: "", // 초기 비고는 빈 문자열
+            };
+            updateFrame(activeFrameId, {
+                zones: [...activeFrame.zones, newZone],
+            });
+            // ⭐ 선택 유지 (연속 배치 가능)
             return;
         }
 
-        if (tool === "space" && activeCandidate) {
-            const { x, y } = getCanvasPos(e);
-            createZone(activeCandidate, x, y);
+        if (tool === "facility" && selectedCandidate?.kind === "facility") {
+            const newObj: MapObject = {
+                id: genId("obj"),
+                kind: "facility",
+                candidate: selectedCandidate.candidate,
+                x: pos.x,
+                y: pos.y,
+                width: GRID_SIZE * 2,
+                height: GRID_SIZE * 2,
+                status: "ok",
+                note: "", // 초기 비고는 빈 문자열
+            };
+            updateFrame(activeFrameId, {
+                objects: [...activeFrame.objects, newObj],
+            });
+            // ⭐ 선택 유지 (연속 배치 가능)
             return;
         }
 
-        if (tool === "facility" && activeCandidate) {
-            const { x, y } = getCanvasPos(e);
-            createObject(activeCandidate, x, y);
+        // 벽/문 그리기
+        if (tool === "wall" || tool === "door") {
+            setDrawStart(pos);
+            setDrawPreview(pos);
             return;
         }
 
-        // select 모드면 추후 “빈 공간 클릭 시 선택 해제” 정도만
+        // 선택 모드
         if (tool === "select") {
-            setSelection(null);
+            let clicked: Selection = null;
+
+            // 시설 리사이즈 핸들 체크
+            for (const obj of activeFrame.objects) {
+                const handles = [
+                    { id: "se", x: obj.x + obj.width, y: obj.y + obj.height },
+                    { id: "sw", x: obj.x, y: obj.y + obj.height },
+                    { id: "ne", x: obj.x + obj.width, y: obj.y },
+                    { id: "nw", x: obj.x, y: obj.y },
+                ];
+
+                for (const handle of handles) {
+                    if (Math.abs(handle.x - pos.x) < 10 && Math.abs(handle.y - pos.y) < 10) {
+                        setSelection({ type: "object", id: obj.id });
+                        setResizeHandle(handle.id);
+                        setIsDragging(true);
+                        return;
+                    }
+                }
+            }
+
+            // 문 체크
+            for (const door of activeFrame.doors) {
+                const isHorizontal = door.y1 === door.y2;
+                if (isHorizontal) {
+                    if (
+                        Math.abs(pos.y - door.y1) < WALL_THICKNESS * 2 &&
+                        pos.x >= Math.min(door.x1, door.x2) &&
+                        pos.x <= Math.max(door.x1, door.x2)
+                    ) {
+                        clicked = { type: "door", id: door.id };
+                        break;
+                    }
+                } else {
+                    if (
+                        Math.abs(pos.x - door.x1) < WALL_THICKNESS * 2 &&
+                        pos.y >= Math.min(door.y1, door.y2) &&
+                        pos.y <= Math.max(door.y1, door.y2)
+                    ) {
+                        clicked = { type: "door", id: door.id };
+                        break;
+                    }
+                }
+            }
+
+            // 시설 체크
+            if (!clicked) {
+                for (const obj of activeFrame.objects) {
+                    if (
+                        pos.x >= obj.x &&
+                        pos.x <= obj.x + obj.width &&
+                        pos.y >= obj.y &&
+                        pos.y <= obj.y + obj.height
+                    ) {
+                        clicked = { type: "object", id: obj.id };
+                        break;
+                    }
+                }
+            }
+
+            // 공간 체크
+            if (!clicked) {
+                for (const zone of activeFrame.zones) {
+                    if (
+                        pos.x >= zone.x &&
+                        pos.x <= zone.x + zone.width &&
+                        pos.y >= zone.y &&
+                        pos.y <= zone.y + zone.height
+                    ) {
+                        clicked = { type: "zone", id: zone.id };
+                        break;
+                    }
+                }
+            }
+
+            // 벽 체크
+            if (!clicked) {
+                const wallId = checkWallClick(pos);
+                if (wallId) {
+                    clicked = { type: "wall", id: wallId };
+                }
+            }
+
+            if (clicked) {
+                setSelection(clicked);
+                setIsDragging(true);
+
+                // 드래그 오프셋 계산
+                if (clicked.type === "zone") {
+                    const zone = activeFrame.zones.find(z => z.id === clicked.id);
+                    if (zone) {
+                        setDragOffset({ x: pos.x - zone.x, y: pos.y - zone.y });
+                    }
+                } else if (clicked.type === "object") {
+                    const obj = activeFrame.objects.find(o => o.id === clicked.id);
+                    if (obj) {
+                        setDragOffset({ x: pos.x - obj.x, y: pos.y - obj.y });
+                    }
+                }
+            } else {
+                setSelection(null);
+            }
+        }
+    };
+
+    const handleCanvasMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+        const pos = getCanvasPos(e);
+
+        // 고스트 미리보기 업데이트 (공간/시설 배치 모드일 때)
+        if ((tool === "space" || tool === "facility") && selectedCandidate) {
+            setGhostPosition(pos);
+        } else {
+            setGhostPosition(null);
+        }
+
+        if ((tool === "wall" || tool === "door") && drawStart) {
+            // 수평/수직 스냅
+            const dx = Math.abs(pos.x - drawStart.x);
+            const dy = Math.abs(pos.y - drawStart.y);
+
+            if (dx > dy) {
+                setDrawPreview({ x: pos.x, y: drawStart.y });
+            } else {
+                setDrawPreview({ x: drawStart.x, y: pos.y });
+            }
+        } else if (tool === "select" && isDragging && selection) {
+            if (resizeHandle && selection.type === "object") {
+                // 리사이즈
+                const obj = activeFrame.objects.find(o => o.id === selection.id);
+                if (!obj) return;
+
+                let newX = obj.x;
+                let newY = obj.y;
+                let newWidth = obj.width;
+                let newHeight = obj.height;
+
+                if (resizeHandle.includes("e")) {
+                    newWidth = Math.max(GRID_SIZE, pos.x - obj.x);
+                }
+                if (resizeHandle.includes("w")) {
+                    const diff = obj.x - pos.x;
+                    newX = pos.x;
+                    newWidth = Math.max(GRID_SIZE, obj.width + diff);
+                }
+                if (resizeHandle.includes("s")) {
+                    newHeight = Math.max(GRID_SIZE, pos.y - obj.y);
+                }
+                if (resizeHandle.includes("n")) {
+                    const diff = obj.y - pos.y;
+                    newY = pos.y;
+                    newHeight = Math.max(GRID_SIZE, obj.height + diff);
+                }
+
+                updateFrame(activeFrameId, {
+                    objects: activeFrame.objects.map((o) =>
+                        o.id === selection.id
+                            ? { ...o, x: newX, y: newY, width: newWidth, height: newHeight }
+                            : o
+                    ),
+                });
+            } else if (dragOffset) {
+                // 이동
+                if (selection.type === "zone") {
+                    updateFrame(activeFrameId, {
+                        zones: activeFrame.zones.map((z) =>
+                            z.id === selection.id
+                                ? { ...z, x: pos.x - dragOffset.x, y: pos.y - dragOffset.y }
+                                : z
+                        ),
+                    });
+                } else if (selection.type === "object") {
+                    updateFrame(activeFrameId, {
+                        objects: activeFrame.objects.map((o) =>
+                            o.id === selection.id
+                                ? { ...o, x: pos.x - dragOffset.x, y: pos.y - dragOffset.y }
+                                : o
+                        ),
+                    });
+                }
+            }
         }
     };
 
     const handleCanvasMouseUp = (e: MouseEvent<HTMLDivElement>) => {
-        if (tool === "wall" && wallStart) {
-            const { x, y } = getCanvasPos(e);
-            createWallSegment(wallStart, { x, y });
-            setWallStart(null);
+        if ((tool === "wall" || tool === "door") && drawStart && drawPreview) {
+            // 최소 길이 체크
+            if (Math.abs(drawPreview.x - drawStart.x) > GRID_SIZE / 2 ||
+                Math.abs(drawPreview.y - drawStart.y) > GRID_SIZE / 2) {
+
+                if (tool === "wall") {
+                    const newWall: Wall = {
+                        id: genId("wall"),
+                        x1: drawStart.x,
+                        y1: drawStart.y,
+                        x2: drawPreview.x,
+                        y2: drawPreview.y,
+                    };
+                    updateFrame(activeFrameId, {
+                        walls: [...activeFrame.walls, newWall],
+                    });
+                } else if (tool === "door") {
+                    const newDoor: Door = {
+                        id: genId("door"),
+                        x1: drawStart.x,
+                        y1: drawStart.y,
+                        x2: drawPreview.x,
+                        y2: drawPreview.y,
+                    };
+                    updateFrame(activeFrameId, {
+                        doors: [...activeFrame.doors, newDoor],
+                    });
+                }
+            }
+
+            setDrawStart(null);
+            setDrawPreview(null);
+        }
+
+        setIsDragging(false);
+        setDragOffset(null);
+        setResizeHandle(null);
+    };
+
+    // === note 업데이트 ===
+    const handleNoteChange = (id: string, note: string, type: "zone" | "object") => {
+        if (type === "zone") {
+            const zone = activeFrame.zones.find(z => z.id === id);
+            if (zone) {
+                updateFrame(activeFrameId, {
+                    zones: activeFrame.zones.map((z) =>
+                        z.id === id ? { ...z, note } : z
+                    ),
+                });
+                // 데이터 시트 업데이트 콜백
+                onUpdateNote?.("space", zone.candidate.rowId, note);
+            }
+        } else if (type === "object") {
+            const obj = activeFrame.objects.find(o => o.id === id);
+            if (obj) {
+                updateFrame(activeFrameId, {
+                    objects: activeFrame.objects.map((o) =>
+                        o.id === id ? { ...o, note } : o
+                    ),
+                });
+                // 데이터 시트 업데이트 콜백
+                onUpdateNote?.("facility", obj.candidate.rowId, note);
+            }
         }
     };
 
-    // === 선택된 요소 가져오기 ===
-    const selectedSegment = useMemo(() => {
-        if (!selection || selection.type !== "segment") return null;
-        return segments.find((s) => s.id === selection.id) || null;
-    }, [selection, segments]);
-
-    const selectedZone = useMemo(() => {
-        if (!selection || selection.type !== "zone") return null;
-        return zones.find((z) => z.id === selection.id) || null;
-    }, [selection, zones]);
-
-    const selectedObject = useMemo(() => {
-        if (!selection || selection.type !== "object") return null;
-        return objects.find((o) => o.id === selection.id) || null;
-    }, [selection, objects]);
-
-    // === 속성 업데이트 ===
-    const updateZone = (id: string, patch: Partial<ZoneRect>) => {
-        setZones((prev) =>
-            prev.map((z) => (z.id === id ? { ...z, ...patch } : z))
-        );
-    };
-
-    const updateObject = (id: string, patch: Partial<MapObject>) => {
-        setObjects((prev) =>
-            prev.map((o) => (o.id === id ? { ...o, ...patch } : o))
-        );
-    };
-
+    // === 삭제 ===
     const deleteSelected = () => {
         if (!selection) return;
-        if (selection.type === "segment") {
-            setSegments((prev) => prev.filter((s) => s.id !== selection.id));
+
+        if (selection.type === "wall") {
+            updateFrame(activeFrameId, {
+                walls: activeFrame.walls.filter((w) => w.id !== selection.id),
+            });
+        } else if (selection.type === "door") {
+            updateFrame(activeFrameId, {
+                doors: activeFrame.doors.filter((d) => d.id !== selection.id),
+            });
         } else if (selection.type === "zone") {
-            setZones((prev) => prev.filter((z) => z.id !== selection.id));
+            updateFrame(activeFrameId, {
+                zones: activeFrame.zones.filter((z) => z.id !== selection.id),
+            });
         } else if (selection.type === "object") {
-            setObjects((prev) => prev.filter((o) => o.id !== selection.id));
+            updateFrame(activeFrameId, {
+                objects: activeFrame.objects.filter((o) => o.id !== selection.id),
+            });
         }
         setSelection(null);
     };
 
+    // 키보드 Delete
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Delete" && selection) {
+                deleteSelected();
+            } else if (e.key === "Escape") {
+                setTool("select");
+                setSelectedCandidate(null);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [selection]);
+
+    // === 선택된 요소 찾기 ===
+    const selectedWall = selection?.type === "wall"
+        ? activeFrame.walls.find((w) => w.id === selection.id)
+        : null;
+    const selectedDoor = selection?.type === "door"
+        ? activeFrame.doors.find((d) => d.id === selection.id)
+        : null;
+    const selectedZone = selection?.type === "zone"
+        ? activeFrame.zones.find((z) => z.id === selection.id)
+        : null;
+    const selectedObject = selection?.type === "object"
+        ? activeFrame.objects.find((o) => o.id === selection.id)
+        : null;
+
     // === 저장 ===
     const handleSave = async () => {
-        if (!onSave) return;
-        const payload: MiniMapData = {
-            frameId,
-            name,
-            width,
-            height,
-            segments,
-            zones,
-            objects,
-        };
-
+        setIsSaving(true);
         try {
-            setIsSaving(true);
-            await onSave(payload);
+            const data: MiniMapData = {
+                tenantId,
+                frames,
+            };
+            await onSave?.(data);
+            alert("저장 완료!");
+        } catch (error) {
+            console.error(error);
+            alert("저장 실패");
         } finally {
             setIsSaving(false);
         }
     };
 
-    // === 렌더링 ===
-
-    const renderGrid = () => {
-        const cols = Math.floor(width / GRID_SIZE);
-        const rows = Math.floor(height / GRID_SIZE);
-        const lines = [];
-
-        for (let c = 0; c <= cols; c++) {
-            const x = c * GRID_SIZE;
-            lines.push(
-                <div
-                    key={`v_${c}`}
-                    className="absolute top-0 bottom-0 border-l border-dashed border-gray-200/60 pointer-events-none"
-                    style={{ left: x }}
-                />
-            );
-        }
-
-        for (let r = 0; r <= rows; r++) {
-            const y = r * GRID_SIZE;
-            lines.push(
-                <div
-                    key={`h_${r}`}
-                    className="absolute left-0 right-0 border-t border-dashed border-gray-200/60 pointer-events-none"
-                    style={{ top: y }}
-                />
-            );
-        }
-
-        return lines;
-    };
-
-    const renderSegments = () =>
-        segments.map((seg) => {
-            const isSelected =
-                selection?.type === "segment" && selection.id === seg.id;
-            const isVertical = seg.x1 === seg.x2;
-            const thickness = 6;
-
-            const style: React.CSSProperties = isVertical
-                ? {
-                    left: Math.min(seg.x1, seg.x2) - thickness / 2,
-                    top: Math.min(seg.y1, seg.y2),
-                    width: thickness,
-                    height: Math.abs(seg.y2 - seg.y1),
-                }
-                : {
-                    left: Math.min(seg.x1, seg.x2),
-                    top: Math.min(seg.y1, seg.y2) - thickness / 2,
-                    width: Math.abs(seg.x2 - seg.x1),
-                    height: thickness,
-                };
-
-            return (
-                <div
-                    key={seg.id}
-                    className={`absolute rounded-full cursor-pointer ${isSelected ? "bg-blue-500" : "bg-gray-800"
-                        }`}
-                    style={style}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setSelection({ type: "segment", id: seg.id });
-                    }}
-                />
-            );
-        });
-
-    const renderZones = () =>
-        zones.map((zone) => {
-            const isSelected = selection?.type === "zone" && selection.id === zone.id;
-            return (
-                <div
-                    key={zone.id}
-                    className={`absolute rounded-xl border-2 cursor-pointer ${isSelected
-                        ? "border-blue-500 bg-blue-50/40"
-                        : "border-amber-300 bg-amber-50/30"
-                        }`}
-                    style={{
-                        left: zone.x,
-                        top: zone.y,
-                        width: zone.width,
-                        height: zone.height,
-                    }}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setSelection({ type: "zone", id: zone.id });
-                    }}
-                >
-                    <div className="text-xs px-2 py-1 text-gray-700 truncate">
-                        {zone.candidate.emoji && (
-                            <span className="mr-1">{zone.candidate.emoji}</span>
-                        )}
-                        {zone.candidate.label}
-                    </div>
-                </div>
-            );
-        });
-
-    const renderObjects = () =>
-        objects.map((obj) => {
-            const isSelected =
-                selection?.type === "object" && selection.id === obj.id;
-
-            return (
-                <div
-                    key={obj.id}
-                    className={`absolute flex items-center justify-center rounded-full text-xs font-medium cursor-pointer shadow ${isSelected
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-800 border border-gray-300"
-                        }`}
-                    style={{
-                        left: obj.x - 16,
-                        top: obj.y - 16,
-                        width: 32,
-                        height: 32,
-                        transform: `rotate(${obj.rotation}deg)`,
-                    }}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        setSelection({ type: "object", id: obj.id });
-                    }}
-                >
-                    {obj.candidate.emoji ? (
-                        <span className="text-base">{obj.candidate.emoji}</span>
-                    ) : (
-                        <span className="px-1 truncate max-w-[28px]">
-                            {obj.candidate.label.slice(0, 2)}
-                        </span>
-                    )}
-                </div>
-            );
-        });
-
     return (
-        <div className="flex h-[calc(100vh-80px)] bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            {/* 좌측: 팔레트 */}
-            <div className="w-64 border-r border-gray-200 flex flex-col">
-                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                    <div className="text-xs font-semibold text-gray-500 mb-1">
-                        프레임
-                    </div>
-                    <div className="text-sm font-bold text-gray-900 truncate">
-                        {name}
-                    </div>
-                    <div className="mt-2">
-                        <label className="block text-[11px] text-gray-500 mb-1">
-                            맵 이름 수정
-                        </label>
-                        <input
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                        />
+        <div className="flex flex-col h-screen bg-gray-50">
+            {/* 상단 헤더 */}
+            <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
+                <div className="flex items-center space-x-4">
+                    <h1 className="text-base font-semibold text-gray-900">
+                        미니맵 편집기
+                    </h1>
+                    <div className="text-sm text-gray-500">
+                        {activeFrame.name}
                     </div>
                 </div>
+                <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                    {isSaving ? "저장 중..." : "저장"}
+                </button>
+            </div>
 
-                {/* 기본 구조 템플릿 */}
-                <div className="px-3 py-3 border-b border-gray-100">
-                    <div className="text-xs font-semibold text-gray-500 mb-2">
-                        기본 구조 템플릿
-                    </div>
-                    <div className="grid grid-cols-4 gap-1">
-                        {[
-                            { key: "box", label: "ㅁ" },
-                            { key: "ㄱ", label: "ㄱ" },
-                            { key: "ㄴ", label: "ㄴ" },
-                            { key: "T", label: "T" },
-                        ].map((tpl) => (
+            <div className="flex flex-1 overflow-hidden">
+                {/* 좌측: 팔레트 */}
+                <div className="w-60 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+                    {/* 프레임 탭 */}
+                    <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-semibold text-gray-700">
+                                프레임 (층/동)
+                            </div>
                             <button
-                                key={tpl.key}
-                                onClick={() => applyTemplate(tpl.key as any)}
-                                className="text-xs py-1 rounded-md border border-gray-200 bg-white hover:bg-gray-50"
+                                onClick={addFrame}
+                                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                             >
-                                {tpl.label}
+                                + 추가
                             </button>
-                        ))}
+                        </div>
+                        <div className="space-y-1">
+                            {frames.map((frame) => (
+                                <div
+                                    key={frame.id}
+                                    className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors ${activeFrameId === frame.id
+                                        ? "bg-blue-100 text-blue-700"
+                                        : "bg-white text-gray-700 hover:bg-gray-50"
+                                        }`}
+                                    onClick={() => setActiveFrameId(frame.id)}
+                                >
+                                    <input
+                                        value={frame.name}
+                                        onChange={(e) =>
+                                            renameFrame(frame.id, e.target.value)
+                                        }
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex-1 bg-transparent text-xs font-medium outline-none"
+                                    />
+                                    {frames.length > 1 && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                deleteFrame(frame.id);
+                                            }}
+                                            className="ml-2 text-xs text-red-600 hover:text-red-700"
+                                        >
+                                            ✕
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
 
-                {/* 툴 선택 */}
-                <div className="px-3 py-3 border-b border-gray-100">
-                    <div className="text-xs font-semibold text-gray-500 mb-2">
-                        도구
-                    </div>
-                    <div className="grid grid-cols-3 gap-1">
-                        {[
-                            { key: "select", label: "선택" },
-                            { key: "wall", label: "벽" },
-                            { key: "space", label: "공간" },
-                            { key: "facility", label: "시설" },
-                        ].map((t) => (
+                    {/* 도구 */}
+                    <div className="px-3 py-2 border-b border-gray-200">
+                        <div className="text-xs font-semibold text-gray-700 mb-2">
+                            도구
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
                             <button
-                                key={t.key}
                                 onClick={() => {
-                                    setTool(t.key as Tool);
-                                    if (t.key === "wall") setActiveCandidate(null);
+                                    setTool("select");
+                                    setSelectedCandidate(null);
                                 }}
-                                className={`text-xs py-1 rounded-md border ${tool === t.key
-                                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${tool === "select"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                                     }`}
                             >
-                                {t.label}
+                                <div className="text-sm">↖</div>
+                                <div className="mt-0.5">선택</div>
                             </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* 팔레트: 공간 / 시설 */}
-                <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-semibold text-gray-500">
-                                공간
-                            </span>
-                            <span className="text-[11px] text-gray-400">
-                                {spaceCandidates.length}개
-                            </span>
+                            <button
+                                onClick={() => {
+                                    setTool("wall");
+                                    setSelectedCandidate(null);
+                                }}
+                                className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${tool === "wall"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                            >
+                                <div className="text-sm">▬</div>
+                                <div className="mt-0.5">벽</div>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setTool("door");
+                                    setSelectedCandidate(null);
+                                }}
+                                className={`px-2 py-1.5 text-xs font-medium rounded transition-colors ${tool === "door"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                            >
+                                <div className="text-sm">⎕</div>
+                                <div className="mt-0.5">문</div>
+                            </button>
                         </div>
-                        <div className="space-y-1">
-                            {spaceCandidates.map((c) => {
-                                const active =
-                                    activeCandidate?.rowId === c.rowId &&
-                                    tool === "space";
-                                return (
-                                    <button
-                                        key={`space_${c.rowId}`}
+                        <div className="mt-2 p-2 bg-blue-50 rounded text-[11px] leading-tight">
+                            {tool === "select" && (
+                                <div className="text-gray-700">
+                                    <span className="font-semibold">선택 모드</span><br />
+                                    요소를 클릭하거나 드래그해서 이동
+                                </div>
+                            )}
+                            {tool === "wall" && (
+                                <div className="text-gray-700">
+                                    <span className="font-semibold">벽 그리기 모드</span><br />
+                                    클릭-드래그로 벽 그리기
+                                </div>
+                            )}
+                            {tool === "door" && (
+                                <div className="text-gray-700">
+                                    <span className="font-semibold">문 그리기 모드</span><br />
+                                    클릭-드래그로 문 그리기
+                                </div>
+                            )}
+                            {tool === "space" && selectedCandidate && (
+                                <div className="text-green-700">
+                                    <span className="font-semibold">🟢 공간 배치 모드</span><br />
+                                    <span className="text-xl">{selectedCandidate.candidate.emoji}</span> {selectedCandidate.candidate.label}<br />
+                                    캔버스 클릭으로 연속 배치 가능
+                                </div>
+                            )}
+                            {tool === "facility" && selectedCandidate && (
+                                <div className="text-blue-700">
+                                    <span className="font-semibold">🔵 시설 배치 모드</span><br />
+                                    <span className="text-xl">{selectedCandidate.candidate.emoji}</span> {selectedCandidate.candidate.label}<br />
+                                    캔버스 클릭으로 연속 배치 가능
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 공간 팔레트 */}
+                    <div className="flex-1 overflow-y-auto">
+                        <div className="px-3 py-2 border-b border-gray-200">
+                            <div className="text-xs font-semibold text-gray-700 mb-1.5">
+                                공간 (Zone)
+                            </div>
+                            {tool === "space" && selectedCandidate?.kind === "space" && (
+                                <div className="mb-2 p-2 bg-green-100 border border-green-300 rounded text-[10px] text-green-800 font-medium">
+                                    ✓ 배치 모드 활성화<br />
+                                    ESC로 취소
+                                </div>
+                            )}
+                            <div className="text-[10px] text-gray-500 mb-2">
+                                클릭하면 연속 배치 모드
+                            </div>
+                            <div className="space-y-1">
+                                {spaceCandidates.map((candidate) => (
+                                    <div
+                                        key={`${candidate.sheetId}-${candidate.rowId}`}
                                         onClick={() => {
                                             setTool("space");
-                                            setActiveCandidate(c);
+                                            setSelectedCandidate({ kind: "space", candidate });
                                         }}
-                                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs border ${active
-                                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                        className={`flex items-center px-2 py-1.5 rounded cursor-pointer transition-colors ${tool === "space" && selectedCandidate?.candidate.rowId === candidate.rowId
+                                            ? "bg-green-600 text-white border border-green-700"
+                                            : "bg-green-50 border border-green-200 hover:bg-green-100"
                                             }`}
                                     >
-                                        {c.emoji && (
-                                            <span className="text-base flex-shrink-0">
-                                                {c.emoji}
-                                            </span>
+                                        {candidate.emoji && (
+                                            <span className="mr-1.5 text-sm">{candidate.emoji}</span>
                                         )}
-                                        <span className="truncate">{c.label}</span>
-                                    </button>
-                                );
-                            })}
-                            {spaceCandidates.length === 0 && (
-                                <p className="text-[11px] text-gray-400">
-                                    공간 시트에 항목을 추가하면 여기 나타나요.
-                                </p>
-                            )}
+                                        <span className="text-xs font-medium">
+                                            {candidate.label}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                    </div>
 
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-semibold text-gray-500">
-                                시설
-                            </span>
-                            <span className="text-[11px] text-gray-400">
-                                {facilityCandidates.length}개
-                            </span>
-                        </div>
-                        <div className="space-y-1">
-                            {facilityCandidates.map((c) => {
-                                const active =
-                                    activeCandidate?.rowId === c.rowId &&
-                                    tool === "facility";
-                                return (
-                                    <button
-                                        key={`facility_${c.rowId}`}
+                        <div className="px-3 py-2">
+                            <div className="text-xs font-semibold text-gray-700 mb-1.5">
+                                시설 (Facility)
+                            </div>
+                            {tool === "facility" && selectedCandidate?.kind === "facility" && (
+                                <div className="mb-2 p-2 bg-blue-100 border border-blue-300 rounded text-[10px] text-blue-800 font-medium">
+                                    ✓ 배치 모드 활성화<br />
+                                    ESC로 취소
+                                </div>
+                            )}
+                            <div className="text-[10px] text-gray-500 mb-2">
+                                클릭하면 연속 배치 모드
+                            </div>
+                            <div className="space-y-1">
+                                {facilityCandidates.map((candidate) => (
+                                    <div
+                                        key={`${candidate.sheetId}-${candidate.rowId}`}
                                         onClick={() => {
                                             setTool("facility");
-                                            setActiveCandidate(c);
+                                            setSelectedCandidate({ kind: "facility", candidate });
                                         }}
-                                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs border ${active
-                                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                                            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                                        className={`flex items-center px-2 py-1.5 rounded cursor-pointer transition-colors ${tool === "facility" && selectedCandidate?.candidate.rowId === candidate.rowId
+                                            ? "bg-blue-600 text-white border border-blue-700"
+                                            : "bg-blue-50 border border-blue-200 hover:bg-blue-100"
                                             }`}
                                     >
-                                        {c.emoji && (
-                                            <span className="text-base flex-shrink-0">
-                                                {c.emoji}
-                                            </span>
+                                        {candidate.emoji && (
+                                            <span className="mr-1.5 text-sm">{candidate.emoji}</span>
                                         )}
-                                        <span className="truncate">{c.label}</span>
-                                    </button>
-                                );
-                            })}
-                            {facilityCandidates.length === 0 && (
-                                <p className="text-[11px] text-gray-400">
-                                    시설 시트에 항목을 추가하면 여기 나타나요.
-                                </p>
-                            )}
+                                        <span className="text-xs font-medium">
+                                            {candidate.label}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* 좌측 하단: 삭제 / 저장 안내 */}
-                <div className="px-3 py-2 border-t border-gray-200 text-[11px] text-gray-400">
-                    - 벽: 클릭 드래그로 수평/수직 벽 생성
-                    <br />
-                    - 공간/시설: 캔버스 클릭으로 배치
-                </div>
-            </div>
-
-            {/* 중앙: 캔버스 */}
-            <div className="flex-1 flex flex-col bg-gray-50">
-                {/* 상단 바 */}
-                <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-white">
-                    <div className="text-xs text-gray-500">
-                        tenant: <span className="font-mono">{tenantId}</span> / frame:{" "}
-                        <span className="font-mono">{frameId}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {selection && (
-                            <button
-                                onClick={deleteSelected}
-                                className="px-3 py-1.5 text-xs rounded-lg border border-red-200 text-red-700 bg-red-50 hover:bg-red-100"
-                            >
-                                선택 삭제
-                            </button>
-                        )}
-                        <button
-                            onClick={handleSave}
-                            disabled={isSaving || !onSave}
-                            className="px-4 py-1.5 text-xs rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isSaving ? "저장 중..." : "저장"}
-                        </button>
-                    </div>
-                </div>
-
-                {/* 실제 그리드 캔버스 */}
-                <div className="flex-1 flex items-center justify-center p-4">
+                {/* 중앙: 캔버스 (전체 화면 사용) */}
+                <div className="flex-1 overflow-auto bg-gray-100">
                     <div
-                        className="relative bg-white rounded-xl shadow-inner border border-gray-200 overflow-hidden"
-                        style={{ width, height }}
+                        ref={canvasRef}
+                        className="relative bg-white mx-auto my-4"
+                        style={{
+                            width: activeFrame.width,
+                            height: activeFrame.height,
+                            cursor:
+                                tool === "space" || tool === "facility" ? "crosshair" :
+                                    tool === "wall" || tool === "door" ? "crosshair" :
+                                        "default",
+                        }}
                         onMouseDown={handleCanvasMouseDown}
+                        onMouseMove={handleCanvasMouseMove}
                         onMouseUp={handleCanvasMouseUp}
                     >
-                        {/* 그리드 라인 */}
-                        {renderGrid()}
+                        {/* 그리드 배경 */}
+                        <svg
+                            className="absolute inset-0 pointer-events-none"
+                            width={activeFrame.width}
+                            height={activeFrame.height}
+                        >
+                            <defs>
+                                <pattern
+                                    id="grid"
+                                    width={GRID_SIZE}
+                                    height={GRID_SIZE}
+                                    patternUnits="userSpaceOnUse"
+                                >
+                                    <path
+                                        d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`}
+                                        fill="none"
+                                        stroke="#e5e7eb"
+                                        strokeWidth="0.5"
+                                    />
+                                </pattern>
+                            </defs>
+                            <rect width="100%" height="100%" fill="url(#grid)" />
+                        </svg>
 
-                        {/* 영역 / 시설 / 벽 순으로 그려서 가독성 확보 */}
-                        {renderZones()}
-                        {renderObjects()}
-                        {renderSegments()}
-                    </div>
-                </div>
-            </div>
+                        {/* 벽 렌더링 - SVG로 연결점 부드럽게 */}
+                        <svg
+                            className="absolute inset-0"
+                            width={activeFrame.width}
+                            height={activeFrame.height}
+                            style={{ pointerEvents: 'none' }}
+                        >
+                            {activeFrame.walls.map((wall) => {
+                                const isSelected = selection?.type === "wall" && selection.id === wall.id;
 
-            {/* 우측: 속성/상태 패널 */}
-            <div className="w-72 border-l border-gray-200 bg-white flex flex-col">
-                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                    <div className="text-xs font-semibold text-gray-500 mb-1">
-                        선택된 요소
-                    </div>
-                    {!selection && (
-                        <div className="text-[13px] text-gray-400">
-                            캔버스에서 요소를 선택하면 속성이 여기 표시됩니다.
-                        </div>
-                    )}
-                </div>
+                                return (
+                                    <line
+                                        key={wall.id}
+                                        x1={wall.x1}
+                                        y1={wall.y1}
+                                        x2={wall.x2}
+                                        y2={wall.y2}
+                                        stroke={isSelected ? "#2563eb" : "#111827"}
+                                        strokeWidth={WALL_THICKNESS}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (tool === "select") {
+                                                setSelection({ type: "wall", id: wall.id });
+                                            }
+                                        }}
+                                    />
+                                );
+                            })}
 
-                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-xs">
-                    {selectedSegment && (
-                        <div className="space-y-2">
-                            <div className="font-semibold text-gray-700 mb-1">벽</div>
-                            <div className="text-gray-500">
-                                ({selectedSegment.x1}, {selectedSegment.y1}) → (
-                                {selectedSegment.x2}, {selectedSegment.y2})
+                            {/* 그리기 미리보기 */}
+                            {drawStart && drawPreview && (
+                                <line
+                                    x1={drawStart.x}
+                                    y1={drawStart.y}
+                                    x2={drawPreview.x}
+                                    y2={drawPreview.y}
+                                    stroke={tool === "wall" ? "#6b7280" : "#111827"}
+                                    strokeWidth={WALL_THICKNESS}
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    opacity={0.5}
+                                    strokeDasharray={tool === "door" ? "4 4" : undefined}
+                                />
+                            )}
+                        </svg>
+
+                        {/* 문 렌더링 (벽을 끊는 스타일) */}
+                        {activeFrame.doors.map((door) => {
+                            const isHorizontal = door.y1 === door.y2;
+                            const length = Math.abs(
+                                isHorizontal ? door.x2 - door.x1 : door.y2 - door.y1
+                            );
+
+                            return (
+                                <div
+                                    key={door.id}
+                                    className={`absolute border-2 ${selection?.type === "door" && selection.id === door.id
+                                        ? "border-blue-600 bg-blue-50"
+                                        : "border-gray-900 bg-white"
+                                        }`}
+                                    style={{
+                                        left: Math.min(door.x1, door.x2),
+                                        top: isHorizontal
+                                            ? door.y1 - WALL_THICKNESS / 2
+                                            : Math.min(door.y1, door.y2),
+                                        width: isHorizontal ? length : WALL_THICKNESS,
+                                        height: isHorizontal ? WALL_THICKNESS : length,
+                                    }}
+                                />
+                            );
+                        })}
+
+                        {/* 공간(존) 렌더링 */}
+                        {activeFrame.zones.map((zone) => (
+                            <div
+                                key={zone.id}
+                                className={`absolute border-2 rounded flex items-center justify-center transition-colors ${selection?.type === "zone" && selection.id === zone.id
+                                    ? "border-blue-600 bg-blue-100/50"
+                                    : "border-green-400 bg-green-100/30 hover:border-green-500"
+                                    }`}
+                                style={{
+                                    left: zone.x,
+                                    top: zone.y,
+                                    width: zone.width,
+                                    height: zone.height,
+                                }}
+                            >
+                                <div className="text-xs font-medium text-gray-700 pointer-events-none text-center px-2">
+                                    <div className="text-2xl mb-1">{zone.candidate.emoji}</div>
+                                    <div className="text-sm">{zone.candidate.label}</div>
+                                    {zone.note && (
+                                        <div className="text-[10px] text-gray-500 mt-1">
+                                            {zone.note}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <p className="text-[11px] text-gray-400">
-                                벽은 아직 드래그 이동/편집 기능은 없고, 삭제 후 다시
-                                그리는 방식입니다. (나중에 행/열 선택 & 복사 기능 확장
-                                용이하게 구조만 잡아둔 상태)
-                            </p>
-                        </div>
-                    )}
+                        ))}
 
-                    {selectedZone && (
-                        <div className="space-y-2">
-                            <div className="font-semibold text-gray-700 mb-1">
-                                공간 (존)
-                            </div>
-                            <div className="text-gray-700">
-                                {selectedZone.candidate.emoji && (
-                                    <span className="mr-1">
-                                        {selectedZone.candidate.emoji}
+                        {/* 시설(아이템) 렌더링 - 사각형 + 리사이즈 핸들 */}
+                        {activeFrame.objects.map((obj) => (
+                            <div key={obj.id}>
+                                <div
+                                    className={`absolute rounded border-2 flex flex-col items-center justify-center cursor-pointer transition-colors ${selection?.type === "object" && selection.id === obj.id
+                                        ? "border-blue-600 bg-blue-100"
+                                        : obj.status === "ok"
+                                            ? "border-gray-400 bg-white hover:border-gray-500"
+                                            : obj.status === "issue"
+                                                ? "border-yellow-400 bg-yellow-50"
+                                                : obj.status === "broken"
+                                                    ? "border-red-400 bg-red-50"
+                                                    : "border-gray-400 bg-gray-100"
+                                        }`}
+                                    style={{
+                                        left: obj.x,
+                                        top: obj.y,
+                                        width: obj.width,
+                                        height: obj.height,
+                                    }}
+                                >
+                                    <span className="text-2xl mb-0.5">{obj.candidate.emoji}</span>
+                                    <span className="text-[10px] text-gray-600 font-medium text-center px-1 leading-tight">
+                                        {obj.candidate.label}
                                     </span>
-                                )}
-                                {selectedZone.candidate.label}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        X
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={selectedZone.x}
-                                        onChange={(e) =>
-                                            updateZone(selectedZone.id, {
-                                                x: snapToGrid(+e.target.value, selectedZone.y).x,
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
-                                    />
+                                    {obj.note && (
+                                        <span className="text-[9px] text-gray-500 mt-0.5 text-center px-1">
+                                            {obj.note}
+                                        </span>
+                                    )}
                                 </div>
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        Y
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={selectedZone.y}
-                                        onChange={(e) =>
-                                            updateZone(selectedZone.id, {
-                                                y: snapToGrid(selectedZone.x, +e.target.value).y,
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        폭
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={selectedZone.width}
-                                        onChange={(e) =>
-                                            updateZone(selectedZone.id, {
-                                                width: Math.max(GRID_SIZE, +e.target.value),
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        높이
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={selectedZone.height}
-                                        onChange={(e) =>
-                                            updateZone(selectedZone.id, {
-                                                height: Math.max(GRID_SIZE, +e.target.value),
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
-                    {selectedObject && (
-                        <div className="space-y-2">
-                            <div className="font-semibold text-gray-700 mb-1">
-                                시설 / 아이템
-                            </div>
-                            <div className="text-gray-700">
-                                {selectedObject.candidate.emoji && (
-                                    <span className="mr-1">
-                                        {selectedObject.candidate.emoji}
-                                    </span>
+                                {/* 리사이즈 핸들 (선택된 경우만) */}
+                                {selection?.type === "object" && selection.id === obj.id && (
+                                    <>
+                                        {/* SE (우하단) */}
+                                        <div
+                                            className="absolute w-3 h-3 bg-blue-600 rounded-full cursor-se-resize border-2 border-white shadow-sm"
+                                            style={{
+                                                left: obj.x + obj.width - 6,
+                                                top: obj.y + obj.height - 6,
+                                            }}
+                                        />
+                                        {/* SW (좌하단) */}
+                                        <div
+                                            className="absolute w-3 h-3 bg-blue-600 rounded-full cursor-sw-resize border-2 border-white shadow-sm"
+                                            style={{
+                                                left: obj.x - 6,
+                                                top: obj.y + obj.height - 6,
+                                            }}
+                                        />
+                                        {/* NE (우상단) */}
+                                        <div
+                                            className="absolute w-3 h-3 bg-blue-600 rounded-full cursor-ne-resize border-2 border-white shadow-sm"
+                                            style={{
+                                                left: obj.x + obj.width - 6,
+                                                top: obj.y - 6,
+                                            }}
+                                        />
+                                        {/* NW (좌상단) */}
+                                        <div
+                                            className="absolute w-3 h-3 bg-blue-600 rounded-full cursor-nw-resize border-2 border-white shadow-sm"
+                                            style={{
+                                                left: obj.x - 6,
+                                                top: obj.y - 6,
+                                            }}
+                                        />
+                                    </>
                                 )}
-                                {selectedObject.candidate.label}
                             </div>
+                        ))}
 
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        X
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={selectedObject.x}
-                                        onChange={(e) =>
-                                            updateObject(selectedObject.id, {
-                                                x: snapToGrid(+e.target.value, selectedObject.y).x,
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        Y
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={selectedObject.y}
-                                        onChange={(e) =>
-                                            updateObject(selectedObject.id, {
-                                                y: snapToGrid(selectedObject.x, +e.target.value).y,
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        회전(°)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        value={selectedObject.rotation}
-                                        onChange={(e) =>
-                                            updateObject(selectedObject.id, {
-                                                rotation: +e.target.value,
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-[11px] text-gray-500 mb-1">
-                                        상태
-                                    </label>
-                                    <select
-                                        value={selectedObject.status}
-                                        onChange={(e) =>
-                                            updateObject(selectedObject.id, {
-                                                status: e.target.value as MapObject["status"],
-                                            })
-                                        }
-                                        className="w-full px-2 py-1 border border-gray-200 rounded-lg"
+                        {/* ⭐ 고스트 미리보기 */}
+                        {ghostPosition && selectedCandidate && (
+                            <div className="pointer-events-none">
+                                {selectedCandidate.kind === "space" ? (
+                                    /* 공간 고스트 */
+                                    <div
+                                        className="absolute border-2 border-dashed border-green-500 bg-green-100/40 rounded flex items-center justify-center"
+                                        style={{
+                                            left: ghostPosition.x,
+                                            top: ghostPosition.y,
+                                            width: GRID_SIZE * 4,
+                                            height: GRID_SIZE * 3,
+                                        }}
                                     >
-                                        <option value="ok">정상</option>
-                                        <option value="issue">이상 있음</option>
-                                        <option value="broken">고장</option>
-                                        <option value="off">OFF</option>
-                                    </select>
+                                        <div className="text-center">
+                                            <div className="text-3xl opacity-60">
+                                                {selectedCandidate.candidate.emoji}
+                                            </div>
+                                            <div className="text-xs font-medium text-gray-600 mt-1">
+                                                클릭해서 배치
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* 시설 고스트 */
+                                    <div
+                                        className="absolute border-1 border-dashed border-gray-200 bg-gray-100/40 rounded flex flex-col items-center justify-center"
+                                        style={{
+                                            left: ghostPosition.x,
+                                            top: ghostPosition.y,
+                                            width: GRID_SIZE * 2,
+                                            height: GRID_SIZE * 2,
+                                        }}
+                                    >
+                                        <span className="text-2xl opacity-60">
+                                            {selectedCandidate.candidate.emoji}
+                                        </span>
+                                        <span className="text-[9px] text-gray-600 font-medium mt-1">
+                                            클릭
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 우측: 속성 패널 */}
+                <div className="w-64 border-l border-gray-200 bg-white flex flex-col">
+                    <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+                        <div className="text-xs font-semibold text-gray-500 mb-1">
+                            선택된 요소
+                        </div>
+                        {!selection && (
+                            <div className="text-[11px] text-gray-400">
+                                요소를 클릭해서 선택하세요
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
+                        {selectedWall && (
+                            <div className="space-y-2">
+                                <div className="font-semibold text-sm text-gray-700">벽</div>
+                                <div className="text-xs text-gray-500">
+                                    {selectedWall.y1 === selectedWall.y2 ? "수평" : "수직"} ·{" "}
+                                    {Math.abs(
+                                        (selectedWall.x2 - selectedWall.x1) +
+                                        (selectedWall.y2 - selectedWall.y1)
+                                    )}px
                                 </div>
+                                <button
+                                    onClick={deleteSelected}
+                                    className="w-full px-2 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100"
+                                >
+                                    삭제
+                                </button>
+                            </div>
+                        )}
+
+                        {selectedDoor && (
+                            <div className="space-y-2">
+                                <div className="font-semibold text-sm text-gray-700">문</div>
+                                <div className="text-xs text-gray-500">
+                                    {selectedDoor.y1 === selectedDoor.y2 ? "수평" : "수직"}
+                                </div>
+                                <button
+                                    onClick={deleteSelected}
+                                    className="w-full px-2 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100"
+                                >
+                                    삭제
+                                </button>
+                            </div>
+                        )}
+
+                        {selectedZone && (
+                            <div className="space-y-2">
+                                <div className="font-semibold text-sm text-gray-700">공간</div>
+                                <div className="flex items-center text-xs text-gray-700 mb-2">
+                                    <span className="text-xl mr-2">{selectedZone.candidate.emoji}</span>
+                                    <span className="font-medium">{selectedZone.candidate.label}</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-[11px] text-gray-500 mb-1">
+                                            폭
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={selectedZone.width}
+                                            onChange={(e) => {
+                                                updateFrame(activeFrameId, {
+                                                    zones: activeFrame.zones.map((z) =>
+                                                        z.id === selectedZone.id
+                                                            ? { ...z, width: Math.max(GRID_SIZE, +e.target.value) }
+                                                            : z
+                                                    ),
+                                                });
+                                            }}
+                                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] text-gray-500 mb-1">
+                                            높이
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={selectedZone.height}
+                                            onChange={(e) => {
+                                                updateFrame(activeFrameId, {
+                                                    zones: activeFrame.zones.map((z) =>
+                                                        z.id === selectedZone.id
+                                                            ? { ...z, height: Math.max(GRID_SIZE, +e.target.value) }
+                                                            : z
+                                                    ),
+                                                });
+                                            }}
+                                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] text-gray-500 mb-1">
+                                        비고 (Note)
+                                    </label>
+                                    <textarea
+                                        value={selectedZone.note || ""}
+                                        onChange={(e) => handleNoteChange(selectedZone.id, e.target.value, "zone")}
+                                        placeholder="수리예정일, 상태 등을 자유롭게 입력"
+                                        className="w-full px-2 py-1 text-xs border border-gray-200 rounded resize-none"
+                                        rows={2}
+                                    />
+                                </div>
+                                <button
+                                    onClick={deleteSelected}
+                                    className="w-full px-2 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100"
+                                >
+                                    삭제
+                                </button>
+                            </div>
+                        )}
+
+                        {selectedObject && (
+                            <div className="space-y-2">
+                                <div className="font-semibold text-sm text-gray-700">시설</div>
+                                <div className="flex items-center text-xs text-gray-700 mb-2">
+                                    <span className="text-xl mr-2">{selectedObject.candidate.emoji}</span>
+                                    <span className="font-medium">{selectedObject.candidate.label}</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="block text-[11px] text-gray-500 mb-1">
+                                            폭
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={selectedObject.width}
+                                            onChange={(e) => {
+                                                updateFrame(activeFrameId, {
+                                                    objects: activeFrame.objects.map((o) =>
+                                                        o.id === selectedObject.id
+                                                            ? { ...o, width: Math.max(GRID_SIZE, +e.target.value) }
+                                                            : o
+                                                    ),
+                                                });
+                                            }}
+                                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] text-gray-500 mb-1">
+                                            높이
+                                        </label>
+                                        <input
+                                            type="number"
+                                            value={selectedObject.height}
+                                            onChange={(e) => {
+                                                updateFrame(activeFrameId, {
+                                                    objects: activeFrame.objects.map((o) =>
+                                                        o.id === selectedObject.id
+                                                            ? { ...o, height: Math.max(GRID_SIZE, +e.target.value) }
+                                                            : o
+                                                    ),
+                                                });
+                                            }}
+                                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded"
+                                        />
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="block text-[11px] text-gray-500 mb-1">
+                                            상태
+                                        </label>
+                                        <select
+                                            value={selectedObject.status}
+                                            onChange={(e) => {
+                                                updateFrame(activeFrameId, {
+                                                    objects: activeFrame.objects.map((o) =>
+                                                        o.id === selectedObject.id
+                                                            ? { ...o, status: e.target.value as MapObject["status"] }
+                                                            : o
+                                                    ),
+                                                });
+                                            }}
+                                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded"
+                                        >
+                                            <option value="ok">정상</option>
+                                            <option value="issue">이상</option>
+                                            <option value="broken">고장</option>
+                                            <option value="off">OFF</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-[11px] text-gray-500 mb-1">
+                                        비고 (Note)
+                                    </label>
+                                    <textarea
+                                        value={selectedObject.note || ""}
+                                        onChange={(e) => handleNoteChange(selectedObject.id, e.target.value, "object")}
+                                        placeholder="수리예정일, 상태 등을 자유롭게 입력"
+                                        className="w-full px-2 py-1 text-xs border border-gray-200 rounded resize-none"
+                                        rows={2}
+                                    />
+                                </div>
+                                <button
+                                    onClick={deleteSelected}
+                                    className="w-full px-2 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100"
+                                >
+                                    삭제
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {selection && (
+                        <div className="px-3 py-2 border-t border-gray-200">
+                            <div className="text-[10px] text-gray-400">
+                                💡 Delete 키로도 삭제 가능
+                                {selection.type === "object" && " · 모서리 드래그로 크기 조절"}
                             </div>
                         </div>
                     )}
-                </div>
-
-                <div className="px-4 py-2 border-t border-gray-200 text-[11px] text-gray-400">
-                    나중에 행/열 선택 & 복붙, 드래그 이동 같은 고급 기능을
-                    붙이기 쉬운 구조로만 가볍게 잡아둔 상태야 ✨
                 </div>
             </div>
         </div>
