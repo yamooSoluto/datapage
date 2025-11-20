@@ -6,11 +6,14 @@
 
 import jwt from 'jsonwebtoken';
 
+const SESSION_MAX_AGE = 60 * 60 * 24 * 14; // 14일
+const SESSION_EXPIRES_IN = '14d';
+
 // 공통: 쿠키 문자열 생성기
 function cookieString(
   name,
   value,
-  { maxAge = 60 * 60 * 24, secure = process.env.NODE_ENV === 'production' } = {}
+  { maxAge = SESSION_MAX_AGE, secure = process.env.NODE_ENV === 'production' } = {}
 ) {
   let c = `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
   if (secure) c += '; Secure';
@@ -40,17 +43,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2) 세션 쿠키 발급 (24h)
-    const now = Math.floor(Date.now() / 1000);
+    // 2) 세션 쿠키 발급 (14일)
     const session = jwt.sign(
       {
         email: userEmail,
         role: decoded.role || 'user',
         source: 'magic-link-verified',
-        iat: now,
-        exp: now + 60 * 60 * 24,
       },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { expiresIn: SESSION_EXPIRES_IN }
     );
 
     res.setHeader('Set-Cookie', cookieString('yamoo_session', session));

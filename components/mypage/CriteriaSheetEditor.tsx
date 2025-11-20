@@ -28,6 +28,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PRESET_ITEMS, SHEET_TEMPLATES } from "./criteriaSheetPresets";
+import { useMapPalette } from "@/lib/useMapPalette";
 
 
 // ---- Portal: 모달/드롭다운 클리핑 방지용 ----
@@ -2585,6 +2586,14 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
         };
     });
 
+    const mapPalette = useMapPalette(data, {
+        spaceSheetIds: ["space", "공간"],
+        facilitySheetIds: ["facility", "시설"],
+    });
+    const spaceCandidateCount = mapPalette.spaces.length;
+    const facilityCandidateCount = mapPalette.facilities.length;
+    const totalCandidateCount = mapPalette.all.length;
+
     const [viewMode, setViewMode] = React.useState<"item" | "facet">("item");
     const [openDropdown, setOpenDropdown] = React.useState<any>(null);
 
@@ -3272,6 +3281,28 @@ export default function CriteriaSheetEditor({ tenantId, initialData, templates, 
             </div>
 
             <div className="w-full px-0 py-2 sm:py-4 space-y-3 sm:space-y-4">
+                {/* MiniMap 팔레트 요약 */}
+                <div className="px-4 sm:px-6">
+                    <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                            <p className="text-xs font-semibold text-gray-500 tracking-wider uppercase">MiniMap 팔레트</p>
+                            <p className="text-sm text-gray-600">
+                                {totalCandidateCount > 0 ? "Criteria 시트에서 자동 생성된 후보" : "시트에 항목을 추가하면 후보가 자동 생성됩니다"}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm font-semibold text-gray-900">
+                            <span className="inline-flex items-center gap-1">
+                                <span className="text-xs font-medium text-gray-500">공간</span>
+                                {spaceCandidateCount}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                                <span className="text-xs font-medium text-gray-500">시설</span>
+                                {facilityCandidateCount}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Level 3: 시트 탭 - 조건부 정렬 + 마스크 */}
                 <div className="bg-white border-b border-gray-200 px-4 sm:px-6 py-2 sm:py-3 sticky top-[57px] sm:top-[73px] z-30 overflow-visible">
                     <div className="relative overflow-visible">

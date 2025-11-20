@@ -2,21 +2,23 @@
 // 마이페이지 탭 시스템 - 설정, 데이터 관리, 라이브러리
 
 import React from "react";
-import { Settings, Database, Library } from "lucide-react";
+import { Settings, Database, Library, Map } from "lucide-react";
 import SettingsPage from "./SettingsPage";
 import CriteriaSheetEditor from "./CriteriaSheetEditor";
 import LibraryManager from "./LibraryManager";
+import MiniMapManager from "./MiniMapManager";
+import type { CriteriaSheetData } from "@/lib/mapPalette";
 
 interface MyPageTabsProps {
     tenantId: string;
-    initialData?: any;
+    initialData?: CriteriaSheetData | null;
     initialLibrary?: any;
     initialSettings?: any;
     templates?: any;
     onSave?: (data: any) => void;
     onSaveLibrary?: (data: any) => void;
     onSaveSettings?: (settings: any) => void;
-    defaultTab?: "settings" | "data" | "library"; // 기본 탭 설정
+    defaultTab?: "settings" | "minimap" | "data" | "library"; // 기본 탭 설정
 }
 
 export default function MyPageTabs({
@@ -30,7 +32,7 @@ export default function MyPageTabs({
     onSaveSettings,
     defaultTab = "settings",
 }: MyPageTabsProps) {
-    const [activeTab, setActiveTab] = React.useState<"settings" | "data" | "library">(defaultTab);
+    const [activeTab, setActiveTab] = React.useState<"settings" | "minimap" | "data" | "library">(defaultTab);
 
     // defaultTab이 'library'면 헤더 없이 바로 라이브러리만 렌더링
     if (defaultTab === "library") {
@@ -62,6 +64,11 @@ export default function MyPageTabs({
             key: "settings" as const,
             label: "설정",
             icon: Settings,
+        },
+        {
+            key: "minimap" as const,
+            label: "미니맵",
+            icon: Map,
         },
         {
             key: "data" as const,
@@ -111,6 +118,13 @@ export default function MyPageTabs({
                         tenantId={tenantId}
                         initialSettings={initialSettings}
                         onSave={onSaveSettings}
+                    />
+                )}
+
+                {activeTab === "minimap" && (
+                    <MiniMapManager
+                        tenantId={tenantId}
+                        criteriaData={initialData}
                     />
                 )}
 

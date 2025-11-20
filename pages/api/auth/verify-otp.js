@@ -6,10 +6,13 @@
 import jwt from 'jsonwebtoken';
 import { db } from '@/lib/firebase-admin';
 
+const SESSION_MAX_AGE = 60 * 60 * 24 * 14; // 14일
+const SESSION_EXPIRES_IN = '14d';
+
 function cookieString(
   name,
   value,
-  { maxAge = 60 * 60 * 24, secure = process.env.NODE_ENV === 'production' } = {}
+  { maxAge = SESSION_MAX_AGE, secure = process.env.NODE_ENV === 'production' } = {}
 ) {
   // JWT 토큰에는 특수문자가 포함될 수 있으므로 인코딩 필요
   const encodedValue = encodeURIComponent(value);
@@ -70,17 +73,15 @@ export default async function handler(req, res) {
     // 코드 사용 처리
     await otpDoc.ref.update({ used: true });
 
-    // 세션 쿠키 발급 (24시간)
-    const now = Math.floor(Date.now() / 1000);
+    // 세션 쿠키 발급 (14일)
     const session = jwt.sign(
       {
         email: emailLower,
         role: 'user',
         source: 'otp-verified',
-        iat: now,
-        exp: now + 60 * 60 * 24,
       },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { expiresIn: SESSION_EXPIRES_IN }
     );
 
     const cookieHeader = cookieString('yamoo_session', session);
